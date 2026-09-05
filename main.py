@@ -71,13 +71,12 @@ def normalize_text(text: str) -> str:
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 PROCESSED_MESSAGES = set()
 
-async def process_and_send(bot, message):
-    if message.id in PROCESSED_MESSAGES:
+async def check_and_forward(bot, message: Message):
+    if not message or message.id in PROCESSED_MESSAGES:
         return
+    
     PROCESSED_MESSAGES.add(message.id)
-
-    # تنظيف الذاكرة للحفاظ على الأداء
-    if len(PROCESSED_MESSAGES) > 5000:
+    if len(PROCESSED_MESSAGES) > 3000:
         PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
@@ -125,20 +124,21 @@ async def process_and_send(bot, message):
                     print(f"❌ خطأ توجيه: {e}")
             break
 
-# دالة الفحص الدائم والسريع خلف الكواليس للمجموعات الكبيرة
-async def poll_large_groups(userbot, bot):
+async def force_poll_supergroups(userbot, bot):
+    """فحص اجباري دائم ومستمر للمجموعات الفائقة بكل انواعها"""
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=50):
-                if dialog.chat.type in ["group", "supergroup"]:
+            async for dialog in userbot.get_dialogs():
+                # جلب حتى المجموعات المكتومة والمجموعات الضخمة والقنوات
+                if dialog.chat.type in ["group", "supergroup", "channel"]:
                     try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
-                            await process_and_send(bot, msg)
+                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=5):
+                            await check_and_forward(bot, msg)
                     except Exception:
                         pass
         except Exception as e:
-            print(f"⚠️ خطأ فحص خلفي: {e}")
-        await asyncio.sleep(4)
+            print(f"⚠️ خطأ الفحص: {e}")
+        await asyncio.sleep(3)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -159,18 +159,20 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.group | filters.channel)
-    async def monitor_messages(client: Client, message: Message):
-        await process_and_send(bot, message)
+    # التقاط عام بدون أي فلاتر تخص نوع المجموعة
+    @userbot.on_message()
+    async def monitor_all(client: Client, message: Message):
+        await check_and_forward(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تشغيل البوتات ومحرك الفحص المتقدم.")
+    print("✅ تم تشغيل الحساب والبوت بنجاح.")
 
-    # تشغيل الفحص الخلفي المباشر
-    asyncio.create_task(poll_large_groups(userbot, bot))
+    # تشغيل الفحص الإجباري في الخلفية
+    asyncio.create_task(force_poll_supergroups(userbot, bot))
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
