@@ -71,14 +71,20 @@ def normalize_text(text: str) -> str:
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 PROCESSED_MESSAGES = set()
 
-async def check_and_forward(bot, message: Message):
-    if not message or message.id in PROCESSED_MESSAGES:
+async def process_message(bot, message: Message):
+    if not message or not message.id:
+        return
+
+    # إنشاء مفتاح فريد يعتمد على أيدي الشات وأيدي الرسالة
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MESSAGES:
         return
     
-    PROCESSED_MESSAGES.add(message.id)
-    if len(PROCESSED_MESSAGES) > 3000:
+    PROCESSED_MESSAGES.add(msg_key)
+    if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
+    # يتجاهل الرسائل الصادرة من نفس الحساب
     if message.from_user and message.from_user.is_self:
         return
 
@@ -104,6 +110,7 @@ async def check_and_forward(bot, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+            # إرسال النص الصافي للمشتركين
             for user in TARGET_USERS:
                 try:
                     await bot.send_message(
@@ -124,21 +131,20 @@ async def check_and_forward(bot, message: Message):
                     print(f"❌ خطأ توجيه: {e}")
             break
 
-async def force_poll_supergroups(userbot, bot):
-    """فحص اجباري دائم ومستمر للمجموعات الفائقة بكل انواعها"""
+# دالة سحب حية وفورية تفحص القنوات والمجموعات بانتظام
+async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            async for dialog in userbot.get_dialogs():
-                # جلب حتى المجموعات المكتومة والمجموعات الضخمة والقنوات
-                if dialog.chat.type in ["group", "supergroup", "channel"]:
-                    try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=5):
-                            await check_and_forward(bot, msg)
-                    except Exception:
-                        pass
+            async for dialog in userbot.get_dialogs(limit=100):
+                try:
+                    # جلب آخر رسالتين من القناة أو القروب فوراً
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
         except Exception as e:
-            print(f"⚠️ خطأ الفحص: {e}")
-        await asyncio.sleep(3)
+            print(f"⚠️ خطأ أثناء الفحص: {e}")
+        await asyncio.sleep(2)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -159,17 +165,17 @@ async def main():
         in_memory=True
     )
 
-    # التقاط عام بدون أي فلاتر تخص نوع المجموعة
-    @userbot.on_message()
-    async def monitor_all(client: Client, message: Message):
-        await check_and_forward(bot, message)
+    # الاستماع لجميع أنواع الرسائل (قنوات، مجموعات، وخاص)
+    @userbot.on_message(filters.all)
+    async def global_listener(client: Client, message: Message):
+        await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تشغيل الحساب والبوت بنجاح.")
+    print("✅ تم التشغيل والربط بنجاح.")
 
-    # تشغيل الفحص الإجباري في الخلفية
-    asyncio.create_task(force_poll_supergroups(userbot, bot))
+    # بدء محرك الفحص السريع للقنوات والمجموعات الكبيره
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
