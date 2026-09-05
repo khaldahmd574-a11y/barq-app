@@ -69,6 +69,76 @@ def normalize_text(text: str) -> str:
     return text
 
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
+PROCESSED_MESSAGES = set()
+
+async def process_and_send(bot, message):
+    if message.id in PROCESSED_MESSAGES:
+        return
+    PROCESSED_MESSAGES.add(message.id)
+
+    # تنظيف الذاكرة للحفاظ على الأداء
+    if len(PROCESSED_MESSAGES) > 5000:
+        PROCESSED_MESSAGES.clear()
+
+    if message.from_user and message.from_user.is_self:
+        return
+
+    raw_text = message.text or message.caption or ""
+    if not raw_text:
+        return
+
+    searchable_text = normalize_text(raw_text)
+    
+    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+        if norm_word in searchable_text:
+            buttons = []
+            row = []
+            
+            if message.from_user and message.from_user.username:
+                row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+            
+            if message.link:
+                row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            for user in TARGET_USERS:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception as e:
+                    print(f"❌ خطأ توجيه: {e}")
+            break
+
+# دالة الفحص الدائم والسريع خلف الكواليس للمجموعات الكبيرة
+async def poll_large_groups(userbot, bot):
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=50):
+                if dialog.chat.type in ["group", "supergroup"]:
+                    try:
+                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
+                            await process_and_send(bot, msg)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"⚠️ خطأ فحص خلفي: {e}")
+        await asyncio.sleep(4)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -91,73 +161,16 @@ async def main():
 
     @userbot.on_message(filters.group | filters.channel)
     async def monitor_messages(client: Client, message: Message):
-        if message.from_user and message.from_user.is_self:
-            return
-
-        raw_text = message.text or message.caption or ""
-        if not raw_text:
-            return
-
-        searchable_text = normalize_text(raw_text)
-        
-        for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-            if norm_word in searchable_text:
-                buttons = []
-                row = []
-                
-                if message.from_user and message.from_user.username:
-                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
-                
-                if message.link:
-                    row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
-                
-                if row:
-                    buttons.append(row)
-                    
-                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-                # الصيغة الجديدة: إزالة اسم المجموعة تماماً
-                notification_text = (
-                    f"📌 **الكلمة:** {original_word}\n\n"
-                    f"{raw_text}"
-                )
-
-                for user in TARGET_USERS:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=notification_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value)
-                        await bot.send_message(
-                            chat_id=user,
-                            text=notification_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except Exception as e:
-                        print(f"❌ خطأ توجيه: {e}")
-                break
+        await process_and_send(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تشغيل البوتات.")
+    print("✅ تم تشغيل البوتات ومحرك الفحص المتقدم.")
 
-    # مزامنة عميقة تشمل المجموعات الفائقة (Supergroups) والضخمة جداً
-    print("🔄 جاري مزامنة كافة المجموعات والقنوات الضخمة...")
-    async for dialog in userbot.get_dialogs(limit=None):
-        try:
-            # إجبار الحساب على فتح الـ Peer لتلقي التحديثات اللحظية من المجموعات الضخمة
-            await userbot.get_chat(dialog.chat.id)
-        except Exception:
-            pass
-    print("⚡ اكتملت المزامنة الشاملة بنجاح!")
+    # تشغيل الفحص الخلفي المباشر
+    asyncio.create_task(poll_large_groups(userbot, bot))
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
