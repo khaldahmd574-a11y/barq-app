@@ -18,7 +18,7 @@ TARGET_USERS = [
     "abood1317"
 ]
 
-# 4. قائمة الكلمات المفتاحية الخاصة بك بالكامل دون أي تعديل
+# 4. قائمة الكلمات المفتاحية بالكامل
 KEYWORDS = [
     "جيزان", "الدرب", "بيش", "العارضة", "صامطة", "أحد", "صياغة", "محايل",
     "صبيا", "ابوعريش", "المجاردة", "الشقيق", "القنفذة", "بارق", "المظيلف",
@@ -32,55 +32,52 @@ KEYWORDS = [
 if not SESSION_STRING:
     raise ValueError("خطأ: لم يتم العثور على SESSION_STRING في متغيرات البيئة!")
 
-# تشغيل الحساب الوهمي
-userbot = Client(
-    "my_userbot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION_STRING,
-    in_memory=True
-)
-
-# تشغيل البوت الموزّع
-bot = Client(
-    "helper_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    in_memory=True
-)
-
-@userbot.on_message(filters.text & ~filters.me)
-async def monitor_messages(client: Client, message: Message):
-    text = message.text.lower()
-    
-    # فحص الرسالة مقابل قائمة الكلمات المفتاحية
-    for word in KEYWORDS:
-        if word in text:
-            alert_text = (
-                f"🚨 **تم رصد كلمة مفتاحية:** `{word}`\n\n"
-                f"👤 **المرسل:** {message.from_user.mention if message.from_user else 'مجهول'}\n"
-                f"💬 **المجموعة:** {message.chat.title or 'محادثة خاصة'}\n"
-                f"📝 **الرسالة:**\n{message.text}\n\n"
-                f"🔗 **رابط الرسالة:** {message.link if message.link else 'لا يوجد رابط مباشر'}"
-            )
-            
-            # توجيه التنبيه عبر البوت إلى يوزرات الأعضاء
-            for user in TARGET_USERS:
-                try:
-                    await bot.send_message(chat_id=user, text=alert_text)
-                    print(f"✅ تم توجيه التنبيه عبر البوت إلى: @{user}")
-                except Exception as e:
-                    print(f"❌ تعذر إرسال التنبيه إلى @{user}: {e}")
-            break
-
 async def main():
-    print("🚀 جاري تشغيل الحساب الوهمي والبوت...")
+    print("🚀 جاري تهيئة الحساب الوهمي والبوت...")
+    
+    # تعريف العميلين داخل دالة asyncio لتفادي خطأ Event Loop
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot = Client(
+        "helper_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
+
+    @userbot.on_message(filters.text & ~filters.me)
+    async def monitor_messages(client: Client, message: Message):
+        text = message.text.lower()
+        
+        for word in KEYWORDS:
+            if word in text:
+                alert_text = (
+                    f"🚨 **تم رصد كلمة مفتاحية:** `{word}`\n\n"
+                    f"👤 **المرسل:** {message.from_user.mention if message.from_user else 'مجهول'}\n"
+                    f"💬 **المجموعة:** {message.chat.title or 'محادثة خاصة'}\n"
+                    f"📝 **الرسالة:**\n{message.text}\n\n"
+                    f"🔗 **رابط الرسالة:** {message.link if message.link else 'لا يوجد رابط مباشر'}"
+                )
+                
+                for user in TARGET_USERS:
+                    try:
+                        await bot.send_message(chat_id=user, text=alert_text)
+                        print(f"✅ تم توجيه التنبيه عبر البوت إلى: @{user}")
+                    except Exception as e:
+                        print(f"❌ تعذر إرسال التنبيه إلى @{user}: {e}")
+                break
+
     await userbot.start()
     await bot.start()
     print("✅ تم التشغيل بنجاح! يتم الآن رصد كلمتك وتوجيهها عبر البوت للأعضاء 24/7.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
