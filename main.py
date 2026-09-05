@@ -1,7 +1,21 @@
 import os
 import asyncio
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message
+
+# خادم وهمي لمنع Render من إغلاق الخدمة
+class DummyServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running 24/7!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    server.serve_forever()
 
 # 1. إعدادات الحساب الوهمي من Render
 SESSION_STRING = os.environ.get("SESSION_STRING")
@@ -11,14 +25,14 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 # 2. توكن البوت الخاص بك
 BOT_TOKEN = "8782796916:AAFloRFjgcxsiZ4Y50VAeyJpjOiJXriWl9g"
 
-# 3. قائمة يوزرات الأعضاء المستهدفين استقبال التنبيهات
+# 3. قائمة يوزرات الأعضاء
 TARGET_USERS = [
     "shaybq",
     "Waaaaaaa33",
     "abood1317"
 ]
 
-# 4. قائمة الكلمات المفتاحية بالكامل
+# 4. الكلمات المفتاحية الـ 52 كاملة
 KEYWORDS = [
     "جيزان", "الدرب", "بيش", "العارضة", "صامطة", "أحد", "صياغة", "محايل",
     "صبيا", "ابوعريش", "المجاردة", "الشقيق", "القنفذة", "بارق", "المظيلف",
@@ -30,12 +44,14 @@ KEYWORDS = [
 ]
 
 if not SESSION_STRING:
-    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING في متغيرات البيئة!")
+    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING!")
 
 async def main():
-    print("🚀 جاري تهيئة الحساب الوهمي والبوت...")
+    # تشغيل الخادم الوهمي في مسار خلفي
+    threading.Thread(target=run_dummy_server, daemon=True).start()
     
-    # تعريف العميلين داخل دالة asyncio لتفادي خطأ Event Loop
+    print("🚀 جاري تشغيل الحساب الوهمي والبوت...")
+    
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -76,7 +92,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل بنجاح! يتم الآن رصد كلمتك وتوجيهها عبر البوت للأعضاء 24/7.")
+    print("✅ تم التشغيل بنجاح! السيرفر والبوت يعملان الآن 24/7.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
