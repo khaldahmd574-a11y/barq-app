@@ -6,6 +6,7 @@ import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
+# خادم وهمي لضمان بقاء الخدمة نشطة على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -83,8 +84,8 @@ async def main():
         in_memory=True
     )
 
-    # رصد جميع الرسائل الواردة لليوزر بوت في القروبات العامة والخاصة والمواضيع
-    @userbot.on_message(filters.group, group=-1)
+    # التقاط عام وشامل لكافة القروبات والمجموعات
+    @userbot.on_message(group=-1)
     async def monitor_messages(client: Client, message: Message):
         if message.from_user and message.from_user.is_self:
             return
@@ -97,20 +98,22 @@ async def main():
         
         for original_word, norm_word in NORMALIZED_KEYWORDS.items():
             if norm_word in searchable_text:
-                user_info = ""
+                user_header = ""
                 buttons = []
                 row = []
                 
-                # المعالجة الدقيقة لرابط الخاص المستهدف
+                # إنشاء رابط الخاص المباشر 100%
                 if message.from_user:
+                    user_id = message.from_user.id
+                    name = message.from_user.first_name or "صاحب الطلب"
+                    
                     if message.from_user.username:
-                        user_url = f"https://t.me/{message.from_user.username}"
-                        row.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_url))
+                        user_header = f"👤 **المرسل:** [{name}](https://t.me/{message.from_user.username})\n\n"
+                        row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
                     else:
-                        # إضافة منشن للمستخدم بالرسالة يتيح لك الدخول لخاصه مباشرة بالنقر عليه
-                        user_info = f"\n\n👤 **صاحب الطلب:** [{message.from_user.first_name}](tg://user?id={message.from_user.id})"
+                        user_header = f"👤 **المرسل (اضغط للدخول للخاص):** [{name}](tg://user?id={user_id})\n\n"
 
-                # زر التوجه لموقع الرسالة بالقروب
+                # زر فتح الرسالة الأصلي داخل القروب
                 if message.link:
                     row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
                 
@@ -118,7 +121,7 @@ async def main():
                     buttons.append(row)
                     
                 reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-                formatted_message = f"{raw_text}{user_info}"
+                formatted_message = f"{user_header}{raw_text}"
 
                 for user in TARGET_USERS:
                     try:
@@ -129,12 +132,12 @@ async def main():
                             disable_web_page_preview=True
                         )
                     except Exception as e:
-                        print(f"❌ خطأ عند التوجيه إلى @{user}: {e}")
+                        print(f"❌ خطأ التوجيه لـ @{user}: {e}")
                 break
 
     await userbot.start()
     await bot.start()
-    print("✅ تم البدء بنجاح! الرصد يعمل في كافة القروبات بلا استثناء.")
+    print("✅ تم البدء! الرصد الشامل يعمل الآن بكفاءة عالية.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
