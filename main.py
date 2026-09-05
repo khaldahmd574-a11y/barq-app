@@ -25,9 +25,6 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# إدراج أرقام أيدي المجموعات المطلوبة لمتابعتها بدقة
-TARGET_GROUPS = [-1001712623727, -1001605330364]
-
 KEYWORDS = [
     "جيزان", "جازان", "بيش", "الدرب", "صبيا", "ضمد", "الضبيه", "الظبيه", "مزهره", 
     "ابو عريش", "العارضه", "مسليه", "رديس", "الخضراء", "فيفاء", "الداير", "الدائر", 
@@ -100,9 +97,11 @@ async def main():
         in_memory=True
     )
 
-    group_filter = filters.chat(TARGET_GROUPS) if TARGET_GROUPS else filters.all
+    await start_client(userbot, "الحساب الوهمي")
+    await start_client(bot, "البوت")
 
-    @userbot.on_message(group_filter, group=-1)
+    # رصد شامل لكل الرسائل في أي قروب أو مجموعة تتواجد فيها
+    @userbot.on_message(filters.group, group=-1)
     async def monitor_messages(client: Client, message: Message):
         if message.from_user and message.from_user.is_self:
             return
@@ -142,17 +141,6 @@ async def main():
                     except Exception as e:
                         print(f"❌ خطأ التوجيه لـ @{user}: {e}")
                 break
-
-    await start_client(userbot, "الحساب الوهمي")
-    await start_client(bot, "البوت")
-
-    print("🔄 جاري تثبيت الاتصال بالقروبات المحددة...")
-    try:
-        async for dialog in userbot.get_dialogs(limit=500):
-            pass
-        print("⚡ تم تنشيط جميع المجموعات بنجاح!")
-    except Exception as e:
-        print(f"تنبيه: {e}")
 
     await asyncio.Event().wait()
 
