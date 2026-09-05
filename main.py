@@ -7,7 +7,6 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
-# 1. خادم وهمي للرد على UptimeRobot
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -25,7 +24,6 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# 2. البيانات والمتغيرات
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
@@ -56,7 +54,9 @@ KEYWORDS = [
     "بصبيا", "هايبر", "بنده", "حله", "الحسيني", "النهضه", "حرجه", "الحرجه", "الحمى", 
     "جريبه", "الزرقاء", "النسيم", "مشاوي", "الزاكي", "قهوه", "حلا", "حلى", "اكل", 
     "قاعه", "السوق", "الداخلي", "البلد", "محمصه", "مننا", "الطاهريه", "القعاريه", 
-    "العميريه", "مشوار", "الضاحيه"
+    "العميريه", "مشوار", "الضاحيه", "جرير", "الحصمه", "الحصامه", "الحياه", "صبيحه", 
+    "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", "سواق", "شهري", 
+    "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع"
 ]
 
 def normalize_text(text: str) -> str:
@@ -89,10 +89,10 @@ async def main():
         in_memory=True
     )
 
-    # فلتر شامل يغطي المجموعات والقنوات والمواضيع (Topics)
-    @userbot.on_message(filters.group | filters.channel)
+    # 1. التعديل الأول: استخدام filters.incoming للتغطية الشاملة
+    @userbot.on_message(filters.incoming)
     async def monitor_messages(client: Client, message: Message):
-        if message.from_user and message.from_user.is_self:
+        if message.chat.type == "private" or (message.from_user and message.from_user.is_self):
             return
 
         raw_text = message.text or message.caption or ""
@@ -117,11 +117,18 @@ async def main():
                     
                 reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+                # 2. التعديل الثاني: إضافة اسم المجموعة والكلمة في البداية
+                notification_text = (
+                    f"📌 **الكلمة:** {original_word}\n"
+                    f"👥 **المجموعة:** {message.chat.title or 'غير معروف'}\n\n"
+                    f"{raw_text}"
+                )
+
                 for user in TARGET_USERS:
                     try:
                         await bot.send_message(
                             chat_id=user,
-                            text=raw_text,
+                            text=notification_text,
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
@@ -129,7 +136,7 @@ async def main():
                         await asyncio.sleep(e.value)
                         await bot.send_message(
                             chat_id=user,
-                            text=raw_text,
+                            text=notification_text,
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
@@ -139,17 +146,15 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تشغيل البوت المساعد وحساب المراقبة.")
+    print("✅ تم تشغيل البوتات.")
 
-    # مسح شامل لجميع المحادثات لضمان تسجيل كل المجموعات الكبيرة في الذاكرة
-    print("🔄 جاري مزامنة وتحميل كافة المجموعات...")
-    group_count = 0
-    async for dialog in userbot.get_dialogs():
-        if dialog.chat.type in ["group", "supergroup"]:
-            group_count += 1
-    print(f"⚡ تم تفعيل المراقبة الكاملة لـ {group_count} مجموعة بنجاح!")
+    print("🔄 جاري مزامنة القنوات والمجموعات...")
+    async for _ in userbot.get_dialogs():
+        pass
+    print("⚡ اكتملت المزامنة بنجاح!")
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
