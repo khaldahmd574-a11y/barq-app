@@ -68,15 +68,10 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-def escape_html(text: str) -> str:
-    if not text:
-        return ""
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 PROCESSED_MESSAGES = set()
 
-async def process_and_send(bot, message: Message):
+async def process_and_send(userbot, bot, message: Message):
     if not message or not message.id:
         return
 
@@ -101,21 +96,16 @@ async def process_and_send(bot, message: Message):
         if norm_word in searchable_text:
             buttons = []
             row = []
-            
-            # تنظيف النص الأساسي حتى لا يتداخل مع وسوم HTML
-            clean_raw_text = escape_html(raw_text)
-            user_header = ""
+            sender_info = "غير معروف"
             
             if message.from_user:
-                sender_id = message.from_user.id
-                sender_name = escape_html(message.from_user.first_name or "صاحب الرسالة")
-                
-                # رابط المنشن الفعال المباشر بداخل النص
-                user_header = f"👤 <b>المرسل:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a>\n\n"
-                
-                # إبقاء أزرار التوجيه للأزرار المتاحة فقط
+                sender_name = message.from_user.first_name or "المرسل"
                 if message.from_user.username:
-                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+                    # فتح المحادثة والصفحة مباشرة إذا كان يملك اسم مستخدم
+                    row.append(InlineKeyboardButton(f"👤 {sender_name}", url=f"https://t.me/{message.from_user.username}"))
+                    sender_info = f"@{message.from_user.username}"
+                else:
+                    sender_info = f"{sender_name} (لا يملك يوزر)"
 
             if message.link:
                 row.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
@@ -124,30 +114,30 @@ async def process_and_send(bot, message: Message):
                 buttons.append(row)
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-            
-            # النص النهائي مدمجاً معه رابط الحساب باللون الأزرق المباشر
-            final_text = f"{user_header}{clean_raw_text}"
+            formatted_text = f"👤 **المرسل:** {sender_info}\n\n{raw_text}"
 
             for user in TARGET_USERS:
                 try:
+                    # إرسال الرسالة المعالجة عبر البوت
                     await bot.send_message(
                         chat_id=user,
-                        text=final_text,
-                        parse_mode=filters.enums.ParseMode.HTML,
+                        text=formatted_text,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
+                    
+                    # إذا لم يكن للحساب يوزر، نقوم بتحويل الرسالة الأصلية فوراً عبر الحساب الوهمي 
+                    # ليتمكن المستقبل من الضغط على اسم صاحب الرسالة مباشرة بفتح بروفايله
+                    if message.from_user and not message.from_user.username:
+                        await userbot.forward_messages(
+                            chat_id=user,
+                            from_chat_id=message.chat.id,
+                            message_ids=message.id
+                        )
                 except FloodWait as e:
                     await asyncio.sleep(e.value)
-                    await bot.send_message(
-                        chat_id=user,
-                        text=final_text,
-                        parse_mode=filters.enums.ParseMode.HTML,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
                 except Exception as e:
-                    print(f"❌ خطأ توجيه: {e}")
+                    print(f"❌ خطأ إرسال: {e}")
             break
 
 async def full_coverage_scanner(userbot, bot):
@@ -156,7 +146,7 @@ async def full_coverage_scanner(userbot, bot):
             async for dialog in userbot.get_dialogs():
                 try:
                     if dialog.top_message:
-                        await process_and_send(bot, dialog.top_message)
+                        await process_and_send(userbot, bot, dialog.top_message)
                 except Exception:
                     pass
         except Exception as e:
@@ -184,11 +174,11 @@ async def main():
 
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
-        await process_and_send(bot, message)
+        await process_and_send(userbot, bot, message)
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام المحدث بتركيب المنشن المباشر.")
+    print("⚡ تم تشغيل النظام المحدث مع الحل النهائي لفتح البروفايل.")
 
     asyncio.create_task(full_coverage_scanner(userbot, bot))
 
