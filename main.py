@@ -5,19 +5,25 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from hydrogram.errors import FloodWait
 
+# 1. تشغيل سيرفر وهمي للرد على UptimeRobot
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
+        self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Bot is running 24/7!")
+        self.wfile.write(b"Bot is alive 24/7!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
+# 2. إعدادات المتغيرات
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
@@ -62,97 +68,72 @@ def normalize_text(text: str) -> str:
 
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 
-if not SESSION_STRING:
-    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING!")
+userbot = Client(
+    "my_userbot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    session_string=SESSION_STRING,
+    in_memory=True
+)
 
-async def start_client(client, name):
-    while True:
-        try:
-            await client.start()
-            print(f"✅ تم تشغيل {name} بنجاح!")
+bot = Client(
+    "helper_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    in_memory=True
+)
+
+@userbot.on_message(filters.group)
+async def monitor_messages(client: Client, message: Message):
+    if message.from_user and message.from_user.is_self:
+        return
+
+    raw_text = message.text or message.caption or ""
+    if not raw_text:
+        return
+
+    searchable_text = normalize_text(raw_text)
+    
+    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+        if norm_word in searchable_text:
+            buttons = []
+            row = []
+            
+            if message.from_user and message.from_user.username:
+                row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+            
+            if message.link:
+                row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            for user in TARGET_USERS:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception as e:
+                    print(f"❌ خطأ: {e}")
             break
-        except FloodWait as e:
-            print(f"⚠️ حظر مؤقت لـ {name}: جاري الانتظار {e.value} ثانية...")
-            await asyncio.sleep(e.value)
-        except Exception as e:
-            print(f"❌ خطأ أثناء بدء {name}: {e}")
-            await asyncio.sleep(10)
 
-async def main():
+async def start_services():
+    # تشغيل السيرفر في خلفية الخيط
     threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    userbot = Client(
-        "my_userbot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        in_memory=True
-    )
-
-    bot = Client(
-        "helper_bot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN,
-        in_memory=True
-    )
-
-    await start_client(userbot, "الحساب الوهمي")
-    await start_client(bot, "البوت")
-
-    # إجبار الحساب الوهمي على تحميل وقراءة كافة المحادثات والمجموعات
-    print("🔄 جاري مزامنة وتنشيط كافة القروبات...")
-    try:
-        count = 0
-        async for dialog in userbot.get_dialogs():
-            if dialog.chat.type.value in ["group", "supergroup"]:
-                count += 1
-        print(f"⚡ تم بنجاح تنشيط الاستماع لـ {count} قروب!")
-    except Exception as e:
-        print(f"⚠️ تنبيه المزامنة: {e}")
-
-    @userbot.on_message(filters.group, group=-1)
-    async def monitor_messages(client: Client, message: Message):
-        if message.from_user and message.from_user.is_self:
-            return
-
-        raw_text = message.text or message.caption or ""
-        if not raw_text:
-            return
-
-        searchable_text = normalize_text(raw_text)
-        
-        for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-            if norm_word in searchable_text:
-                buttons = []
-                row = []
-                
-                if message.from_user and message.from_user.username:
-                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
-                
-                if message.link:
-                    row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
-                
-                if row:
-                    buttons.append(row)
-                    
-                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-                for user in TARGET_USERS:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=raw_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value)
-                    except Exception as e:
-                        print(f"❌ خطأ التوجيه لـ @{user}: {e}")
-                break
-
+    
+    await userbot.start()
+    await bot.start()
+    print("✅ تم التشغيل بنجاح!")
+    
+    # حلقة إبقاء الخدمة متصلة
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_services())
