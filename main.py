@@ -2,7 +2,7 @@ import asyncio
 import os
 import json
 import urllib.request
-from pyrogram import Client
+from hydrogram import Client
 
 API_ID = 39120728
 API_HASH = os.environ.get("TELEGRAM_API_HASH")
