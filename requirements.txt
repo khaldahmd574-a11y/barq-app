@@ -1,2 +1,2 @@
-Hydrogram
+hydrogram
 tgcrypto
