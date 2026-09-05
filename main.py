@@ -6,7 +6,7 @@ import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-# 1. تشغيل سيرفر وهمي للرد على UptimeRobot
+# 1. خادم وهمي جاهز للرد على UptimeRobot (يدعم GET و HEAD)
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -16,6 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         self.send_response(200)
+        self.send_header("Content-type", "text/plain")
         self.end_headers()
 
 def run_dummy_server():
@@ -23,7 +24,7 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# 2. إعدادات المتغيرات
+# 2. المتغيرات والكلمات
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
@@ -68,72 +69,72 @@ def normalize_text(text: str) -> str:
 
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 
-userbot = Client(
-    "my_userbot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION_STRING,
-    in_memory=True
-)
-
-bot = Client(
-    "helper_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    in_memory=True
-)
-
-@userbot.on_message(filters.group)
-async def monitor_messages(client: Client, message: Message):
-    if message.from_user and message.from_user.is_self:
-        return
-
-    raw_text = message.text or message.caption or ""
-    if not raw_text:
-        return
-
-    searchable_text = normalize_text(raw_text)
-    
-    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-        if norm_word in searchable_text:
-            buttons = []
-            row = []
-            
-            if message.from_user and message.from_user.username:
-                row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
-            
-            if message.link:
-                row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
-            
-            if row:
-                buttons.append(row)
-                
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-            for user in TARGET_USERS:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception as e:
-                    print(f"❌ خطأ: {e}")
-            break
-
-async def start_services():
-    # تشغيل السيرفر في خلفية الخيط
+async def main():
+    # تشغيل السيرفر الفرعي للرد على UptimeRobot
     threading.Thread(target=run_dummy_server, daemon=True).start()
-    
+
+    # إنشاء العميلين داخل الـ Async Loop لمنع خطأ RuntimeError
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot = Client(
+        "helper_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
+
+    @userbot.on_message(filters.group)
+    async def monitor_messages(client: Client, message: Message):
+        if message.from_user and message.from_user.is_self:
+            return
+
+        raw_text = message.text or message.caption or ""
+        if not raw_text:
+            return
+
+        searchable_text = normalize_text(raw_text)
+        
+        for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+            if norm_word in searchable_text:
+                buttons = []
+                row = []
+                
+                if message.from_user and message.from_user.username:
+                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+                
+                if message.link:
+                    row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+                
+                if row:
+                    buttons.append(row)
+                    
+                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+                for user in TARGET_USERS:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=raw_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception as e:
+                        print(f"❌ خطأ: {e}")
+                break
+
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل بنجاح!")
+    print("✅ تم تشغيل البوتين بنجاح!")
     
-    # حلقة إبقاء الخدمة متصلة
+    # الإبقاء على التشغيل المستمر
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_services())
+    asyncio.run(main())
