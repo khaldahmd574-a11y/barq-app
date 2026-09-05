@@ -80,7 +80,7 @@ async def process_and_send(bot, message: Message):
         return
     
     PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 3000:
+    if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
@@ -95,36 +95,34 @@ async def process_and_send(bot, message: Message):
     for original_word, norm_word in NORMALIZED_KEYWORDS.items():
         if norm_word in searchable_text:
             buttons = []
-            row = []
+            row1 = []
+            row2 = []
             
-            # إعداد المنشن المباشر لمنع مشكلة الحظر والحسابات بدون يوزر
-            user_info = ""
             if message.from_user:
-                sender_name = message.from_user.first_name or "صاحب الرسالة"
                 sender_id = message.from_user.id
-                # رابط المباشر للبروفايل عن طريق ID
-                user_info = f"\n\n👤 <b>المرسل:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a> (<code>{sender_id}</code>)"
+                sender_name = message.from_user.first_name or "المرسل"
+                
+                # رابط البروفايل المباشر لمنع مشاكل عدم وجود يوزر
+                row1.append(InlineKeyboardButton(f"👤 {sender_name}", url=f"tg://user?id={sender_id}"))
                 
                 if message.from_user.username:
-                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+                    row1.append(InlineKeyboardButton("💬 المحادثة", url=f"https://t.me/{message.from_user.username}"))
 
             if message.link:
-                row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+                row2.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
             
-            if row:
-                buttons.append(row)
+            if row1:
+                buttons.append(row1)
+            if row2:
+                buttons.append(row2)
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-            
-            # النص المرسل مضافاً عليه معلومات صاحب الرسالة
-            final_text = f"{raw_text}{user_info}"
 
             for user in TARGET_USERS:
                 try:
                     await bot.send_message(
                         chat_id=user,
-                        text=final_text,
-                        parse_mode=filters.enums.ParseMode.HTML,
+                        text=raw_text,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -132,8 +130,7 @@ async def process_and_send(bot, message: Message):
                     await asyncio.sleep(e.value)
                     await bot.send_message(
                         chat_id=user,
-                        text=final_text,
-                        parse_mode=filters.enums.ParseMode.HTML,
+                        text=raw_text,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -141,10 +138,12 @@ async def process_and_send(bot, message: Message):
                     print(f"❌ خطأ توجيه: {e}")
             break
 
-async def ultra_fast_scanner(userbot, bot):
+# ماسح شامل يمر على كافة المجموعات والقنوات بدون استثناء
+async def full_coverage_scanner(userbot, bot):
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=30):
+            # تم حذف الحد (limit) ليشمل كل المجموعات المسجل فيها الحساب
+            async for dialog in userbot.get_dialogs():
                 try:
                     if dialog.top_message:
                         await process_and_send(bot, dialog.top_message)
@@ -152,7 +151,7 @@ async def ultra_fast_scanner(userbot, bot):
                     pass
         except Exception as e:
             print(f"⚠️ خطأ فحص: {e}")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -179,9 +178,9 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام الذكي المعزز.")
+    print("⚡ تم تشغيل الماسح الشامل لجميع المجموعات والقنوات.")
 
-    asyncio.create_task(ultra_fast_scanner(userbot, bot))
+    asyncio.create_task(full_coverage_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
