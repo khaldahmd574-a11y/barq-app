@@ -100,7 +100,17 @@ async def main():
     await start_client(userbot, "الحساب الوهمي")
     await start_client(bot, "البوت")
 
-    # رصد شامل لكل الرسائل في أي قروب أو مجموعة تتواجد فيها
+    # إجبار الحساب الوهمي على تحميل وقراءة كافة المحادثات والمجموعات
+    print("🔄 جاري مزامنة وتنشيط كافة القروبات...")
+    try:
+        count = 0
+        async for dialog in userbot.get_dialogs():
+            if dialog.chat.type.value in ["group", "supergroup"]:
+                count += 1
+        print(f"⚡ تم بنجاح تنشيط الاستماع لـ {count} قروب!")
+    except Exception as e:
+        print(f"⚠️ تنبيه المزامنة: {e}")
+
     @userbot.on_message(filters.group, group=-1)
     async def monitor_messages(client: Client, message: Message):
         if message.from_user and message.from_user.is_self:
