@@ -89,10 +89,9 @@ async def main():
         in_memory=True
     )
 
-    # 1. التعديل الأول: استخدام filters.incoming للتغطية الشاملة
-    @userbot.on_message(filters.incoming)
+    @userbot.on_message(filters.group | filters.channel)
     async def monitor_messages(client: Client, message: Message):
-        if message.chat.type == "private" or (message.from_user and message.from_user.is_self):
+        if message.from_user and message.from_user.is_self:
             return
 
         raw_text = message.text or message.caption or ""
@@ -117,10 +116,9 @@ async def main():
                     
                 reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-                # 2. التعديل الثاني: إضافة اسم المجموعة والكلمة في البداية
+                # الصيغة الجديدة: إزالة اسم المجموعة تماماً
                 notification_text = (
-                    f"📌 **الكلمة:** {original_word}\n"
-                    f"👥 **المجموعة:** {message.chat.title or 'غير معروف'}\n\n"
+                    f"📌 **الكلمة:** {original_word}\n\n"
                     f"{raw_text}"
                 )
 
@@ -148,10 +146,15 @@ async def main():
     await bot.start()
     print("✅ تم تشغيل البوتات.")
 
-    print("🔄 جاري مزامنة القنوات والمجموعات...")
-    async for _ in userbot.get_dialogs():
-        pass
-    print("⚡ اكتملت المزامنة بنجاح!")
+    # مزامنة عميقة تشمل المجموعات الفائقة (Supergroups) والضخمة جداً
+    print("🔄 جاري مزامنة كافة المجموعات والقنوات الضخمة...")
+    async for dialog in userbot.get_dialogs(limit=None):
+        try:
+            # إجبار الحساب على فتح الـ Peer لتلقي التحديثات اللحظية من المجموعات الضخمة
+            await userbot.get_chat(dialog.chat.id)
+        except Exception:
+            pass
+    print("⚡ اكتملت المزامنة الشاملة بنجاح!")
 
     await asyncio.Event().wait()
 
