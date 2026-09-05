@@ -3,16 +3,37 @@ import asyncio
 from hydrogram import Client, filters
 from hydrogram.types import Message
 
-# قراءة جلسة العمل والمتغيرات من بيئة Render
+# 1. إعدادات الحساب الوهمي من Render
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-if not SESSION_STRING:
-    raise ValueError("شديد الأهمية: لم يتم العثور على SESSION_STRING في متغيرات البيئة!")
+# 2. توكن البوت الخاص بك
+BOT_TOKEN = "8782796916:AAFloRFjgcxsiZ4Y50VAeyJpjOiJXriWl9g"
 
-# إنشاء عميل Hydrogram مع تمرير الـ session_string لمنع طلب رقم الهاتف
-app = Client(
+# 3. قائمة يوزرات الأعضاء المستهدفين استقبال التنبيهات
+TARGET_USERS = [
+    "shaybq",
+    "Waaaaaaa33",
+    "abood1317"
+]
+
+# 4. قائمة الكلمات المفتاحية الخاصة بك بالكامل دون أي تعديل
+KEYWORDS = [
+    "جيزان", "الدرب", "بيش", "العارضة", "صامطة", "أحد", "صياغة", "محايل",
+    "صبيا", "ابوعريش", "المجاردة", "الشقيق", "القنفذة", "بارق", "المظيلف",
+    "القوز", "توصيل", "يوصل", "توصيلات", "توصيلي", "يركبها", "شحن",
+    "على طريقه", "ادور عن", "ابحث عن", "معلم", "مقاول", "شغال", "مندوب",
+    "دباب", "سطحة", "تاكسي", "مشوار", "مطعم", "حلاق", "مطبخ", "غسيل",
+    "مطابخ", "المنيوم", "تكييف", "سباك", "كهربائي", "نقل عوائل", "دهان",
+    "مبلط", "حداد", "سطحه", "نقل الهارات", "مصنع"
+]
+
+if not SESSION_STRING:
+    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING في متغيرات البيئة!")
+
+# تشغيل الحساب الوهمي
+userbot = Client(
     "my_userbot",
     api_id=API_ID,
     api_hash=API_HASH,
@@ -20,25 +41,45 @@ app = Client(
     in_memory=True
 )
 
-# قائمة الكلمات المفتاحية المراد مراقبتها (عدّلها حسب حاجتك)
-KEYWORDS = ["برق", "طلب", "تصميم", "تطبيق", "شراء"]
+# تشغيل البوت الموزّع
+bot = Client(
+    "helper_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+    in_memory=True
+)
 
-@app.on_message(filters.text & ~filters.me)
-async def monitor_keywords(client: Client, message: Message):
-    """الاستماع للرسائل الواردة وفحص وجود الكلمات المفتاحية"""
+@userbot.on_message(filters.text & ~filters.me)
+async def monitor_messages(client: Client, message: Message):
     text = message.text.lower()
     
+    # فحص الرسالة مقابل قائمة الكلمات المفتاحية
     for word in KEYWORDS:
         if word in text:
-            print(f" تم العثور على كلمة مفتاحية: '{word}' في المجموعة/القناة: {message.chat.title or message.chat.id}")
-            # يمكنك إضافة كود هنا لإرسال تنبيه لنفسك أو لإعادة توجيه الرسالة
+            alert_text = (
+                f"🚨 **تم رصد كلمة مفتاحية:** `{word}`\n\n"
+                f"👤 **المرسل:** {message.from_user.mention if message.from_user else 'مجهول'}\n"
+                f"💬 **المجموعة:** {message.chat.title or 'محادثة خاصة'}\n"
+                f"📝 **الرسالة:**\n{message.text}\n\n"
+                f"🔗 **رابط الرسالة:** {message.link if message.link else 'لا يوجد رابط مباشر'}"
+            )
+            
+            # توجيه التنبيه عبر البوت إلى يوزرات الأعضاء
+            for user in TARGET_USERS:
+                try:
+                    await bot.send_message(chat_id=user, text=alert_text)
+                    print(f"✅ تم توجيه التنبيه عبر البوت إلى: @{user}")
+                except Exception as e:
+                    print(f"❌ تعذر إرسال التنبيه إلى @{user}: {e}")
             break
 
 async def main():
-    print(" جاري تشغيل اليوزر بوت على Render...")
-    await app.start()
-    print(" تم تشغيل البوت بنجاح! يتم الآن مراقبة الكلمات المفتاحية على مدار 24 ساعة.")
-    await asyncio.Event().wait()  # الإبقاء على البوت يعملاً دائماً
+    print("🚀 جاري تشغيل الحساب الوهمي والبوت...")
+    await userbot.start()
+    await bot.start()
+    print("✅ تم التشغيل بنجاح! يتم الآن رصد كلمتك وتوجيهها عبر البوت للأعضاء 24/7.")
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
