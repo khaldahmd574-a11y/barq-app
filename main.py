@@ -21,8 +21,11 @@ class DummyServer(BaseHTTPRequestHandler):
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), DummyServer)
-    server.serve_forever()
+    try:
+        server = HTTPServer(("0.0.0.0", port), DummyServer)
+        server.serve_forever()
+    except Exception as e:
+        print(f"Server error: {e}")
 
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
@@ -77,75 +80,72 @@ NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 PROCESSED_MESSAGES = set()
 
 async def process_and_send(bot, message: Message):
-    if not message or not message.id:
-        return
+    try:
+        if not message or not message.id:
+            return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    if msg_key in PROCESSED_MESSAGES:
-        return
-    
-    PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 5000:
-        PROCESSED_MESSAGES.clear()
+        msg_key = f"{message.chat.id}_{message.id}"
+        if msg_key in PROCESSED_MESSAGES:
+            return
+        
+        PROCESSED_MESSAGES.add(msg_key)
+        if len(PROCESSED_MESSAGES) > 5000:
+            PROCESSED_MESSAGES.clear()
 
-    if message.from_user and message.from_user.is_self:
-        return
+        if message.from_user and message.from_user.is_self:
+            return
 
-    raw_text = message.text or message.caption or ""
-    if not raw_text:
-        return
+        raw_text = message.text or message.caption or ""
+        if not raw_text:
+            return
 
-    searchable_text = normalize_text(raw_text)
-    
-    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-        if norm_word in searchable_text:
-            buttons = []
-            row = []
-            
-            has_username = False
-            if message.from_user and message.from_user.username:
-                has_username = True
-                row.append(InlineKeyboardButton(f"👤 @{message.from_user.username}", url=f"https://t.me/{message.from_user.username}"))
-
-            if message.link:
-                row.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
-            
-            if row:
-                buttons.append(row)
+        searchable_text = normalize_text(raw_text)
+        
+        for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+            if norm_word in searchable_text:
+                buttons = []
+                row = []
                 
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+                # 1. زر فتح المحادثة المباشرة مع صاحب الرسالة
+                if message.from_user:
+                    if message.from_user.username:
+                        user_url = f"https://t.me/{message.from_user.username}"
+                        user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                    else:
+                        user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                        user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                    row.append(InlineKeyboardButton(user_label, url=user_url))
 
-            for user in TARGET_USERS:
-                try:
-                    # 1. إرسال نص الرسالة الصافي
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
+                # 2. زر فتح الرسالة الأصلية في القناة/القروب
+                if message.link:
+                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+                
+                if row:
+                    buttons.append(row)
                     
-                    # 2. إذا لم يكن يملك يوزر، يرسل كرت اتصال مباشر للوصول لبروفايله بضغطة زر
-                    if message.from_user and not has_username:
-                        first_n = message.from_user.first_name or "صاحب الرسالة"
-                        phone = message.from_user.phone_number or "0000000000"
-                        await bot.send_contact(
-                            chat_id=user,
-                            phone_number=phone,
-                            first_name=first_n,
-                            vcard=f"BEGIN:VCARD\nVERSION:3.0\nN:;{first_n};;;\nTEL:{phone}\nX-TELEGRAM-ID:{message.from_user.id}\nEND:VCARD"
-                        )
+                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                except Exception as e:
-                    print(f"❌ خطأ إرسال: {e}")
-            break
+                for user in TARGET_USERS:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=raw_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
+                    except Exception as e:
+                        print(f"❌ خطأ إرسال: {e}")
+                break
+    except Exception as global_e:
+        print(f"⚠️ خطأ عام: {global_e}")
 
 async def full_coverage_scanner(userbot, bot):
     while True:
         try:
-            async for dialog in userbot.get_dialogs():
+            await asyncio.sleep(30)
+            async for dialog in userbot.get_dialogs(limit=20):
                 try:
                     if dialog.top_message:
                         await process_and_send(bot, dialog.top_message)
@@ -153,7 +153,7 @@ async def full_coverage_scanner(userbot, bot):
                     pass
         except Exception as e:
             print(f"⚠️ خطأ فحص: {e}")
-        await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -180,6 +180,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
+    print("⚡ تم تشغيل النظام بالسرعة المباشرة وبدون إرسال جهات اتصال.")
 
     asyncio.create_task(full_coverage_scanner(userbot, bot))
 
