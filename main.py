@@ -5,7 +5,7 @@ import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message
 
-# خادم وهمي لمنع Render من إغلاق الخدمة
+# خادم وهمي لفتح Port 10000 وإرضاء Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -17,15 +17,15 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# 1. إعدادات الحساب الوهمي من Render
+# 1. إعدادات الحساب الوهمي
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# 2. توكن البوت الخاص بك
+# 2. توكن البوت
 BOT_TOKEN = "8782796916:AAFloRFjgcxsiZ4Y50VAeyJpjOiJXriWl9g"
 
-# 3. قائمة يوزرات الأعضاء
+# 3. مستلمي التنبيهات
 TARGET_USERS = [
     "shaybq",
     "Waaaaaaa33",
@@ -44,14 +44,14 @@ KEYWORDS = [
 ]
 
 if not SESSION_STRING:
-    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING!")
+    raise ValueError("خطأ: لم يتم العثور على SESSION_STRING في متغيرات البيئة!")
 
 async def main():
-    # تشغيل الخادم الوهمي في مسار خلفي
+    # تشغيل الخادم الوهمي لمنع خروج Render
     threading.Thread(target=run_dummy_server, daemon=True).start()
     
-    print("🚀 جاري تشغيل الحساب الوهمي والبوت...")
-    
+    print("🚀 جاري بدء تشغيل البوت واليوزر بوت...")
+
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -85,14 +85,14 @@ async def main():
                 for user in TARGET_USERS:
                     try:
                         await bot.send_message(chat_id=user, text=alert_text)
-                        print(f"✅ تم توجيه التنبيه عبر البوت إلى: @{user}")
+                        print(f"✅ تم توجيه التنبيه إلى: @{user}")
                     except Exception as e:
-                        print(f"❌ تعذر إرسال التنبيه إلى @{user}: {e}")
+                        print(f"❌ تعذر الإرسال إلى @{user}: {e}")
                 break
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل بنجاح! السيرفر والبوت يعملان الآن 24/7.")
+    print("✅ تم التشغيل بنجاح! البوت يعمل الآن 24/7.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
