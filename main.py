@@ -97,9 +97,17 @@ async def process_and_send(bot, message: Message):
             buttons = []
             row = []
             
-            if message.from_user and message.from_user.username:
-                row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
-            
+            # إعداد المنشن المباشر لمنع مشكلة الحظر والحسابات بدون يوزر
+            user_info = ""
+            if message.from_user:
+                sender_name = message.from_user.first_name or "صاحب الرسالة"
+                sender_id = message.from_user.id
+                # رابط المباشر للبروفايل عن طريق ID
+                user_info = f"\n\n👤 <b>المرسل:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a> (<code>{sender_id}</code>)"
+                
+                if message.from_user.username:
+                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
+
             if message.link:
                 row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
             
@@ -107,12 +115,16 @@ async def process_and_send(bot, message: Message):
                 buttons.append(row)
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+            
+            # النص المرسل مضافاً عليه معلومات صاحب الرسالة
+            final_text = f"{raw_text}{user_info}"
 
             for user in TARGET_USERS:
                 try:
                     await bot.send_message(
                         chat_id=user,
-                        text=raw_text,
+                        text=final_text,
+                        parse_mode=filters.enums.ParseMode.HTML,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -120,7 +132,8 @@ async def process_and_send(bot, message: Message):
                     await asyncio.sleep(e.value)
                     await bot.send_message(
                         chat_id=user,
-                        text=raw_text,
+                        text=final_text,
+                        parse_mode=filters.enums.ParseMode.HTML,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -128,19 +141,18 @@ async def process_and_send(bot, message: Message):
                     print(f"❌ خطأ توجيه: {e}")
             break
 
-# فحص ذكي لـ 50 محادثة كل ثانيتين
-async def smart_scanner(userbot, bot):
+async def ultra_fast_scanner(userbot, bot):
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=50):
+            async for dialog in userbot.get_dialogs(limit=30):
                 try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                        await process_and_send(bot, msg)
+                    if dialog.top_message:
+                        await process_and_send(bot, dialog.top_message)
                 except Exception:
                     pass
         except Exception as e:
             print(f"⚠️ خطأ فحص: {e}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(0.5)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -167,10 +179,9 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("🚀 تم تشغيل المحرك المحدث (50 محادثة / ثانيتين).")
+    print("⚡ تم تشغيل النظام الذكي المعزز.")
 
-    # تشغيل الفحص الذكي
-    asyncio.create_task(smart_scanner(userbot, bot))
+    asyncio.create_task(ultra_fast_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
