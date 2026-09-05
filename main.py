@@ -68,6 +68,11 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
+def escape_html(text: str) -> str:
+    if not text:
+        return ""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 PROCESSED_MESSAGES = set()
 
@@ -95,34 +100,40 @@ async def process_and_send(bot, message: Message):
     for original_word, norm_word in NORMALIZED_KEYWORDS.items():
         if norm_word in searchable_text:
             buttons = []
-            row1 = []
-            row2 = []
+            row = []
+            
+            # تنظيف النص الأساسي حتى لا يتداخل مع وسوم HTML
+            clean_raw_text = escape_html(raw_text)
+            user_header = ""
             
             if message.from_user:
                 sender_id = message.from_user.id
-                sender_name = message.from_user.first_name or "المرسل"
+                sender_name = escape_html(message.from_user.first_name or "صاحب الرسالة")
                 
-                # رابط البروفايل المباشر لمنع مشاكل عدم وجود يوزر
-                row1.append(InlineKeyboardButton(f"👤 {sender_name}", url=f"tg://user?id={sender_id}"))
+                # رابط المنشن الفعال المباشر بداخل النص
+                user_header = f"👤 <b>المرسل:</b> <a href=\"tg://user?id={sender_id}\">{sender_name}</a>\n\n"
                 
+                # إبقاء أزرار التوجيه للأزرار المتاحة فقط
                 if message.from_user.username:
-                    row1.append(InlineKeyboardButton("💬 المحادثة", url=f"https://t.me/{message.from_user.username}"))
+                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
 
             if message.link:
-                row2.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
+                row.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
             
-            if row1:
-                buttons.append(row1)
-            if row2:
-                buttons.append(row2)
+            if row:
+                buttons.append(row)
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+            
+            # النص النهائي مدمجاً معه رابط الحساب باللون الأزرق المباشر
+            final_text = f"{user_header}{clean_raw_text}"
 
             for user in TARGET_USERS:
                 try:
                     await bot.send_message(
                         chat_id=user,
-                        text=raw_text,
+                        text=final_text,
+                        parse_mode=filters.enums.ParseMode.HTML,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -130,7 +141,8 @@ async def process_and_send(bot, message: Message):
                     await asyncio.sleep(e.value)
                     await bot.send_message(
                         chat_id=user,
-                        text=raw_text,
+                        text=final_text,
+                        parse_mode=filters.enums.ParseMode.HTML,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
@@ -138,11 +150,9 @@ async def process_and_send(bot, message: Message):
                     print(f"❌ خطأ توجيه: {e}")
             break
 
-# ماسح شامل يمر على كافة المجموعات والقنوات بدون استثناء
 async def full_coverage_scanner(userbot, bot):
     while True:
         try:
-            # تم حذف الحد (limit) ليشمل كل المجموعات المسجل فيها الحساب
             async for dialog in userbot.get_dialogs():
                 try:
                     if dialog.top_message:
@@ -178,7 +188,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل الماسح الشامل لجميع المجموعات والقنوات.")
+    print("⚡ تم تشغيل النظام المحدث بتركيب المنشن المباشر.")
 
     asyncio.create_task(full_coverage_scanner(userbot, bot))
 
