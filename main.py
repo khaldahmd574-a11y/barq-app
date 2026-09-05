@@ -4,6 +4,13 @@ import json
 import urllib.request
 from hydrogram import Client
 
+# إنشاء event loop لضمان التوافق مع Python 3.14
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 API_ID = 39120728
 API_HASH = os.environ.get("TELEGRAM_API_HASH")
 BOT_TOKEN = "8782796916:AAFloRFjgcxsiZ4Y50VAeyJpjOiJXriWl9g"
@@ -78,4 +85,4 @@ async def main():
     await poll_messages(app)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop.run_until_complete(main())
