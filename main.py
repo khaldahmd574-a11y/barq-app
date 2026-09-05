@@ -5,8 +5,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.errors import FloodWait
 
-# 1. خادم وهمي جاهز للرد على UptimeRobot (يدعم GET و HEAD)
+# 1. خادم وهمي للرد على UptimeRobot
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -24,7 +25,7 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# 2. المتغيرات والكلمات
+# 2. البيانات والمتغيرات
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
@@ -70,10 +71,8 @@ def normalize_text(text: str) -> str:
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 
 async def main():
-    # تشغيل السيرفر الفرعي للرد على UptimeRobot
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # إنشاء العميلين داخل الـ Async Loop لمنع خطأ RuntimeError
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -90,7 +89,8 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.group)
+    # فلتر شامل يغطي المجموعات والقنوات والمواضيع (Topics)
+    @userbot.on_message(filters.group | filters.channel)
     async def monitor_messages(client: Client, message: Message):
         if message.from_user and message.from_user.is_self:
             return
@@ -125,15 +125,30 @@ async def main():
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
+                        await bot.send_message(
+                            chat_id=user,
+                            text=raw_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
                     except Exception as e:
-                        print(f"❌ خطأ: {e}")
+                        print(f"❌ خطأ توجيه: {e}")
                 break
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تشغيل البوتين بنجاح!")
-    
-    # الإبقاء على التشغيل المستمر
+    print("✅ تم تشغيل البوت المساعد وحساب المراقبة.")
+
+    # مسح شامل لجميع المحادثات لضمان تسجيل كل المجموعات الكبيرة في الذاكرة
+    print("🔄 جاري مزامنة وتحميل كافة المجموعات...")
+    group_count = 0
+    async for dialog in userbot.get_dialogs():
+        if dialog.chat.type in ["group", "supergroup"]:
+            group_count += 1
+    print(f"⚡ تم تفعيل المراقبة الكاملة لـ {group_count} مجموعة بنجاح!")
+
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
