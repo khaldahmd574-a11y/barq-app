@@ -83,8 +83,8 @@ async def main():
         in_memory=True
     )
 
-    # إلغاء الفلاتر واستعراض كل من (القروبات العادية + السوبر قروب + المواضيع)
-    @userbot.on_message((filters.group | filters.supergroup) & ~filters.me, group=-1)
+    # filters.group يشمل تلقائياً المجموعات العادية والمجموعات الفائقة (Supergroups)
+    @userbot.on_message(filters.group & ~filters.me, group=-1)
     async def monitor_messages(client: Client, message: Message):
         raw_text = message.text or message.caption or ""
         if not raw_text:
@@ -97,11 +97,11 @@ async def main():
                 buttons = []
                 row = []
                 
-                # إتاحة فتح المحادثة إذا كان الحساب يملك اسم مستخدم
+                # إضافة زر المحادثة إذا كان يملك اسم مستخدم
                 if message.from_user and message.from_user.username:
                     row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
                 
-                # زر الانتقال المباشر للرسالة بالقروب
+                # زر فتح الرسالة المباشر بالقروب
                 if message.link:
                     row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
                 
@@ -124,7 +124,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم تفعيل رصد المجموعات العادية والسوبر قروب بنجاح 100%!")
+    print("✅ تم التشغيل بنجاح! الرصد شغال لكل المجموعات العادية والسوبر قروب.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
