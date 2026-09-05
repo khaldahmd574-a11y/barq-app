@@ -5,6 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.errors import FloodWait
 
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -64,6 +65,19 @@ NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
 if not SESSION_STRING:
     raise ValueError("خطأ: لم يتم العثور على SESSION_STRING!")
 
+async def start_client(client, name):
+    while True:
+        try:
+            await client.start()
+            print(f"✅ تم تشغيل {name} بنجاح!")
+            break
+        except FloodWait as e:
+            print(f"⚠️ حظر مؤقت لـ {name}: يجب الانتظار {e.value} ثانية...")
+            await asyncio.sleep(e.value)
+        except Exception as e:
+            print(f"❌ خطأ أثناء بدء {name}: {e}")
+            await asyncio.sleep(10)
+
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
@@ -83,7 +97,7 @@ async def main():
         in_memory=True
     )
 
-    # filters.group يشمل تلقائياً المجموعات العادية والمجموعات الفائقة (Supergroups)
+    # التقاط الرسائل من كافة القروبات والمجموعات الفائقة والسوبر قروب بدون أي استثناء
     @userbot.on_message(filters.group & ~filters.me, group=-1)
     async def monitor_messages(client: Client, message: Message):
         raw_text = message.text or message.caption or ""
@@ -97,11 +111,9 @@ async def main():
                 buttons = []
                 row = []
                 
-                # إضافة زر المحادثة إذا كان يملك اسم مستخدم
                 if message.from_user and message.from_user.username:
                     row.append(InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}"))
                 
-                # زر فتح الرسالة المباشر بالقروب
                 if message.link:
                     row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
                 
@@ -118,13 +130,14 @@ async def main():
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
+                    except FloodWait as e:
+                        await asyncio.sleep(e.value)
                     except Exception as e:
                         print(f"❌ خطأ التوجيه لـ @{user}: {e}")
                 break
 
-    await userbot.start()
-    await bot.start()
-    print("✅ تم التشغيل بنجاح! الرصد شغال لكل المجموعات العادية والسوبر قروب.")
+    await start_client(userbot, "اليوزر بوت")
+    await start_client(bot, "البوت")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
