@@ -65,8 +65,6 @@ RAW_KEYWORDS = [
     "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
 ]
 
-KEYWORDS = list(dict.fromkeys(RAW_KEYWORDS))
-
 def normalize_text(text: str) -> str:
     if not text:
         return ""
@@ -76,7 +74,8 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in KEYWORDS}
+# تحسين أداء الكلمات المفتاحية لتصبح بحثاً فورياً فائق السرعة
+NORMALIZED_KEYWORDS = set(normalize_text(word) for word in RAW_KEYWORDS)
 PROCESSED_MESSAGES = set()
 
 async def process_and_send(bot, message: Message):
@@ -100,60 +99,68 @@ async def process_and_send(bot, message: Message):
             return
 
         searchable_text = normalize_text(raw_text)
+        words_in_message = set(searchable_text.split())
+
+        # مطابقة سريعة جداً باستخدام تقاطع المجموعات (Intersection)
+        if not NORMALIZED_KEYWORDS.intersection(words_in_message):
+            # محاولة بحث أعمق إذا كانت الكلمة جزءاً من جملة ملتصقة
+            found = False
+            for kw in NORMALIZED_KEYWORDS:
+                if kw in searchable_text:
+                    found = True
+                    break
+            if not found:
+                return
+
+        # إذا تم مطابقة الكلمة، نرسل فوراً وبدون أي تأخير
+        buttons = []
+        row = []
         
-        for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-            if norm_word in searchable_text:
-                buttons = []
-                row = []
-                
-                # 1. زر فتح المحادثة المباشرة مع صاحب الرسالة
-                if message.from_user:
-                    if message.from_user.username:
-                        user_url = f"https://t.me/{message.from_user.username}"
-                        user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                    else:
-                        user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                        user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                    row.append(InlineKeyboardButton(user_label, url=user_url))
+        if message.from_user:
+            if message.from_user.username:
+                user_url = f"https://t.me/{message.from_user.username}"
+                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+            else:
+                user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+            row.append(InlineKeyboardButton(user_label, url=user_url))
 
-                # 2. زر فتح الرسالة الأصلية في القناة/القروب
-                if message.link:
-                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-                
-                if row:
-                    buttons.append(row)
-                    
-                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        if message.link:
+            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+        
+        if row:
+            buttons.append(row)
+            
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-                for user in TARGET_USERS:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=raw_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except FloodWait as e:
-                        await asyncio.sleep(e.value)
-                    except Exception as e:
-                        print(f"❌ خطأ إرسال: {e}")
-                break
+        for user in TARGET_USERS:
+            try:
+                await bot.send_message(
+                    chat_id=user,
+                    text=raw_text,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True
+                )
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
+            except Exception as e:
+                print(f"❌ خطأ إرسال: {e}")
+
     except Exception as global_e:
         print(f"⚠️ خطأ عام: {global_e}")
 
 async def full_coverage_scanner(userbot, bot):
     while True:
         try:
-            await asyncio.sleep(30)
-            async for dialog in userbot.get_dialogs(limit=20):
+            await asyncio.sleep(60) # فحص خفيفة جداً كل دقيقة للاحتياط فقط
+            async for dialog in userbot.get_dialogs(limit=10):
                 try:
                     if dialog.top_message:
                         await process_and_send(bot, dialog.top_message)
                 except Exception:
                     pass
-        except Exception as e:
-            print(f"⚠️ خطأ فحص: {e}")
-            await asyncio.sleep(10)
+        except Exception:
+            await asyncio.sleep(20)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -176,16 +183,15 @@ async def main():
 
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
-        await process_and_send(bot, message)
+        asyncio.create_task(process_and_send(bot, message))
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بالسرعة المباشرة وبدون إرسال جهات اتصال.")
+    print("⚡ تم تشغيل النظام بأقصى سرعة فورية ممكنة (Turbo Speed).")
 
     asyncio.create_task(full_coverage_scanner(userbot, bot))
 
-    await asyncio.Event().wait()
+    asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
