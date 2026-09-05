@@ -7,7 +7,6 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
-# سيرفر وهمي لإبقاء الخدمة متصلة 24 ساعة على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -22,8 +21,6 @@ def run_dummy_server():
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
-
-# التوكن الجديد والنظيف لفك الحظر
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
@@ -82,7 +79,6 @@ async def start_client(client, name):
             await asyncio.sleep(10)
 
 async def main():
-    # تشغيل خادم HTTP للعمل 24/7
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
@@ -101,9 +97,12 @@ async def main():
         in_memory=True
     )
 
-    # إلتقاط شامل لكل أنواع القروبات والسوبر قروبات
-    @userbot.on_message(filters.group & ~filters.me, group=-1)
+    # إلتقاط شامل لجميع الرسائل القادمة من المجموعات والمواضيع
+    @userbot.on_message(group=-1)
     async def monitor_messages(client: Client, message: Message):
+        if message.from_user and message.from_user.is_self:
+            return
+
         raw_text = message.text or message.caption or ""
         if not raw_text:
             return
@@ -142,6 +141,16 @@ async def main():
 
     await start_client(userbot, "الحساب الوهمي")
     await start_client(bot, "البوت")
+
+    # تنشيط الربط المباشر لجميع المحادثات المشترك فيها الحساب
+    print("🔄 جاري تنشيط الربط المباشر مع كافة الجروبات...")
+    try:
+        async for dialog in userbot.get_dialogs(limit=300):
+            pass
+        print("⚡ تم تنشيط كافة الجروبات المضافة وحسابك جاهز تماماً!")
+    except Exception as e:
+        print(f"تنبيه التنشيط: {e}")
+
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
