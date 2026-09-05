@@ -7,6 +7,7 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
+# سيرفر وهمي لإبقاء الخدمة متصلة 24 ساعة على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -21,7 +22,9 @@ def run_dummy_server():
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
-BOT_TOKEN = "8782796916:AAFloRFjgcxsiZ4Y50VAeyJpjOiJXriWl9g"
+
+# التوكن الجديد والنظيف لفك الحظر
+BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -72,13 +75,14 @@ async def start_client(client, name):
             print(f"✅ تم تشغيل {name} بنجاح!")
             break
         except FloodWait as e:
-            print(f"⚠️ حظر مؤقت لـ {name}: يجب الانتظار {e.value} ثانية...")
+            print(f"⚠️ حظر مؤقت لـ {name}: جاري الانتظار {e.value} ثانية...")
             await asyncio.sleep(e.value)
         except Exception as e:
             print(f"❌ خطأ أثناء بدء {name}: {e}")
             await asyncio.sleep(10)
 
 async def main():
+    # تشغيل خادم HTTP للعمل 24/7
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
@@ -97,7 +101,7 @@ async def main():
         in_memory=True
     )
 
-    # التقاط الرسائل من كافة القروبات والمجموعات الفائقة والسوبر قروب بدون أي استثناء
+    # إلتقاط شامل لكل أنواع القروبات والسوبر قروبات
     @userbot.on_message(filters.group & ~filters.me, group=-1)
     async def monitor_messages(client: Client, message: Message):
         raw_text = message.text or message.caption or ""
@@ -136,7 +140,7 @@ async def main():
                         print(f"❌ خطأ التوجيه لـ @{user}: {e}")
                 break
 
-    await start_client(userbot, "اليوزر بوت")
+    await start_client(userbot, "الحساب الوهمي")
     await start_client(bot, "البوت")
     await asyncio.Event().wait()
 
