@@ -31,7 +31,6 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# قائمة الكلمات المفتاحية المحدثة والمفلترة بدون أي تكرار
 RAW_KEYWORDS = [
     "جيزان", "جازان", "بيش", "الدرب", "صبيا", "ضمد", "الضبيه", "الظبيه", "مزهره", 
     "ابو عريش", "العارضه", "مسليه", "رديس", "الخضراء", "فيفاء", "الداير", "الدائر", 
@@ -57,15 +56,12 @@ RAW_KEYWORDS = [
     "قاعه", "السوق", "الداخلي", "البلد", "محمصه", "مننا", "الطاهريه", "القعاريه", 
     "العميريه", "مشوار", "الضاحيه", "جرير", "الحصمه", "الحصامه", "الحياه", "صبيحه", 
     "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", "سواق", "شهري", 
-    "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع",
-    # الكلمات الجديدة المضافة
-    "مندوب", "قريب", "قريه", "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", 
-    "طلب", "وادي", "الرباح", "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", 
-    "ابي", "ابغا", "اريد", "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", 
-    "العسيليه"
+    "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
+    "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
+    "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
+    "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
 ]
 
-# إزالة أي تكرار مع الحفاظ على الترتيب
 KEYWORDS = list(dict.fromkeys(RAW_KEYWORDS))
 
 def normalize_text(text: str) -> str:
@@ -106,13 +102,10 @@ async def process_and_send(bot, message: Message):
             buttons = []
             row = []
             
-            # بناء الأزرار السفلية فقط بدون أي إضافة لنص الرسالة
-            if message.from_user:
-                sender_name = message.from_user.first_name or "المرسل"
-                if message.from_user.username:
-                    row.append(InlineKeyboardButton(f"👤 @{message.from_user.username}", url=f"https://t.me/{message.from_user.username}"))
-                else:
-                    row.append(InlineKeyboardButton(f"👤 {sender_name}", callback_data="no_user"))
+            has_username = False
+            if message.from_user and message.from_user.username:
+                has_username = True
+                row.append(InlineKeyboardButton(f"👤 @{message.from_user.username}", url=f"https://t.me/{message.from_user.username}"))
 
             if message.link:
                 row.append(InlineKeyboardButton("📩 فتح الرسالة بالأصل", url=message.link))
@@ -124,20 +117,27 @@ async def process_and_send(bot, message: Message):
 
             for user in TARGET_USERS:
                 try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text, # إرسال النص الأصلي الصافي فقط بدون أسماء أو زوائد
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
+                    # 1. إرسال نص الرسالة الصافي
                     await bot.send_message(
                         chat_id=user,
                         text=raw_text,
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
+                    
+                    # 2. إذا لم يكن يملك يوزر، يرسل كرت اتصال مباشر للوصول لبروفايله بضغطة زر
+                    if message.from_user and not has_username:
+                        first_n = message.from_user.first_name or "صاحب الرسالة"
+                        phone = message.from_user.phone_number or "0000000000"
+                        await bot.send_contact(
+                            chat_id=user,
+                            phone_number=phone,
+                            first_name=first_n,
+                            vcard=f"BEGIN:VCARD\nVERSION:3.0\nN:;{first_n};;;\nTEL:{phone}\nX-TELEGRAM-ID:{message.from_user.id}\nEND:VCARD"
+                        )
+
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
                 except Exception as e:
                     print(f"❌ خطأ إرسال: {e}")
             break
@@ -180,7 +180,6 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام المحدث بالكلمات الجديدة وبنص صفي للنسخ.")
 
     asyncio.create_task(full_coverage_scanner(userbot, bot))
 
