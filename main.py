@@ -6,7 +6,7 @@ import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-# خادم وهمي لضمان استمرار التشغيل 24/7 على Render
+# خادم وهمي لضمان عمل الخدمة 24/7 على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -67,9 +67,8 @@ if not SESSION_STRING:
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
-    print("🚀 جاري تشغيل المحرك المحدث للبوت واليوزر بوت...")
+    print("🚀 جاري بدء الرصد الشامل لكل الجروبات والتحويل الفوري للخاص...")
 
-    # إنشاء العميلين داخل حلقة الأحدث لمنع Runtime Error
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -86,9 +85,17 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message((filters.text | filters.caption) & ~filters.me, group=-1)
+    # التقاط كل الرسائل الواردة بجميع القروبات والمجموعات الفائقة بدون أي استثناء
+    @userbot.on_message(group=-1)
     async def monitor_messages(client: Client, message: Message):
+        # يتجاهل الرسائل الصادرة من حسابك أنت فقط
+        if message.from_user and message.from_user.is_self:
+            return
+
         raw_text = message.text or message.caption or ""
+        if not raw_text:
+            return
+
         searchable_text = normalize_text(raw_text)
         
         for original_word, norm_word in NORMALIZED_KEYWORDS.items():
@@ -98,12 +105,16 @@ async def main():
                 buttons = []
                 row = []
                 
+                # رابط الدخول للخاص فوراً (يعمل سواء كان يملك يوزر أوالا)
                 if message.from_user:
-                    user_link = f"tg://user?id={message.from_user.id}"
                     if message.from_user.username:
-                        user_link = f"https://t.me/{message.from_user.username}"
-                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_link))
-                
+                        chat_link = f"https://t.me/{message.from_user.username}"
+                    else:
+                        chat_link = f"tg://openmessage?user_id={message.from_user.id}"
+                    
+                    row.append(InlineKeyboardButton("💬 فتح المحادثة", url=chat_link))
+
+                # رابط فتح موقع الرسالة بالجروب
                 if message.link:
                     row.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
                 
@@ -120,14 +131,13 @@ async def main():
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                        print(f"✅ [تحويل لحظي] تم توجيه منشور ({original_word}) إلى @{user}")
                     except Exception as e:
-                        print(f"❌ خطأ الإرسال إلى @{user}: {e}")
+                        print(f"❌ خطأ عند التحويل لـ @{user}: {e}")
                 break
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل بنجاح وبدون أخطاء! البوت يرصد الآن 24/7.")
+    print("✅ تم التشغيل! يتم الآن رصد 100% من قروبات الحساب بنجاح.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
