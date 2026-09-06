@@ -21,11 +21,8 @@ class DummyServer(BaseHTTPRequestHandler):
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
-    try:
-        server = HTTPServer(("0.0.0.0", port), DummyServer)
-        server.serve_forever()
-    except Exception as e:
-        print(f"Server error: {e}")
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    server.serve_forever()
 
 SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
@@ -62,7 +59,7 @@ RAW_KEYWORDS = [
     "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
     "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
     "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
-    "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
+    "ل للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
 ]
 
 def normalize_text(text: str) -> str:
@@ -74,89 +71,87 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = set(normalize_text(word) for word in RAW_KEYWORDS)
+NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in RAW_KEYWORDS}
 PROCESSED_MESSAGES = set()
 
-async def process_and_send(bot, message: Message):
-    try:
-        if not message or not message.id:
-            return
+async def process_message(bot, message: Message):
+    if not message or not message.id:
+        return
 
-        msg_key = f"{message.chat.id}_{message.id}"
-        if msg_key in PROCESSED_MESSAGES:
-            return
-        
-        PROCESSED_MESSAGES.add(msg_key)
-        if len(PROCESSED_MESSAGES) > 5000:
-            PROCESSED_MESSAGES.clear()
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MESSAGES:
+        return
+    
+    PROCESSED_MESSAGES.add(msg_key)
+    if len(PROCESSED_MESSAGES) > 5000:
+        PROCESSED_MESSAGES.clear()
 
-        if message.from_user and message.from_user.is_self:
-            return
+    if message.from_user and message.from_user.is_self:
+        return
 
-        raw_text = message.text or message.caption or ""
-        if not raw_text:
-            return
+    raw_text = message.text or message.caption or ""
+    if not raw_text:
+        return
 
-        searchable_text = normalize_text(raw_text)
-        words_in_message = set(searchable_text.split())
-
-        if not NORMALIZED_KEYWORDS.intersection(words_in_message):
-            found = False
-            for kw in NORMALIZED_KEYWORDS:
-                if kw in searchable_text:
-                    found = True
-                    break
-            if not found:
-                return
-
-        buttons = []
-        row = []
-        
-        if message.from_user:
-            if message.from_user.username:
-                user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-            else:
-                user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-            row.append(InlineKeyboardButton(user_label, url=user_url))
-
-        if message.link:
-            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-        
-        if row:
-            buttons.append(row)
+    searchable_text = normalize_text(raw_text)
+    
+    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+        if norm_word in searchable_text:
+            buttons = []
+            row = []
             
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+            # فتح المحادثة سواء بوجود يوزر أو بدون
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
 
-        for user in TARGET_USERS:
-            try:
-                await bot.send_message(
-                    chat_id=user,
-                    text=raw_text,
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True
-                )
-            except FloodWait as e:
-                await asyncio.sleep(e.value)
-            except Exception as e:
-                print(f"❌ خطأ إرسال: {e}")
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    except Exception as global_e:
-        print(f"⚠️ خطأ عام: {global_e}")
+            for user in TARGET_USERS:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception as e:
+                    print(f"❌ خطأ توجيه: {e}")
+            break
 
-# محرك تنشيط ذكي وآمن جداً كل 5 ثوانٍ لضمان بقاء المجموعات الكبيرة متصلة ولحظية بدون حظر
-async def safe_cache_warmer(userbot):
+async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            await asyncio.sleep(5)
-            # جلب خفيف جداً يمنع تلغرام من إيقاف تدفق رسائل المجموعات الكبيرة
-            async for _ in userbot.get_dialogs(limit=10):
-                break
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-        except Exception:
-            await asyncio.sleep(5)
+            # فحص أول 50 محادثة نشطة فقط لمنع التقييد
+            async for dialog in userbot.get_dialogs(limit=50):
+                try:
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء الفحص: {e}")
+        # الانتظار 10 ثوانٍ بين كل دورة فحص آمنة
+        await asyncio.sleep(10)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -177,18 +172,17 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.incoming)
+    @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
-        asyncio.create_task(process_and_send(bot, message))
+        await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تفعيل السرعة القصوى مع حماية تامة ضد الحظر والتوقف.")
+    print("✅ تم التشغيل والربط بنجاح (فحص 50 محادثة كل 10 ثوانٍ).")
 
-    asyncio.create_task(safe_cache_warmer(userbot))
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
-    stop_event = asyncio.Event()
-    await stop_event.wait()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
