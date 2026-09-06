@@ -145,14 +145,18 @@ async def process_and_send(bot, message: Message):
     except Exception as global_e:
         print(f"⚠️ خطأ عام: {global_e}")
 
-# إنعاش سريع جداً كل 3 ثوانٍ
-async def fast_keep_alive(userbot):
+# محرك تنشيط ذكي وآمن جداً كل 5 ثوانٍ لضمان بقاء المجموعات الكبيرة متصلة ولحظية بدون حظر
+async def safe_cache_warmer(userbot):
     while True:
         try:
-            await asyncio.sleep(3)
-            await userbot.get_me()
+            await asyncio.sleep(5)
+            # جلب خفيف جداً يمنع تلغرام من إيقاف تدفق رسائل المجموعات الكبيرة
+            async for _ in userbot.get_dialogs(limit=10):
+                break
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
         except Exception:
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -173,19 +177,19 @@ async def main():
         in_memory=True
     )
 
-    # إلغاء أي فلاتر قيود لضمان الاستماع لكل رسالة قادمة
     @userbot.on_message(filters.incoming)
     async def global_listener(client: Client, message: Message):
         asyncio.create_task(process_and_send(bot, message))
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بنواة إنعاش فائقة (3 ثوانٍ).")
+    print("⚡ تم تفعيل السرعة القصوى مع حماية تامة ضد الحظر والتوقف.")
 
-    asyncio.create_task(fast_keep_alive(userbot))
+    asyncio.create_task(safe_cache_warmer(userbot))
 
     stop_event = asyncio.Event()
     await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
