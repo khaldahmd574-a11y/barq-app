@@ -165,15 +165,15 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.all)
+    # شمول كل أنواع المجموعات (العادية، الخارقة Supergroups، والقنوات)
+    @userbot.on_message(filters.group | filters.channel | filters.group_chat, group=0)
     async def global_listener(client: Client, message: Message):
         asyncio.create_task(process_and_send(bot, message))
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بنجاح وبسرعة استجابة فورية بدون تحذيرات.")
+    print("⚡ تم تشغيل النظام بنجاح ليشمل المجموعات الكبيرة والصغيرة دون استثناء.")
 
-    # إصلاح الانتظار الصحيح بدون أخطاء
     stop_event = asyncio.Event()
     await stop_event.wait()
 
