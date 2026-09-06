@@ -59,7 +59,7 @@ RAW_KEYWORDS = [
     "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
     "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
     "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
-    "ل للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
+    "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
 ]
 
 def normalize_text(text: str) -> str:
@@ -100,7 +100,6 @@ async def process_message(bot, message: Message):
             buttons = []
             row = []
             
-            # فتح المحادثة سواء بوجود يوزر أو بدون
             if message.from_user:
                 if message.from_user.username:
                     user_url = f"https://t.me/{message.from_user.username}"
@@ -141,17 +140,21 @@ async def process_message(bot, message: Message):
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            # فحص أول 50 محادثة نشطة فقط لمنع التقييد
+            # فحص أول 50 محادثة نشطة
             async for dialog in userbot.get_dialogs(limit=50):
                 try:
                     async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
                         await process_message(bot, msg)
                 except Exception:
                     pass
+                # تأخير 0.1 ثانية لحماية الحساب من الفحص السريع
+                await asyncio.sleep(0.1)
+
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص: {e}")
-        # الانتظار 10 ثوانٍ بين كل دورة فحص آمنة
-        await asyncio.sleep(10)
+            
+        # فحص متكرر وسريع كل 7 ثوانٍ
+        await asyncio.sleep(7)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -178,7 +181,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح (فحص 50 محادثة كل 10 ثوانٍ).")
+    print("✅ تم التشغيل والربط بنجاح (فحص 50 محادثة كل 7 ثوانٍ بأمان تام).")
 
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
