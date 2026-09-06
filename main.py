@@ -145,6 +145,15 @@ async def process_and_send(bot, message: Message):
     except Exception as global_e:
         print(f"⚠️ خطأ عام: {global_e}")
 
+# إنعاش سريع جداً كل 3 ثوانٍ
+async def fast_keep_alive(userbot):
+    while True:
+        try:
+            await asyncio.sleep(3)
+            await userbot.get_me()
+        except Exception:
+            await asyncio.sleep(3)
+
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
@@ -164,18 +173,19 @@ async def main():
         in_memory=True
     )
 
-    # التصحيح هنا: استخدام الفلتر الصحيح المعتمد في المكتبة للمجموعات والقنوات
-    @userbot.on_message(filters.group | filters.channel)
+    # إلغاء أي فلاتر قيود لضمان الاستماع لكل رسالة قادمة
+    @userbot.on_message(filters.incoming)
     async def global_listener(client: Client, message: Message):
         asyncio.create_task(process_and_send(bot, message))
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بنجاح وبدون أي أخطاء.")
+    print("⚡ تم تشغيل النظام بنواة إنعاش فائقة (3 ثوانٍ).")
+
+    asyncio.create_task(fast_keep_alive(userbot))
 
     stop_event = asyncio.Event()
     await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
