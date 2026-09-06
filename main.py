@@ -74,7 +74,6 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-# تحسين أداء الكلمات المفتاحية لتصبح بحثاً فورياً فائق السرعة
 NORMALIZED_KEYWORDS = set(normalize_text(word) for word in RAW_KEYWORDS)
 PROCESSED_MESSAGES = set()
 
@@ -101,9 +100,8 @@ async def process_and_send(bot, message: Message):
         searchable_text = normalize_text(raw_text)
         words_in_message = set(searchable_text.split())
 
-        # مطابقة سريعة جداً باستخدام تقاطع المجموعات (Intersection)
+        # مطابقة سريعة
         if not NORMALIZED_KEYWORDS.intersection(words_in_message):
-            # محاولة بحث أعمق إذا كانت الكلمة جزءاً من جملة ملتصقة
             found = False
             for kw in NORMALIZED_KEYWORDS:
                 if kw in searchable_text:
@@ -112,7 +110,6 @@ async def process_and_send(bot, message: Message):
             if not found:
                 return
 
-        # إذا تم مطابقة الكلمة، نرسل فوراً وبدون أي تأخير
         buttons = []
         row = []
         
@@ -149,19 +146,6 @@ async def process_and_send(bot, message: Message):
     except Exception as global_e:
         print(f"⚠️ خطأ عام: {global_e}")
 
-async def full_coverage_scanner(userbot, bot):
-    while True:
-        try:
-            await asyncio.sleep(60) # فحص خفيفة جداً كل دقيقة للاحتياط فقط
-            async for dialog in userbot.get_dialogs(limit=10):
-                try:
-                    if dialog.top_message:
-                        await process_and_send(bot, dialog.top_message)
-                except Exception:
-                    pass
-        except Exception:
-            await asyncio.sleep(20)
-
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
@@ -187,11 +171,12 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بأقصى سرعة فورية ممكنة (Turbo Speed).")
+    print("⚡ تم تشغيل النظام بنجاح وبسرعة استجابة فورية بدون تحذيرات.")
 
-    asyncio.create_task(full_coverage_scanner(userbot, bot))
-
-    asyncio.Event().wait()
+    # إصلاح الانتظار الصحيح بدون أخطاء
+    stop_event = asyncio.Event()
+    await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
