@@ -100,7 +100,6 @@ async def process_and_send(bot, message: Message):
         searchable_text = normalize_text(raw_text)
         words_in_message = set(searchable_text.split())
 
-        # مطابقة سريعة
         if not NORMALIZED_KEYWORDS.intersection(words_in_message):
             found = False
             for kw in NORMALIZED_KEYWORDS:
@@ -165,14 +164,14 @@ async def main():
         in_memory=True
     )
 
-    # شمول كل أنواع المجموعات (العادية، الخارقة Supergroups، والقنوات)
-    @userbot.on_message(filters.group | filters.channel | filters.group_chat, group=0)
+    # التصحيح هنا: استخدام الفلتر الصحيح المعتمد في المكتبة للمجموعات والقنوات
+    @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client: Client, message: Message):
         asyncio.create_task(process_and_send(bot, message))
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل النظام بنجاح ليشمل المجموعات الكبيرة والصغيرة دون استثناء.")
+    print("⚡ تم تشغيل النظام بنجاح وبدون أي أخطاء.")
 
     stop_event = asyncio.Event()
     await stop_event.wait()
