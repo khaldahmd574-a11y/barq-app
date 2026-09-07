@@ -32,9 +32,7 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# القائمة المدمجة والشاملة بعد إضافة الكلمات الجديدة وتصفية المكررات
 RAW_KEYWORDS = [
-    # الكلمات السابقة والإضافات الجديدة
     "فيه", "احتاج", "مين", "يجيب", "بنات", "من", "اذا", "مشوار", "سواق", "ابحث", 
     "ادور", "ابغى", "ابغا", "احد", "حد", "طلبي", "الي", "يوصل", "الى", "توصلنا", 
     "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", "حتى", 
@@ -55,7 +53,6 @@ RAW_KEYWORDS = [
     "نخلان", "اولاد", "دومات", "يداوم", "تداوم", "ثمانيه", "سبعه", 
     "الكورنيش", "البحر", "الجنوبي", "الشمالي", "فلس", "ابو السلع", 
     "مطعم", "سيارته", "كبيره", "صغيره", "نلتزم", "اقل",
-    # الكلمات الجديدة المضافة مؤخراً
     "ضمد", "الضبيه", "ابو عريش", "مسليه", "رديس", "الخضراء", "فيفاء", "الداير", 
     "الدائر", "الخمس", "الخميسين", "الأحد", "الدغارير", "صامطه", "الطوال", "السويس", 
     "سويس", "الجامعه", "النخيل", "خمسه", "سته", "الاسكان", "اسكان", "الملك", 
@@ -90,9 +87,7 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-# تحويل الكلمات إلى مجموعة (Set) للبحث الفوري O(1) وبدون أي تكرار
 NORMALIZED_KEYWORDS = set(normalize_text(word) for word in RAW_KEYWORDS if word.strip())
-
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
 
@@ -117,7 +112,6 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
     
-    # خوارزمية مطابقة سريعة وخاطفة تعتمد على التقاطع المباشر
     words_in_msg = set(re.findall(r'\w+', searchable_text))
     has_keyword = False
     
@@ -132,7 +126,6 @@ async def process_message(bot, message: Message):
     if not has_keyword:
         return
 
-    # منع التكرار (لتفادي تكرار الرسائل المنشورة في أكثر من قروب)
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
@@ -141,7 +134,6 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_TEXT_HASHES) > 2000:
         PROCESSED_TEXT_HASHES.clear()
 
-    # بناء الأزرار للتوجيه
     buttons = []
     row = []
     
@@ -162,7 +154,6 @@ async def process_message(bot, message: Message):
         
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    # الإرسال الفوري للأهداف
     for user in TARGET_USERS:
         try:
             await bot.send_message(
@@ -185,7 +176,6 @@ async def process_message(bot, message: Message):
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            # فحص خفيف وسريع لأحدث 12 محادثة فقط لضمان أقصى سرعة استجابة دون ضغط على الحساب
             async for dialog in userbot.get_dialogs(limit=12):
                 try:
                     async for msg in userbot.get_chat_history(dialog.chat.id, limit=1):
@@ -224,11 +214,13 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("🚀 تم تحديث القائمة الشاملة وضبط السرعة القصوى للالتقاط الفوري.")
+    print("🚀 البوت يعمل الآن بكامل طاقته وسرعته الفائقة.")
 
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
-    asyncio.Event().wait()
+    # تصحيح طريقة التعليق لمنع أي تحذيرات
+    stop_event = asyncio.Event()
+    await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
