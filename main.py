@@ -37,7 +37,7 @@ RAW_KEYWORDS = [
     "ادور", "ابغى", "ابغا", "احد", "حد", "طلبي", "الي", "يوصل", "الى", "توصلنا", 
     "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", "حتى", 
     "ابغاه", "خاصه", "عندي", "بيطلع", "طالع", "مندوب", "كنت", "للعارضه", "لجيزان", 
-    "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "ل للمجمع", "لمحليه", 
+    "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "للمجمع", "لمحليه", 
     "هنا", "بالموسم", "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", 
     "نوصل", "شباب", "يوصلي", "توصيل", "ذحين", "للكربوس", "لأبوعريش", "ماك", 
     "البيك", "قهوه", "حلا", "نمشي", "جيزان", "جازان", "شهري", "يلتزم", "سعره", 
@@ -61,7 +61,7 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in RAW_KEYWORDS if word.strip()}
+NORMALIZED_KEYWORDS = [normalize_text(word) for word in RAW_KEYWORDS if word.strip()]
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
 
@@ -69,7 +69,7 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
-    # 1. منع معالجة نفس المعرّف مرتين
+    # 1. منع المعالجة المكررة لنفس الرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -87,17 +87,17 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
     
-    # 2. التصفية الدقيقة: التحقق من وجود كلمة مفتاحية واحدة على الأقل
+    # 2. شرط حارم: تجاهل المنشور فوراً إذا لم يحتوِ على أي كلمة من الكلمات المحددة
     has_keyword = False
-    for norm_word in NORMALIZED_KEYWORDS.values():
+    for norm_word in NORMALIZED_KEYWORDS:
         if norm_word in searchable_text:
             has_keyword = True
             break
             
     if not has_keyword:
-        return
+        return  # إنهاء وإلغاء المنشور فوراً
 
-    # 3. منع تكرار نفس النص إذا نُشر في قروبات متعددة
+    # 3. منع تكرار الرسالة المنسوخة في عدة مجموعات
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
@@ -106,7 +106,7 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_TEXT_HASHES) > 3000:
         PROCESSED_TEXT_HASHES.clear()
 
-    # إنشاء زر فتح المحادثة والزر الأصلي
+    # بناء الأزرار
     buttons = []
     row = []
     
@@ -127,7 +127,7 @@ async def process_message(bot, message: Message):
         
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    # تحويل الرسالة
+    # الإرسال للأهداف
     for user in TARGET_USERS:
         try:
             await bot.send_message(
@@ -150,21 +150,18 @@ async def process_message(bot, message: Message):
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            # فحص أول 50 محادثة نشطة بنفس هيكلية الكود الأول
             async for dialog in userbot.get_dialogs(limit=50):
                 try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=1):
                         await process_message(bot, msg)
                 except Exception:
                     pass
-                # تأخير 0.1 ثانية لحماية الحساب من الفحص السريع
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.15)
 
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص: {e}")
             
-        # فحص متكرر وسريع كل 7 ثوانٍ
-        await asyncio.sleep(7)
+        await asyncio.sleep(12)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -191,7 +188,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنفس التوقيت الأول (50 محادثة كل 7 ثوانٍ).")
+    print("✅ تم التشغيل: مطابقة صارمة للكلمات المحددة فقط وتجاهل باقي المنشورات تماماً.")
 
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
