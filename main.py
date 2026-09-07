@@ -37,7 +37,7 @@ RAW_KEYWORDS = [
     "ادور", "ابغى", "ابغا", "احد", "حد", "طلبي", "الي", "يوصل", "الى", "توصلنا", 
     "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", "حتى", 
     "ابغاه", "خاصه", "عندي", "بيطلع", "طالع", "مندوب", "كنت", "للعارضه", "لجيزان", 
-    "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "للمجمع", "لمحليه", 
+    "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "ل للمجمع", "لمحليه", 
     "هنا", "بالموسم", "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", 
     "نوصل", "شباب", "يوصلي", "توصيل", "ذحين", "للكربوس", "لأبوعريش", "ماك", 
     "البيك", "قهوه", "حلا", "نمشي", "جيزان", "جازان", "شهري", "يلتزم", "سعره", 
@@ -61,7 +61,7 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = set(normalize_text(word) for word in RAW_KEYWORDS if word.strip())
+NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in RAW_KEYWORDS if word.strip()}
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
 
@@ -69,6 +69,7 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
+    # 1. منع معالجة نفس المعرّف مرتين
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -85,32 +86,27 @@ async def process_message(bot, message: Message):
         return
 
     searchable_text = normalize_text(raw_text)
-
-    # 1. تصفية الكلمات المفتاحية الصارمة (إلغاء المعالجة فوراً إن لم توجد أي كلمة)
-    words_in_message = set(re.findall(r'\w+', searchable_text))
+    
+    # 2. التصفية الدقيقة: التحقق من وجود كلمة مفتاحية واحدة على الأقل
     has_keyword = False
-
-    if NORMALIZED_KEYWORDS.intersection(words_in_message):
-        has_keyword = True
-    else:
-        for kw in NORMALIZED_KEYWORDS:
-            if kw in searchable_text:
-                has_keyword = True
-                break
-
+    for norm_word in NORMALIZED_KEYWORDS.values():
+        if norm_word in searchable_text:
+            has_keyword = True
+            break
+            
     if not has_keyword:
         return
 
-    # 2. منع تكرار النشر المماثل عبر القروبات المختلفة باستخدام بصمة النص
+    # 3. منع تكرار نفس النص إذا نُشر في قروبات متعددة
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
-
+        
     PROCESSED_TEXT_HASHES.add(text_hash)
     if len(PROCESSED_TEXT_HASHES) > 3000:
         PROCESSED_TEXT_HASHES.clear()
 
-    # بناء الأزرار
+    # إنشاء زر فتح المحادثة والزر الأصلي
     buttons = []
     row = []
     
@@ -131,7 +127,7 @@ async def process_message(bot, message: Message):
         
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    # توجيه التنبيه للمستقبلين
+    # تحويل الرسالة
     for user in TARGET_USERS:
         try:
             await bot.send_message(
@@ -154,17 +150,20 @@ async def process_message(bot, message: Message):
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
+            # فحص أول 50 محادثة نشطة بنفس هيكلية الكود الأول
             async for dialog in userbot.get_dialogs(limit=50):
                 try:
                     async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
                         await process_message(bot, msg)
                 except Exception:
                     pass
+                # تأخير 0.1 ثانية لحماية الحساب من الفحص السريع
                 await asyncio.sleep(0.1)
 
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص: {e}")
             
+        # فحص متكرر وسريع كل 7 ثوانٍ
         await asyncio.sleep(7)
 
 async def main():
@@ -186,13 +185,13 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.text | filters.caption)
+    @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التحديث بنجاح: كلمات جديدة + تصفية دقيقة + منع التكرار عبر القروبات.")
+    print("✅ تم التشغيل والربط بنفس التوقيت الأول (50 محادثة كل 7 ثوانٍ).")
 
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
