@@ -32,11 +32,12 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
+# تنظيف القائمة من الكلمات العامة جداً التي تسبب إرسال تحذيرات الإدارة (مثل: حتى، من، في)
 RAW_KEYWORDS = [
-    "فيه", "احتاج", "مين", "يجيب", "بنات", "من", "اذا", "مشوار", "سواق", "ابحث", 
+    "فيه", "احتاج", "مين", "يجيب", "بنات", "اذا", "مشوار", "سواق", "ابحث", 
     "ادور", "ابغى", "ابغا", "احد", "حد", "طلبي", "الي", "يوصل", "الى", "توصلنا", 
-    "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", "حتى", 
-    "ابغاه", "خاصه", "عندي", "بيطلع", "طالع", "مندوب", "كنت", "للعارضه", "لجيزان", 
+    "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", 
+    "ابغاه", "خاصه", "بيطلع", "طالع", "مندوب", "كنت", "للعارضه", "لجيزان", 
     "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "للمجمع", "لمحليه", 
     "هنا", "بالموسم", "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", 
     "نوصل", "شباب", "يوصلي", "توصيل", "ذحين", "للكربوس", "لأبوعريش", "ماك", 
@@ -45,11 +46,11 @@ RAW_KEYWORDS = [
     "لين", "لأبها", "لابها", "صبيا", "يوصله", "بيش", "لبيش", "فالشقيري", 
     "الشقيري", "يرجعني", "بالضاحيه", "وجبه", "الظبيه", "للبرج", "البرج", "حي", 
     "مخطط", "موجود", "ابوعريش", "نازل", "مستشفى", "قصر", "شعب", "الذيب", "وجاي", 
-    "صيدليه", "للمجنه", "اشاره", "الشاشه", "ماشي", "يأخذ", "قرى", "حاكمه", "الاهل", 
+    "صيدليه", "ل للمجنه", "اشاره", "الشاشه", "ماشي", "يأخذ", "قرى", "حاكمه", "الاهل", 
     "يستلم", "سمسا", "ارامكس", "نفسها", "بجيزان", "بجازان", "بضمد", "بالشقيق", 
     "طلبيه", "ابغاها", "معتمد", "يفتح", "المطاعم", "بشارع", "العارضه", "يروح", 
     "داخل", "ضروري", "محطه", "معي", "معايه", "معانا", "الحين", "يقدر", "تقدر", 
-    "يجيبها", "قطه", "قط", "الصوارمه", "المضايا", "مزهره", "هاف", "في", "حوض",
+    "يجيبها", "قطه", "قط", "الصوارمه", "المضايا", "مزهره", "هاف", "حوض",
     "نخلان", "اولاد", "دومات", "يداوم", "تداوم", "ثمانيه", "سبعه", 
     "الكورنيش", "البحر", "الجنوبي", "الشمالي", "فلس", "ابو السلع", 
     "مطعم", "سيارته", "كبيره", "صغيره", "نلتزم", "اقل",
@@ -74,7 +75,7 @@ RAW_KEYWORDS = [
     "الطاهريه", "القعاريه", "العميريه", "الضاحيه", "جرير", "الحصمه", "الحصامه", 
     "الحياه", "صبيحه", "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", 
     "الشهر", "ابها", "ينزل", "يطلع", "قريب", "قريه", "بحر", "ابو حجر", "حجر", 
-    "القصبه", "طلب", "وادي", "الرباح", "بعد", "اللّقيه", "الوزاره", "كبري", 
+    "القصبه", "طلب", "وادي", "الرباح", "اللّقيه", "الوزاره", "كبري", 
     "عند", "اريد", "ينقل", "الكلية", "الخارش", "العسيليه"
 ]
 
@@ -95,6 +96,10 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
+    # استثناء رسائل البوتات والإدارة والتحذيرات
+    if message.from_user and message.from_user.is_bot:
+        return
+
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -112,20 +117,12 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
     
-    words_in_msg = set(re.findall(r'\w+', searchable_text))
-    has_keyword = False
-    
-    if NORMALIZED_KEYWORDS.intersection(words_in_msg):
-        has_keyword = True
-    else:
-        for norm_word in NORMALIZED_KEYWORDS:
-            if norm_word in searchable_text:
-                has_keyword = True
-                break
-            
-    if not has_keyword:
+    # مطابقة الكلمات الكلية فقط (Word Matching) لمنع الالتقاط الخاطئ
+    msg_words = set(re.findall(r'\w+', searchable_text))
+    if not NORMALIZED_KEYWORDS.intersection(msg_words):
         return
 
+    # منع التكرارات
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
@@ -134,9 +131,9 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_TEXT_HASHES) > 2000:
         PROCESSED_TEXT_HASHES.clear()
 
+    # إنشاء الأزرار
     buttons = []
     row = []
-    
     if message.from_user:
         if message.from_user.username:
             user_url = f"https://t.me/{message.from_user.username}"
@@ -154,6 +151,7 @@ async def process_message(bot, message: Message):
         
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+    # إرسال لحظي ومباشر
     for user in TARGET_USERS:
         try:
             await bot.send_message(
@@ -172,22 +170,6 @@ async def process_message(bot, message: Message):
             )
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
-
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=12):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=1):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.2)
-
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص: {e}")
-            
-        await asyncio.sleep(10)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -208,17 +190,15 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.text | filters.caption)
+    # الالتقاط اللحظي المباشر فور نزول الرسالة في أي قروب في نفس الثانية
+    @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("🚀 البوت يعمل الآن بكامل طاقته وسرعته الفائقة.")
+    print("⚡ تم تشغيل المستمع اللحظي الفوري بنجاح.")
 
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
-
-    # تصحيح طريقة التعليق لمنع أي تحذيرات
     stop_event = asyncio.Event()
     await stop_event.wait()
 
