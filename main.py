@@ -32,13 +32,12 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# تنظيف القائمة من الكلمات العامة جداً التي تسبب إرسال تحذيرات الإدارة (مثل: حتى، من، في)
 RAW_KEYWORDS = [
     "فيه", "احتاج", "مين", "يجيب", "بنات", "اذا", "مشوار", "سواق", "ابحث", 
     "ادور", "ابغى", "ابغا", "احد", "حد", "طلبي", "الي", "يوصل", "الى", "توصلنا", 
     "يوصلني", "توصلني", "رايحه", "رايح", "ابي", "يعرف", "تكرمتو", "مندوبه", 
     "ابغاه", "خاصه", "بيطلع", "طالع", "مندوب", "كنت", "للعارضه", "لجيزان", 
-    "لضمد", "لدرب", "للمطار", "لصبيا", "بسألكم", "السلام عليكم", "للمجمع", "لمحليه", 
+    "لضمد", "لدرب", "ل للمطار", "لصبيا", "بسألكم", "السلام عليكم", "ل للمجمع", "لمحليه", 
     "هنا", "بالموسم", "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", 
     "نوصل", "شباب", "يوصلي", "توصيل", "ذحين", "للكربوس", "لأبوعريش", "ماك", 
     "البيك", "قهوه", "حلا", "نمشي", "جيزان", "جازان", "شهري", "يلتزم", "سعره", 
@@ -96,7 +95,7 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
-    # استثناء رسائل البوتات والإدارة والتحذيرات
+    # تجاهل رسائل البوتات لتجنب التحذيرات
     if message.from_user and message.from_user.is_bot:
         return
 
@@ -117,12 +116,12 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
     
-    # مطابقة الكلمات الكلية فقط (Word Matching) لمنع الالتقاط الخاطئ
+    # مطابقة الكلمات الكلية
     msg_words = set(re.findall(r'\w+', searchable_text))
     if not NORMALIZED_KEYWORDS.intersection(msg_words):
         return
 
-    # منع التكرارات
+    # منع التكرار
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
@@ -131,7 +130,6 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_TEXT_HASHES) > 2000:
         PROCESSED_TEXT_HASHES.clear()
 
-    # إنشاء الأزرار
     buttons = []
     row = []
     if message.from_user:
@@ -151,7 +149,6 @@ async def process_message(bot, message: Message):
         
     reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    # إرسال لحظي ومباشر
     for user in TARGET_USERS:
         try:
             await bot.send_message(
@@ -190,14 +187,14 @@ async def main():
         in_memory=True
     )
 
-    # الالتقاط اللحظي المباشر فور نزول الرسالة في أي قروب في نفس الثانية
-    @userbot.on_message(filters.group | filters.channel)
+    # الاستماع لجميع الرسائل من أي نوع دون فلترة نوع المحادثة (القروبات الكبيرة والصغيرة والقنوات)
+    @userbot.on_message()
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("⚡ تم تشغيل المستمع اللحظي الفوري بنجاح.")
+    print("⚡ تم التفعيل: الاستماع لجميع أنواع القروبات الكبيرة والصغيرة والقنوات بنجاح.")
 
     stop_event = asyncio.Event()
     await stop_event.wait()
