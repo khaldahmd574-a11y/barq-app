@@ -105,6 +105,7 @@ async def send_to_user(bot, user, raw_text, reply_markup):
             reply_markup=reply_markup,
             disable_web_page_preview=True
         )
+        print(f"✅ تم الإرسال بنجاح إلى: {user}")
     except FloodWait as e:
         await asyncio.sleep(e.value)
         await bot.send_message(
@@ -114,7 +115,7 @@ async def send_to_user(bot, user, raw_text, reply_markup):
             disable_web_page_preview=True
         )
     except Exception as e:
-        print(f"❌ خطأ توجيه للمستخدم {user}: {e}")
+        print(f"❌ خطأ في الإرسال لـ {user}: {e}")
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -169,6 +170,7 @@ async def process_message(bot, message: Message):
             
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+        # إرسال متوازي لجميع المستخدمين المحددين
         tasks = [send_to_user(bot, user, raw_text, reply_markup) for user in TARGET_USERS]
         await asyncio.gather(*tasks)
 
@@ -193,13 +195,18 @@ async def main():
 
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
+        chat_name = message.chat.title or message.chat.first_name or "خاص"
+        print(f"📩 تم استلام رسالة جديدة من [{chat_name}]")
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح.")
+    
+    me = await userbot.get_me()
+    print(f"🚀 تم تشغيل الخدمة بنجاح للحساب: {me.first_name} (@{me.username})")
+    print("⚡️ يمتلك البوت القدرة الآن على معالجة الرسائل فور وصولها...")
 
-    # تعديل السطر لانتظار العمل بشكل دائم
+    # حل مشكلة الإيقاف والتنبيه (تم إضافة await)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
