@@ -32,8 +32,6 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-BLOCKED_KEYWORDS = ["سكليف", "كتم", "مرحبا", "صحتي", "عذر طبي"]
-
 RAW_KEYWORDS = [
     "جيزان", "جازان", "بيش", "الدرب", "صبيا", "ضمد", "الضبيه", "الظبيه", "مزهره", 
     "ابو عريش", "العارضه", "مسليه", "رديس", "الخضراء", "فيفاء", "الداير", "الدائر", 
@@ -61,7 +59,7 @@ RAW_KEYWORDS = [
     "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", "سواق", "شهري", 
     "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
     "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
-    "بعد", "اللقيه", "اللّقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
+    "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
     "لالمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه",
     "فيه", "احتاج", "مين", "بنات", "من", "اذا", "ابحث", "ادور", "ابغى", "احد", 
     "حد", "طلبي", "الي", "الى", "توصلنا", "توصلني", "رايحه", "رايح", "تكرمتو", 
@@ -69,7 +67,7 @@ RAW_KEYWORDS = [
     "لالمطار", "لصبيا", "بسألكم", "السلام عليكم", "لمحليه", "هنا", "بالموسم", 
     "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", "نوصل", "شباب", 
     "توصيل", "ذحين", "للكربوس", "لأبوعريش", "نمشي", "سعره", "كوفي", "روحه", 
-    "ورجعه", "ينفعني", "مشاوير", "للدرب", "لين", "لأبها", "لابها", "يوصله", 
+    "ورجعه", "ينفعني", "مشاوير", "لالدرب", "لين", "لأبها", "لابها", "يوصله", 
     "لبيش", "فالشقيري", "يرجعني", "بالضاحيه", "وجبه", "للبرج", "موجود", 
     "شعب", "الذيب", "وجاي", "لالمجنه", "اشاره", "الشاشه", "ماشي", "يأخذ", 
     "الاهل", "يستلم", "سمسا", "ارامكس", "نفسها", "بجيزان", "بجازان", "بضمد", 
@@ -88,11 +86,7 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = [normalize_text(word) for word in set(RAW_KEYWORDS) if word.strip()]
-NORMALIZED_BLOCKED = [normalize_text(word) for word in BLOCKED_KEYWORDS if word.strip()]
-
-KEYWORD_PATTERN = re.compile(r"|".join(map(re.escape, NORMALIZED_KEYWORDS)))
-BLOCKED_PATTERN = re.compile(r"|".join(map(re.escape, NORMALIZED_BLOCKED)))
+NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in set(RAW_KEYWORDS) if word.strip()}
 
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
@@ -105,7 +99,6 @@ async def send_to_user(bot, user, raw_text, reply_markup):
             reply_markup=reply_markup,
             disable_web_page_preview=True
         )
-        print(f"✅ تم الإرسال بنجاح إلى: {user}")
     except FloodWait as e:
         await asyncio.sleep(e.value)
         await bot.send_message(
@@ -115,12 +108,13 @@ async def send_to_user(bot, user, raw_text, reply_markup):
             disable_web_page_preview=True
         )
     except Exception as e:
-        print(f"❌ خطأ في الإرسال لـ {user}: {e}")
+        print(f"❌ خطأ توجيه: {e}")
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
+    # منع تكرار نفس معرّف الرسالة من نفس القناة/القروب
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -129,6 +123,7 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
+    # التغاضي عن رسائل حسابك الشخصي
     if message.from_user and message.from_user.is_self:
         return
 
@@ -138,41 +133,41 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
 
-    if BLOCKED_PATTERN.search(searchable_text):
-        return
-
+    # منع تكرار نفس نص الرسالة تماماً إذا أُرسلت في أكثر من قروب بنفس الوقت
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
 
-    if KEYWORD_PATTERN.search(searchable_text):
-        PROCESSED_TEXT_HASHES.add(text_hash)
-        if len(PROCESSED_TEXT_HASHES) > 3000:
-            PROCESSED_TEXT_HASHES.clear()
+    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
+        if norm_word in searchable_text:
+            PROCESSED_TEXT_HASHES.add(text_hash)
+            if len(PROCESSED_TEXT_HASHES) > 3000:
+                PROCESSED_TEXT_HASHES.clear()
 
-        buttons = []
-        row = []
-        
-        if message.from_user:
-            if message.from_user.username:
-                user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-            else:
-                user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-            row.append(InlineKeyboardButton(user_label, url=user_url))
-
-        if message.link:
-            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-        
-        if row:
-            buttons.append(row)
+            buttons = []
+            row = []
             
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
 
-        # إرسال متوازي لجميع المستخدمين المحددين
-        tasks = [send_to_user(bot, user, raw_text, reply_markup) for user in TARGET_USERS]
-        await asyncio.gather(*tasks)
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            # إرسال متوازي لجميع المستخدمين بدون تأخير
+            tasks = [send_to_user(bot, user, raw_text, reply_markup) for user in TARGET_USERS]
+            await asyncio.gather(*tasks)
+            break
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -193,20 +188,15 @@ async def main():
         in_memory=True
     )
 
+    # الاستماع الفوري واللحظي فقط (بدون أي سكربت فحص تاريخي)
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
-        chat_name = message.chat.title or message.chat.first_name or "خاص"
-        print(f"📩 تم استلام رسالة جديدة من [{chat_name}]")
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    
-    me = await userbot.get_me()
-    print(f"🚀 تم تشغيل الخدمة بنجاح للحساب: {me.first_name} (@{me.username})")
-    print("⚡️ يمتلك البوت القدرة الآن على معالجة الرسائل فور وصولها...")
+    print("✅ تم التشغيل والربط بنجاح (استماع فوري فقط بدون أي تكرار).")
 
-    # حل مشكلة الإيقاف والتنبيه (تم إضافة await)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
