@@ -87,34 +87,13 @@ def normalize_text(text: str) -> str:
     return text
 
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in set(RAW_KEYWORDS) if word.strip()}
-
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
-
-async def send_to_user(bot, user, raw_text, reply_markup):
-    try:
-        await bot.send_message(
-            chat_id=user,
-            text=raw_text,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
-    except FloodWait as e:
-        await asyncio.sleep(e.value)
-        await bot.send_message(
-            chat_id=user,
-            text=raw_text,
-            reply_markup=reply_markup,
-            disable_web_page_preview=True
-        )
-    except Exception as e:
-        print(f"❌ خطأ توجيه: {e}")
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
-    # منع تكرار نفس معرّف الرسالة من نفس القناة/القروب
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -123,17 +102,16 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
-    # التغاضي عن رسائل حسابك الشخصي
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text.strip():
+    if not raw_text:
         return
 
     searchable_text = normalize_text(raw_text)
 
-    # منع تكرار نفس نص الرسالة تماماً إذا أُرسلت في أكثر من قروب بنفس الوقت
+    # إلغاء تكرار نفس الرسالة حتى لو نُشرت في أكثر من قروب
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
@@ -164,10 +142,42 @@ async def process_message(bot, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            # إرسال متوازي لجميع المستخدمين بدون تأخير
-            tasks = [send_to_user(bot, user, raw_text, reply_markup) for user in TARGET_USERS]
-            await asyncio.gather(*tasks)
+            for user in TARGET_USERS:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    await bot.send_message(
+                        chat_id=user,
+                        text=raw_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception as e:
+                    print(f"❌ خطأ توجيه: {e}")
             break
+
+async def real_time_channel_and_group_scanner(userbot, bot):
+    while True:
+        try:
+            # فحص أول 50 محادثة نشطة نفس طريقة كودك بالظبط
+            async for dialog in userbot.get_dialogs(limit=50):
+                try:
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء الفحص: {e}")
+            
+        await asyncio.sleep(7)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -188,14 +198,15 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع الفوري واللحظي فقط (بدون أي سكربت فحص تاريخي)
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح (استماع فوري فقط بدون أي تكرار).")
+    print("✅ تم التشغيل والربط بنجاح (فحص 50 محادثة كل 7 ثوانٍ بأمان تام).")
+
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
