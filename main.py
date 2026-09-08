@@ -1,6 +1,7 @@
 import os
 import asyncio
 import re
+import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
@@ -59,7 +60,7 @@ RAW_KEYWORDS = [
     "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
     "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
     "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
-    "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
+    "لالمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
 ]
 
 def normalize_text(text: str) -> str:
@@ -73,6 +74,7 @@ def normalize_text(text: str) -> str:
 
 NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in RAW_KEYWORDS}
 PROCESSED_MESSAGES = set()
+PROCESSED_TEXT_HASHES = set()
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -94,9 +96,18 @@ async def process_message(bot, message: Message):
         return
 
     searchable_text = normalize_text(raw_text)
-    
+
+    # منع تكرار نفس الرسالة حتى لو نُشرت من قروبات مختلفة
+    text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
+    if text_hash in PROCESSED_TEXT_HASHES:
+        return
+
     for original_word, norm_word in NORMALIZED_KEYWORDS.items():
         if norm_word in searchable_text:
+            PROCESSED_TEXT_HASHES.add(text_hash)
+            if len(PROCESSED_TEXT_HASHES) > 3000:
+                PROCESSED_TEXT_HASHES.clear()
+
             buttons = []
             row = []
             
@@ -189,3 +200,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
