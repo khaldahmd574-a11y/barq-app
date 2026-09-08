@@ -32,13 +32,7 @@ BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-CUSTOMER_INDICATORS = [
-    "ابغى", "ابغا", "ابي", "اريد", "ابغى سواق", "ابي سواق", "محتاج", "محتاجه", 
-    "مين", "من", "حد", "احد", "يوصلني", "يوصلنا", "يرجعنا", "يرجعني", "يجيبلي", 
-    "يروحني", "تودي", "توديني", "من يوصل", "مين يوصل", "مين يروح", "من يروح", 
-    "فيه احد", "في احد", "ابي مندوب", "محتاج مندوب", "محتاج موصل", "مين يمر", 
-    "مين طالع", "مين نازل", "بكم يوصل", "ابي مشوار", "بسألكم", "ادور", "ابحث"
-]
+BLOCKED_KEYWORDS = ["سكليف", "كتم", "مرحبا", "صحتي", "عذر طبي"]
 
 RAW_KEYWORDS = [
     "جيزان", "جازان", "بيش", "الدرب", "صبيا", "ضمد", "الضبيه", "الظبيه", "مزهره", 
@@ -51,32 +45,38 @@ RAW_KEYWORDS = [
     "خضيره", "الغريب", "خبت سعيد", "الكوامله", "الكواملة", "الفقهاء", "العشوه", 
     "صنبه", "مستشفى", "العام", "الأمير", "السبخه", "الحقاويه", "ام العرش", "الحرف", 
     "الجديين", "الحجرين", "العرضه", "العدايا", "الطب", "الجنوبي", "الشمالي", 
-    "الاثله", "حي", "النور", "المعبوج", "الصفا", "الراشد", "الكادي", "المقاريه", 
-    "الروابي", "الشقيري", "الجهو", "الرحاب", "البدر", "الوحله", "العقده", "الحوامضه", 
-    "المرابي", "الكبرى", "مغشيه", "السفلى", "رماده", "فهد", "المهدج", "قمبوره", 
-    "حاكمه", "فلس", "المجصص", "المدينه", "العيدابي", "بصبيا", "حله", "الحسيني", 
-    "النهضه", "حرجه", "الحرجه", "الحمى", "جريبه", "الزرقاء", "النسيم", "الطاهريه", 
-    "القعاريه", "العميريه", "الضاحيه", "الحصمه", "الحصامه", "صبيحه", "النجاميه", 
-    "العكره", "ابو المض", "ابها", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", 
-    "وادي", "الرباح", "اللقيه", "اللّقيه", "الوزاره", "الكلية", "الخارش", "العسيليه", 
-    "بالموسم", "بصامطه", "لمحليه", "للكربوس", "لأبوعريش", "للعارضه", "لدرب", "للمطار", 
-    "لصبيا", "للدرب", "لأبها", "لابها", "لبيش", "فالشقيري", "بالضاحيه", "للبرج", 
-    "للمجنه", "شعب", "الذيب", "بجيزان", "بجازان", "بضمد", "بالشقيق", "الصوارمه", 
-    "نخلان", "الكورنيش", "ابو السلع", "الكورنيش الشمالي", "الكورنيش الجنوبي", "جامعة جيزان", "مجمع صبيا",
-    "هاف", "مليون", "ايت", "دونتس", "هرفي", "البيك", "دوز", "فندق", "دوار", 
-    "الحناوي", "الصناعيه", "الشامل", "ماك", "ماكدونالدز", "شاكس", "تسالي", "دجى", 
-    "صيدليه", "مطعم", "طعميه", "بوفيه", "ابتسام", "التخصصي", "الثانويه", "الروضه", 
-    "صفوه", "المهيدب", "بوجا", "تويوتا", "هايبر", "بنده", "مشاوي", "الزاكي", 
-    "قهوه", "حلا", "حلى", "اكل", "قاعه", "السوق", "الداخلي", "البلد", "محمصه", 
-    "جرير", "الحياه", "كيان", "سمسا", "ارامكس", "المطاعم", "محطه", "كوفي", "وجبه"
-]
-
-BLOCKED_KEYWORDS = [
-    "متوفر توصيل", "موجود للتوصيل", "جاهز للتوصيل", "توصيل طلبات وشحنات", 
-    "مستعد للنقل", "سيارة نظيفة", "توصيل مشاوير", "تواصل واتس", "اتصال", 
-    "للتواصل واتس", "نوصل طلبات", "متوفر سواق", "موجود سواق", "خدمة توصيل",
-    "سكليف", "كتم", "مرحبا", "صحتي", "عذر طبي", "إجازة", "اجازة", 
-    "مرضي", "مرضية", "استفسار", "مين يعرف", "شاي", "كرك", "اعلان", "إعلان"
+    "الاثله", "حي", "النور", "المعبوج", "الصفا", "الراشد", "الكادي", "هاف", "مليون", 
+    "ايت", "دونتس", "هرفي", "البيك", "يوصلني", "يوصلي", "يجيب", "يمر", "يجي", 
+    "يوصلنا", "يرجعنا", "يعطينا", "ينزلنا", "يداوم", "يلتزم", "دوز", "فندق", 
+    "دوار", "الحناوي", "الصناعيه", "معاه", "هايلوكس", "الشامل", "مضغوط", "ماك", 
+    "ماكدونالدز", "بيشه", "المقاريه", "الروابي", "شاكس", "تسالي", "دجى", "صيدليه", 
+    "مطعم", "طعميه", "ارجع", "بوفيه", "ابتسام", "التخصصي", "الثانويه", "الروضه", 
+    "صفوه", "المهيدب", "بوجا", "تويوتا", "الشقيري", "الجهو", "الرحاب", "البدر", 
+    "الوحله", "العقده", "الحوامضه", "المرابي", "الكبرى", "مغشيه", "السفلى", "رماده", 
+    "فهد", "المهدج", "قمبوره", "حاكمه", "فلس", "المجصص", "المدينه", "العيدابي", 
+    "بصبيا", "هايبر", "بنده", "حله", "الحسيني", "النهضه", "حرجه", "الحرجه", "الحمى", 
+    "جريبه", "الزرقاء", "النسيم", "مشاوي", "الزاكي", "قهوه", "حلا", "حلى", "اكل", 
+    "قاعه", "السوق", "الداخلي", "البلد", "محمصه", "مننا", "الطاهريه", "القعاريه", 
+    "العميريه", "مشوار", "الضاحيه", "جرير", "الحصمه", "الحصامه", "الحياه", "صبيحه", 
+    "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", "سواق", "شهري", 
+    "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
+    "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
+    "بعد", "اللقيه", "اللّقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
+    "للمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه",
+    "فيه", "احتاج", "مين", "بنات", "من", "اذا", "ابحث", "ادور", "ابغى", "احد", 
+    "حد", "طلبي", "الي", "الى", "توصلنا", "توصلني", "رايحه", "رايح", "تكرمتو", 
+    "مندوبه", "حتى", "ابغاه", "خاصه", "عندي", "بيطلع", "كنت", "للعارضه", "لدرب", 
+    "لالمطار", "لصبيا", "بسألكم", "السلام عليكم", "لمحليه", "هنا", "بالموسم", 
+    "بصامطه", "بحتاج", "بيروحني", "بروح", "يجيني", "تجيني", "نوصل", "شباب", 
+    "توصيل", "ذحين", "للكربوس", "لأبوعريش", "نمشي", "سعره", "كوفي", "روحه", 
+    "ورجعه", "ينفعني", "مشاوير", "للدرب", "لين", "لأبها", "لابها", "يوصله", 
+    "لبيش", "فالشقيري", "يرجعني", "بالضاحيه", "وجبه", "للبرج", "موجود", 
+    "شعب", "الذيب", "وجاي", "للمجنه", "اشاره", "الشاشه", "ماشي", "يأخذ", 
+    "الاهل", "يستلم", "سمسا", "ارامكس", "نفسها", "بجيزان", "بجازان", "بضمد", 
+    "بالشقيق", "طلبيه", "ابغاها", "معتمد", "يفتح", "المطاعم", "بشارع", "يروح", 
+    "داخل", "ضروري", "محطه", "معي", "معايه", "معانا", "الحين", "يقدر", "تقدر", 
+    "يجيبها", "قطه", "قط", "الصوارمه", "في", "حوض", "نخلان", "اولاد", 
+    "دومات", "تداوم", "الكورنيش", "ابو السلع", "سيارته", "كبيره", "صغيره", "نلتزم", "اقل"
 ]
 
 def normalize_text(text: str) -> str:
@@ -88,12 +88,33 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"ى", "ي", text)
     return text
 
-NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in set(RAW_KEYWORDS) if word.strip()}
+NORMALIZED_KEYWORDS = [normalize_text(word) for word in set(RAW_KEYWORDS) if word.strip()]
 NORMALIZED_BLOCKED = [normalize_text(word) for word in BLOCKED_KEYWORDS if word.strip()]
-NORMALIZED_CUSTOMERS = [normalize_text(word) for word in CUSTOMER_INDICATORS if word.strip()]
+
+KEYWORD_PATTERN = re.compile(r"|".join(map(re.escape, NORMALIZED_KEYWORDS)))
+BLOCKED_PATTERN = re.compile(r"|".join(map(re.escape, NORMALIZED_BLOCKED)))
 
 PROCESSED_MESSAGES = set()
 PROCESSED_TEXT_HASHES = set()
+
+async def send_to_user(bot, user, raw_text, reply_markup):
+    try:
+        await bot.send_message(
+            chat_id=user,
+            text=raw_text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
+        await bot.send_message(
+            chat_id=user,
+            text=raw_text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        print(f"❌ خطأ توجيه: {e}")
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -116,83 +137,41 @@ async def process_message(bot, message: Message):
 
     searchable_text = normalize_text(raw_text)
 
-    # 1. حظر الرسالة فوراً إذا احتوت على أي كلمة ممنوعة أو عبارة إعلان للمندوب
-    for blocked_word in NORMALIZED_BLOCKED:
-        if blocked_word in searchable_text:
-            return
-
-    # 2. التأكد من أن الرسالة من زبون (تحتوي على صيغة طلب)
-    is_customer = any(cust_word in searchable_text for cust_word in NORMALIZED_CUSTOMERS)
-    if not is_customer:
+    if BLOCKED_PATTERN.search(searchable_text):
         return
 
-    # 3. منع التكرار بالنص عبر كافة القروبات
     text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
 
-    # 4. مطابقة موقع أو خدمة مطلوبة
-    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-        if norm_word in searchable_text:
-            PROCESSED_TEXT_HASHES.add(text_hash)
-            if len(PROCESSED_TEXT_HASHES) > 3000:
-                PROCESSED_TEXT_HASHES.clear()
+    if KEYWORD_PATTERN.search(searchable_text):
+        PROCESSED_TEXT_HASHES.add(text_hash)
+        if len(PROCESSED_TEXT_HASHES) > 3000:
+            PROCESSED_TEXT_HASHES.clear()
 
-            buttons = []
-            row = []
+        buttons = []
+        row = []
+        
+        if message.from_user:
+            if message.from_user.username:
+                user_url = f"https://t.me/{message.from_user.username}"
+                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+            else:
+                user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+            row.append(InlineKeyboardButton(user_label, url=user_url))
+
+        if message.link:
+            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+        
+        if row:
+            buttons.append(row)
             
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-            
-            if row:
-                buttons.append(row)
-                
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-            for user in TARGET_USERS:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception as e:
-                    print(f"❌ خطأ توجيه: {e}")
-            break
-
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=50):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
-
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص: {e}")
-            
-        await asyncio.sleep(7)
+        # إرسال الرسالة لجميع الأعضاء في نفس اللحظة (بالتوازي)
+        tasks = [send_to_user(bot, user, raw_text, reply_markup) for user in TARGET_USERS]
+        await asyncio.gather(*tasks)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -219,11 +198,10 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح (فلترة الزبائن فقط وحظر عروض المندوبين والتكرار).")
+    print("✅ تم التشغيل والربط بنجاح (مع الإرسال المتوازي للأعضاء).")
 
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
-
-    await asyncio.Event().wait()
+    asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
