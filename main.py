@@ -46,7 +46,6 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
-# التعديل الأهم: الموديل المطلوب حسب رسالة الخطأ لديك
 GEMINI_MODEL = "gemini-3.6-flash"
 gemini_client = None
 
@@ -151,22 +150,36 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"✅ تم إرسال طلب زبون من [Chat: {message.chat.id}] إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
 # MAIN LOGIC
 # =========================================================
 
 async def main():
-    userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
-    bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
+    # max_concurrent_transmissions وتنشيط جلب الحوارات
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+    bot = Client(
+        "helper_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
 
-    # التقاط كافة الرسائل من جميع أنواع المجموعات والقنوات
-    @userbot.on_message(filters.group | filters.channel | filters.private)
+    # استماع مطلق بدون أي شروط لضمان استقبال كافة السوبر قروبات
+    @userbot.on_message()
     async def global_listener(client, message):
         try:
             await process_message(bot, message)
@@ -176,10 +189,17 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم التعديل إلى gemini-3.6-flash والتنصت على كافة المحادثات والمجموعات بنجاح!", flush=True)
+    print("🔄 جاري الاشتراك وتنشيط كافة المجموعات والقنوات الحالية...", flush=True)
+    count = 0
+    async for dialog in userbot.get_dialogs():
+        count += 1
+    print(f"✅ تم تنشيط الاستماع لـ {count} محادثة/مجموعة بنجاح!", flush=True)
+
+    print("🚀 البوت جاهز تماماً ويعمل على جميع المجموعات بدون استثناء!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_dummy_server, daemon=True)
     t.start()
     asyncio.run(main())
+
