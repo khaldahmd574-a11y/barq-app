@@ -1,3 +1,4 @@
 hydrogram
 tgcrypto
-google-generativeai
+google-genai
+hydrogram
