@@ -10,9 +10,8 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
-# طباعة فورية لتأكيد بدء الملف
 print("=" * 50, flush=True)
-print("⚡ [START] تم تحميل السكريبت، جاري البدء...", flush=True)
+print("⚡ [START] تم تحميل السكريبت، جاري البدء مع Gemini...", flush=True)
 print("=" * 50, flush=True)
 
 # =========================================================
@@ -44,12 +43,11 @@ def run_dummy_server():
 # =========================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
-GROQ_MODEL = "llama-3.3-70b-versatile"
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -63,51 +61,53 @@ def get_hash(text):
     return hashlib.sha256(clean_text(text).lower().encode("utf-8")).hexdigest()
 
 # =========================================================
-# AI ANALYSIS
+# GEMINI AI ANALYSIS
 # =========================================================
 
 def analyze_with_ai(text):
-    if not GROQ_API_KEY:
-        print("❌ [AI] GROQ_API_KEY غير مضاف في Render!", flush=True)
+    if not GEMINI_API_KEY:
+        print("❌ [AI Error] GEMINI_API_KEY غير مضاف في Render!", flush=True)
         return {"is_request": False, "type": "none", "confidence": 0}
 
-    system_prompt = """
-أنت خبير في تحليل منشورات مجموعات التوصيل والمشاوير بالسعودية.
-وظيفتك: التمييز بين (الزبون الذي يطلب الخدمة) و(السائق/المندوب الذي يعرض خدمته).
+    prompt = f"""
+أنت خبير في فهم منشورات مجموعات التوصيل والمشاوير بالسعودية.
+مهمتك: الفرز بين (الزبون الذي يطلب خدمة) و(السائق/المندوب الذي يعرض خدمته).
 
 قواعد الفرز:
-1. العميل (Customer): يبحث عن سيارة، سائق، توصيل غرض، مشوار.
-2. السائق (Driver): يعرض خدمته هو (مثال: متوفر الآن، سواق جاهز، توصيل طلبات) -> النتيجة دائمًا none.
+1. العميل (Customer): يبحث عن سيارة، سواق، توصيل غرض، مشوار، من يرجعني، مين يوصلني.
+2. السائق (Driver): يعرض خدمته هو (مثل: متوفر الآن، سواق جاهز، توصيل طلبات، جاهز للمشاوير) -> النتيجة دائمًا none.
 3. الإعلانات والخدمات الأخرى -> النتيجة دائمًا none.
 
 التصنيفات المتاحة: delivery, ride, both, none.
 
-أرجع JSON فقط بهذا الشكل:
-{"is_request": true, "type": "ride", "confidence": 0.90}
+النص للمراجعة:
+"{text}"
+
+أرجع JSON فقط بهذا الشكل وبدون أي تنسيق إضافي أو markdown:
+{{"is_request": true, "type": "ride", "confidence": 0.90}}
 """
 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
     payload = {
-        "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"حلل النص التالي:\n{text}"}
-        ],
-        "temperature": 0,
-        "response_format": {"type": "json_object"}
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"response_mime_type": "application/json"}
     }
 
     try:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
+            url,
             data=data,
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+            headers={"Content-Type": "application/json"},
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=8) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
             result = json.loads(resp.read().decode("utf-8"))
 
-        ai = json.loads(result["choices"][0]["message"]["content"])
+        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        ai = json.loads(raw_text)
+
         is_req = bool(ai.get("is_request", False))
         req_type = ai.get("type", "none")
         conf = float(ai.get("confidence", 0))
@@ -117,7 +117,7 @@ def analyze_with_ai(text):
 
         return {"is_request": is_req, "type": req_type, "confidence": conf}
     except Exception as e:
-        print(f"❌ [AI Error]: {e}", flush=True)
+        print(f"❌ [Gemini Error]: {e}", flush=True)
         return {"is_request": False, "type": "none", "confidence": 0}
 
 # =========================================================
@@ -152,7 +152,7 @@ async def process_message(bot, message: Message):
     req_type, conf = result["type"], result["confidence"]
     label = "📦 طلب توصيل" if req_type == "delivery" else ("🚗 طلب مشوار" if req_type == "ride" else "📦🚗 طلب مشترك")
     
-    print(f"🎯 [طلب جديد] {label} | الثقة: {conf:.2f} | النص: {text[:40]}", flush=True)
+    print(f"🎯 [طلب جديد بـ Gemini] {label} | الثقة: {conf:.2f} | النص: {text[:40]}", flush=True)
 
     rows = []
     if message.from_user:
@@ -193,8 +193,6 @@ async def main():
         print("❌ [CRITICAL] SESSION_STRING غير مضاف!", flush=True)
         return
 
-    print("🔑 المتغيرات جاهزة. جاري ربط الحسابات وتجاوز الأقفال...", flush=True)
-
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
@@ -208,18 +206,16 @@ async def main():
             print(f"❌ [Listener Error]: {e}", flush=True)
 
     try:
-        print("⏳ جاري تسجيل دخول الـ Userbot...", flush=True)
         await userbot.start()
         print("✅ [Userbot] متصل بنجاح!", flush=True)
 
-        print("⏳ جاري تسجيل دخول الـ Bot...", flush=True)
         await bot.start()
         print("✅ [Bot] متصل بنجاح!", flush=True)
 
-        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة واستماع للرسائل!", flush=True)
+        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة مع Gemini!", flush=True)
         await asyncio.Event().wait()
     except Exception as e:
-        print(f"❌ [LOGIN ERROR] فشل اتصال الحسابات: {e}", flush=True)
+        print(f"❌ [LOGIN ERROR] فشل الاتصال: {e}", flush=True)
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_dummy_server, daemon=True)
