@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import json
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -46,7 +47,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-1.5-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -60,6 +61,13 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
 
+# الكلمات المفتاحية المحلية لترشيد الاستهلاك وضمان سرعة البرق
+KEYWORDS = [
+    "ابغى", "أبغى", "اريد", "أريد", "توصيل", "مشوار", "مندوب",
+    "سواق", "سواقه", "سواقة", "يوصل", "يجيب", "محليه", "محلية",
+    "صبيا", "جيزان", "مطعم", "كفي", "كافيه", "فان", "فاضي"
+]
+
 def clean_text(text):
     if not text:
         return ""
@@ -69,35 +77,34 @@ def get_hash(text):
     cleaned = clean_text(text).lower()
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
+def quick_local_check(text):
+    # الفحص المحلي الفوري لتوفير استهلاك AI
+    return any(kw in text for kw in KEYWORDS)
+
 # =========================================================
-# IMPROVED AI FILTERING
+# AI FILTERING WITH QUOTA PROTECTION
 # =========================================================
 
 def analyze_with_ai(text):
     if not GEMINI_API_KEY or not gemini_client:
-        return False
+        return True
 
     prompt = f"""
 أنت فلاتر ذكي وموثوق لفرز رسائل جروبات التوصيل والمشاوير.
 وظيفتك: تحديد هل الرسالة من زبون/عميل يبحث عن توصيل/مشوار/مندوب/سائق/سواقة.
 
-أمثلة لطلبات الزبائن (تعتبر true):
+أمثلة لطلبات الزبائن (true):
 - "ابغى من كفي فان لمحليه"
 - "مندوب فاضي الان"
 - "ابغى سواقه من صبيا"
 - "فيه توصيل؟"
-- "مين فاضي يودي مشوار؟"
-- "ابغى احد يجيب طلب"
 
-أمثلة لمنشورات السائقين/المناديب (تعتبر false):
+أمثلة لمنشورات السائقين/المناديب (false):
 - "فاضي بجيزان أي طلب تفضل خاص"
 - "سائق متوفر للتوصيل التواصل واتس"
-- "سيارة حديثة لنقل المشاوير"
 
 النص للتحليل: "{text}"
-
-أرجع JSON فقط بنفس هذا الشكل:
-{{"is_client": true}} أو {{"is_client": false}}
+أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -113,8 +120,8 @@ def analyze_with_ai(text):
         ai = json.loads(raw_text)
         return bool(ai.get("is_client", False))
     except Exception as e:
-        print(f"❌ [AI Error]: {e}", flush=True)
-        return False
+        # عند تجاوز الحدود أو حدوث خطأ استهلاك، نعتمد الفحص المحلي المباشر حتى لا ينقطع البوت
+        return True
 
 # =========================================================
 # MESSAGE PROCESSING
@@ -134,6 +141,10 @@ async def process_message(bot, message: Message):
 
     text = clean_text(message.text or message.caption or "")
     if len(text) < 3:
+        return
+
+    # الفحص السريع المحتوي على كلمات الطلبات لمنع استهلاك API الكوتا في الفراغ
+    if not quick_local_check(text):
         return
 
     content_hash = get_hash(text)
@@ -164,7 +175,7 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ تم سحب طلب زبون من مجموعة [{chat_title}] وإرساله إلى: {user}", flush=True)
+            print(f"✅ تم سحب طلب من [{chat_title}] وإرساله إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -172,7 +183,7 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# MAIN LOGIC WITH FULL CHAT & TOPICS LISTENER
+# MAIN LOGIC
 # =========================================================
 
 async def main():
@@ -191,7 +202,6 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع لجميع الرسائل بكافة أنواعها بما فيها المواضيع والمنشورات
     @userbot.on_message(filters.group | filters.channel | filters.private)
     async def global_listener(client, message):
         try:
@@ -208,7 +218,7 @@ async def main():
         count += 1
     print(f"✅ تم التنشيط الكامل لـ {count} محادثة ومجموعة!", flush=True)
 
-    print("🚀 البوت جاهز تماماً ويلقط جميع عبارات الزبائن من كافة الجروبات!", flush=True)
+    print("🚀 البوت جاهز ومُحصن ضد تجاوز الكوتا ويلقط من جميع الجروبات!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
