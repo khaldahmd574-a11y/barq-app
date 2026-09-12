@@ -87,6 +87,7 @@ def analyze_with_ai(text):
 {{"is_request": true, "type": "ride", "confidence": 0.90}}
 """
 
+    # الرابط الصحيح والمجاني لـ Gemini Flash 1.5
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
@@ -199,14 +200,11 @@ async def main():
     @userbot.on_message()
     async def global_listener(client, message):
         try:
-            # يستمع لجميع أنواع المجموعات والقنوات العامة والخاصة بدون قيود
             if message.chat:
-                chat_type = str(message.chat.type).lower()
-                if any(t in chat_type for t in ["group", "supergroup", "channel"]):
-                    chat_name = message.chat.title or message.chat.username or "مجموعة"
-                    msg_txt = (message.text or message.caption or '')[:30]
-                    print(f"📩 [{chat_name}]: {msg_txt}", flush=True)
-                    await process_message(bot, message)
+                chat_name = message.chat.title or message.chat.username or "مجموعة"
+                msg_txt = (message.text or message.caption or '')[:30]
+                print(f"📩 [{chat_name}]: {msg_txt}", flush=True)
+                await process_message(bot, message)
         except Exception as e:
             print(f"❌ [Listener Error]: {e}", flush=True)
 
@@ -217,7 +215,14 @@ async def main():
         await bot.start()
         print("✅ [Bot] متصل بنجاح!", flush=True)
 
-        print("🚀 [SUCCESS] النظام يستمع الآن لكل المجموعات والقنوات!", flush=True)
+        # مزامنة وتحميل جميع المحادثات والجروبات والقنوات إلى الذاكرة عند البدء
+        print("🔄 جاري تحميل ومزامنة قائمة المجموعات والقنوات...", flush=True)
+        dialogs_count = 0
+        async for dialog in userbot.get_dialogs():
+            dialogs_count += 1
+        print(f"🌐 تم المزامنة بنجاح مع {dialogs_count} محادثة ومجموعة وقناة!", flush=True)
+
+        print("🚀 [SUCCESS] النظام يعمل واستجابة Gemini جاهزة للالتقاط والإرسال!", flush=True)
         await asyncio.Event().wait()
     except Exception as e:
         print(f"❌ [LOGIN ERROR] فشل الاتصال: {e}", flush=True)
