@@ -15,7 +15,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Barq Bot is Awake 24/7!")
+        self.wfile.write(b"Barq Bot Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,28 +36,21 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 def analyze_with_ai(text: str) -> bool:
-    if not GROQ_API_KEY:
-        return False
+    clean_key = GROQ_API_KEY.strip() if GROQ_API_KEY else ""
+    if not clean_key:
+        print("⚠️ مفتاح Groq غير موجود - التمرير مباشر")
+        return True
 
     prompt = f"""
-أنت مساعد ذكي لتصنيف طلبات التوصيل.
-حدد هل النص عبارة عن "طلب توصيل مشوار/سائق/طلب من زبون حقيقي" أم لا؟
-
-استبعد فوراً (أجب بـ NO):
-1. إعلانات الخدمات والإجازات المرضية والتوظيف والمعاملات الحكومية وسكني وصحتي.
-2. منشورات السائقين (مثل: طالع من، متوفر توصيل، انا سواق).
-3. التنبيهات الإدارية والقوانين والترحيب.
-
-اقبل فقط (أجب بـ YES):
-- زبون يبحث عن توصيلة أو سواق أو مندوب لنفسه.
-
+أنت مساعد لتصنيف طلبات التوصيل. هل النص عبارة عن "طلب توصيل/سائق من زبون"؟
+استبعد الإعلانات، الإجازات المرضية، والخدمات.
 الرسالة: "{text}"
 أجب بـ YES أو NO فقط.
 """
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
+            "Authorization": f"Bearer {clean_key}",
             "Content-Type": "application/json"
         }
         data = json.dumps({
@@ -70,29 +63,12 @@ def analyze_with_ai(text: str) -> bool:
         with urllib.request.urlopen(req, timeout=4) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             result = res_data["choices"][0]["message"]["content"].strip().upper()
-            return "YES" in result
+            return "NO" not in result
     except Exception as e:
-        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
-        return False
+        print(f"⚠️ استثناء في الذكاء الاصطناعي: {e} - تمرير الرسالة تلقائياً")
+        return True
 
 PROCESSED_MESSAGES = set()
-PROCESSED_REQUEST_HASHES = set()
-
-def normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    text = text.lower()
-    text = re.sub(r"[أإآ]", "ا", text)
-    text = text.replace("ة", "ه").replace("ى", "ي")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-def make_request_fingerprint(text):
-    text = normalize_text(text)
-    text = re.sub(r"https?://\S+", "", text)
-    text = re.sub(r"@\w+", "", text)
-    text = re.sub(r"\d+", "", text)
-    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -110,20 +86,12 @@ async def process_message(bot, message: Message):
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text or len(raw_text) < 4:
+    if not raw_text or len(raw_text) < 3:
         return
 
     is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_customer:
         return
-
-    request_hash = make_request_fingerprint(raw_text)
-    if request_hash in PROCESSED_REQUEST_HASHES:
-        return
-
-    PROCESSED_REQUEST_HASHES.add(request_hash)
-    if len(PROCESSED_REQUEST_HASHES) > 15000:
-        PROCESSED_REQUEST_HASHES.clear()
 
     buttons = []
     row = []
@@ -150,31 +118,8 @@ async def process_message(bot, message: Message):
                 reply_markup=reply_markup,
                 disable_web_page_preview=True
             )
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-            await bot.send_message(
-                chat_id=user,
-                text=raw_text,
-                reply_markup=reply_markup,
-                disable_web_page_preview=True
-            )
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
-
-async def keep_alive_scanner(userbot, bot):
-    """ماسح دوري يبقي الاتصال حياً ويمنع نوم البوت"""
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=25):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.2)
-        except Exception as e:
-            print(f"⚠️ تنبيه الماسح الدوري: {e}")
-        await asyncio.sleep(10)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -201,12 +146,10 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("🚀 البوت شغال ومستمر 24/7 مع فلترة الذكاء الاصطناعي.")
-
-    # تشغيل الماسح المستمر للحل النهائي لظاهرة النوم
-    asyncio.create_task(keep_alive_scanner(userbot, bot))
+    print("🚀 البوت شغال ومستعد لجمع الرسائل.")
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
