@@ -12,7 +12,7 @@ from hydrogram.errors import FloodWait
 
 
 # =========================================================
-# KEEP ALIVE SERVER
+# KEEP ALIVE SERVER (سيرفر منع توقف الخدمة على Render)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -35,7 +35,7 @@ def run_dummy_server():
 
 
 # =========================================================
-# SETTINGS
+# CONFIGURATION & ENVIRONMENT VARIABLES
 # =========================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -46,7 +46,7 @@ API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-# يمكن وضع أرقام ID بدلاً من الأعرف لتجنب مشاكل القيود
+# قائمة المستلمين (يمكنك وضع المعرفات بالأحرف أو بأرقام الـ ID)
 TARGET_USERS = [
     "shaybq",
     "Waaaaaaa33",
@@ -69,12 +69,12 @@ def get_hash(text):
 
 
 # =========================================================
-# AI ANALYSIS (تحديد الزبون vs السائق)
+# AI ANALYSIS (تحليل الرسائل بالذكاء الاصطناعي)
 # =========================================================
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY:
-        print("❌ خطأ: GROQ_API_KEY غير موجود في متغيرات البيئة!")
+        print("❌ [AI Error] GROQ_API_KEY غير مضاف في Environment Variables!")
         return {"is_request": False, "type": "none", "confidence": 0}
 
     system_prompt = """
@@ -82,7 +82,7 @@ def analyze_with_ai(text):
 وظيفتك الوحيدة: التمييز بين (الزبون الذي يطلب الخدمة) و(السائق/المندوب الذي يعرض خدمته).
 
 قواعد الفرز:
-1. العميل (Customer): يبحث عن سيارة، سائق، توصيل غرض، مشوار. (مثال: محتاج سواق، من يوصلني، ابغى مندوب، مين يوصل طلب).
+1. العميل (Customer): يبحث عن سيارة، سائق، توصيل غرض، مشوار. (مثال: محتاج سواق، من يوصلني، ابغى مندوب، مين يوصل طلب، ابي احد يحرك الحين).
 2. السائق (Driver): يعرض خدمته هو. (مثال: متوفر الآن، سواق جاهز، توصيل طلبات، للتواصل خاص، توصيل مشاوير). -> النتيجة دائمًا none.
 3. الإعلانات والخدمات الأخرى (وظائف، صحي، إلكترونيات...) -> النتيجة دائمًا none.
 
@@ -141,12 +141,12 @@ def analyze_with_ai(text):
         return {"is_request": is_request, "type": request_type, "confidence": confidence}
 
     except Exception as e:
-        print(f"❌ Groq API Error: {e}")
+        print(f"❌ [Groq Error]: {e}")
         return {"is_request": False, "type": "none", "confidence": 0}
 
 
 # =========================================================
-# PROCESS MESSAGE
+# MESSAGE PROCESSING LOGIC
 # =========================================================
 
 async def process_message(bot, message: Message):
@@ -158,7 +158,6 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(message_key)
 
-    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -168,10 +167,14 @@ async def process_message(bot, message: Message):
 
     content_hash = get_hash(text)
     if content_hash in PROCESSED_CONTENT:
+        print(f"🔄 تجاهل منشور مكرر: {text[:30]}...")
         return
 
+    print(f"🤖 جاري تحليل النص بالذكاء الاصطناعي: {text[:40]}...")
     result = await asyncio.to_thread(analyze_with_ai, text)
+
     if not result["is_request"]:
+        print(f"🚫 تم تصنيفها كـ (غير طلب عميل) - تجاهل.")
         return
 
     PROCESSED_CONTENT.add(content_hash)
@@ -179,7 +182,7 @@ async def process_message(bot, message: Message):
     confidence = result["confidence"]
 
     label = "📦 طلب توصيل" if request_type == "delivery" else ("🚗 طلب مشوار" if request_type == "ride" else "📦🚗 طلب مشترك")
-    print(f"🎯 تم السحب [{label}] | نسبة الثقة: {confidence:.2f}\nالرسالة: {text[:60]}")
+    print(f"🎯 تم اكتشاف طلب جديد! [{label}] (الثقة: {confidence:.2f})")
 
     rows = []
     if message.from_user:
@@ -200,47 +203,51 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"📤 أرسلت إلى: {user}")
+            print(f"📤 تم الإرسال بنجاح إلى: {user}")
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
-            print(f"❌ فشل الإرسال إلى {user}: {e}")
+            print(f"❌ فشل إرسال الرسالة إلى [{user}]: {e}")
+            print(f"👉 ملاحظة: تأكد أن {user} قام ببدء المحادثة مع البوت عبر إرسال /start أولاً.")
 
 
 # =========================================================
-# MAIN
+# MAIN ENTRY POINT
 # =========================================================
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
+    print("🚀 جاري بدء تشغيل النظام...")
+
     if not BOT_TOKEN:
-        print("❌ خطأ: BOT_TOKEN مفقود في البيئة!")
+        print("❌ خطأ قاتل: BOT_TOKEN مفقود من Environment Variables!")
         return
     if not SESSION_STRING:
-        print("❌ خطأ: SESSION_STRING مفقود في البيئة!")
+        print("❌ خطأ قاتل: SESSION_STRING مفقود من Environment Variables!")
         return
     if not GROQ_API_KEY:
-        print("⚠️ تحذير: GROQ_API_KEY غير مضاف! لن يتم تحليل أي رسائل.")
+        print("⚠️ تحذير: GROQ_API_KEY غير مضاف! الذكاء الاصطناعي لن يعمل بإنصات.")
 
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-    # التقاط جميع رسائل المجموعات والمجموعات الخارقة والقنوات
     @userbot.on_message()
     async def global_listener(client, message):
         try:
-            # التأكد من أن الرسالة من مجموعة أو قناة
+            # طباعة فورية لتأكيد وصول أي منشور من المجموعات
             if message.chat and message.chat.type.value in ["group", "supergroup", "channel"]:
+                print(f"📩 [رسالة جديدة] من مجموعة [{message.chat.title}]: {(message.text or message.caption or '')[:30]}")
                 await process_message(bot, message)
         except Exception as e:
             print(f"❌ Listener Error: {e}")
 
     await userbot.start()
-    print("👤 حساب السحب (Userbot) يعمل الآن...")
+    print("✅ حساب السحب (Userbot) متصل ويستمع للمجموعات القادم منها المنشورات...")
     await bot.start()
-    print("🤖 بوت التوجيه يعمل الآن...")
+    print("✅ بوت التوجيه (Bot) متصل وجاهز لإرسال الرسائل...")
+    print("🎉 النظام يعمل بالكامل الآن 24/7!")
 
     await asyncio.Event().wait()
 
@@ -249,5 +256,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("🛑 تم إيقاف التشغيل")
+        print("🛑 تم إيقاف التشغيل يدويًا")
+    except Exception as e:
+        print(f"❌ خطأ رئيسي أثناء التشغيل: {e}")
 
