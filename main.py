@@ -70,7 +70,7 @@ def get_hash(text):
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
 # =========================================================
-# AI FILTERING
+# IMPROVED AI FILTERING
 # =========================================================
 
 def analyze_with_ai(text):
@@ -78,14 +78,26 @@ def analyze_with_ai(text):
         return False
 
     prompt = f"""
-حدد هل كاتب النص زبون/عميل يبحث عن خدمة توصيل أو مشوار؟
-قواعد صارمة:
-- سائق/مندوب/يعرض خدمته/يقول فاضي/إعلان -> false
-- سلام فقط/سؤال عام -> false
-- زبون يريد توصيل أو مشوار -> true
+أنت فلاتر ذكي وموثوق لفرز رسائل جروبات التوصيل والمشاوير.
+وظيفتك: تحديد هل الرسالة من زبون/عميل يبحث عن توصيل/مشوار/مندوب/سائق/سواقة.
 
-النص: "{text}"
-أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
+أمثلة لطلبات الزبائن (تعتبر true):
+- "ابغى من كفي فان لمحليه"
+- "مندوب فاضي الان"
+- "ابغى سواقه من صبيا"
+- "فيه توصيل؟"
+- "مين فاضي يودي مشوار؟"
+- "ابغى احد يجيب طلب"
+
+أمثلة لمنشورات السائقين/المناديب (تعتبر false):
+- "فاضي بجيزان أي طلب تفضل خاص"
+- "سائق متوفر للتوصيل التواصل واتس"
+- "سيارة حديثة لنقل المشاوير"
+
+النص للتحليل: "{text}"
+
+أرجع JSON فقط بنفس هذا الشكل:
+{{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -147,10 +159,12 @@ async def process_message(bot, message: Message):
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
 
+    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
+
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ تم إرسال طلب زبون من [Chat: {message.chat.id}] إلى: {user}", flush=True)
+            print(f"✅ تم سحب طلب زبون من مجموعة [{chat_title}] وإرساله إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -158,11 +172,10 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# MAIN LOGIC
+# MAIN LOGIC WITH FULL CHAT & TOPICS LISTENER
 # =========================================================
 
 async def main():
-    # max_concurrent_transmissions وتنشيط جلب الحوارات
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -178,8 +191,8 @@ async def main():
         in_memory=True
     )
 
-    # استماع مطلق بدون أي شروط لضمان استقبال كافة السوبر قروبات
-    @userbot.on_message()
+    # الاستماع لجميع الرسائل بكافة أنواعها بما فيها المواضيع والمنشورات
+    @userbot.on_message(filters.group | filters.channel | filters.private)
     async def global_listener(client, message):
         try:
             await process_message(bot, message)
@@ -189,13 +202,13 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🔄 جاري الاشتراك وتنشيط كافة المجموعات والقنوات الحالية...", flush=True)
+    print("🔄 جاري مزامنة وتنشيط كافة الـ 44 مجموعة وقنواتها...", flush=True)
     count = 0
     async for dialog in userbot.get_dialogs():
         count += 1
-    print(f"✅ تم تنشيط الاستماع لـ {count} محادثة/مجموعة بنجاح!", flush=True)
+    print(f"✅ تم التنشيط الكامل لـ {count} محادثة ومجموعة!", flush=True)
 
-    print("🚀 البوت جاهز تماماً ويعمل على جميع المجموعات بدون استثناء!", flush=True)
+    print("🚀 البوت جاهز تماماً ويلقط جميع عبارات الزبائن من كافة الجروبات!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
