@@ -30,7 +30,6 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
-# قائمة المستلمين المعتمدة
 TARGET_USERS = [
     "shaybq", 
     "Waaaaaaa33", 
@@ -38,29 +37,22 @@ TARGET_USERS = [
 ]
 
 # =========================
-# القوائم الشاملة المحدثة للطلبات
+# القوائم الذكية لطلبات العملاء
 # =========================
 
 REQUEST_INTENTS = [
-    # نية صريحة وطلب مباشر
     "ابغى", "ابغي", "أبغى", "ابغا", "أبغا", "تبغى", "تبغا", "يبغى", "يبغا",
     "ابي", "أبي", "تبي", "يبي", "نبي",
     "اريد", "أريد", "ارغب", "أرغب",
     "ودي", "ودّي",
     "احتاج", "أحتاج", "محتاج", "محتاجة", "نحتاج", "نبغى", "نشتي",
-
-    # أسئلة واستفسارات البحث عن سائق/خدمة
     "مين", "من", "فيه", "فية", "شي", "موجود", "موجوده", "الي", "اللي", "احصل", "أحصل", "الاقي", "ألاقي",
-
-    # أفعال التنقل والتوصيل المباشرة
     "يوصلني", "يوصل", "يوصلي", "يوصللي", "يوصل لي", "توصيلة", "توصيله", "يوصلنا",
     "يجيب", "يجيبلي", "يجيب لي", "يجيبني",
     "ياخذ", "ياخذلي", "ياخذ لي", "ياخذني",
     "ينقل", "ينقلني", "ينزلنا", "ينزلني",
     "يرجعنا", "يرجعني", "يوديني", "يودي", "يروح",
     "يعطينا", "يمر", "يمرني", "يشيلني", "يشيل", "يودينا", "يطوفني",
-
-    # صيغ توجيه ومسميات الخدمة
     "سواق", "سواقه", "سواقة", "سائق", "سائقه", "سائقة", "سوقه", "سوقة",
     "مندوب", "مندوبة", "مندوبه", "كابتن", "مشوار", "مشاوير", "دفعات", "شهري", "شهريا"
 ]
@@ -72,7 +64,7 @@ DRIVER_PATTERNS = [
     "متاح للمشاوير", "اللي يحتاج يتواصل", "اللي يحتاج يكلمني",
     "للتواصل خاص", "للتواصل واتس", "خدمات توصيل", "توصيل ومشاوير", "توصيل طلبات",
     "فاضي بصبيا", "فاضي بجيزان", "فاضي ببيش", "مين يبغى توصيل", "مين يبغى مشوار",
-    "سيارة خاصة", "سياره خاصه", "حاضر للتوصيل", "جاهز للتوصيل", "وضواحيها", "وضواحي ه"
+    "سيارة خاصة", "سياره خاصه", "حاضر للتوصيل", "جاهز للتوصيل", "وضواحيها"
 ]
 
 def normalize_text(text: str) -> str:
@@ -91,23 +83,24 @@ def contains_phrase(text, phrases):
     return any(normalize_text(phrase) in text for phrase in phrases)
 
 def is_customer_request(text):
-    norm_text = normalize_text(text)
+    raw_clean = text.strip()
+    norm_text = normalize_text(raw_clean)
     if not norm_text:
         return False
 
-    # 1. استبعاد السائقين إذا كان المنشور يحتوي على رقم جوال سعودي (05xxxxxxx)
-    if re.search(r"05\d{8}", text.replace(" ", "")):
+    # 1. استبعاد السائقين الذين يضعون أرقام هواتفهم
+    if re.search(r"05\d{8}", raw_clean.replace(" ", "")):
         return False
 
     # 2. استبعاد منشورات السائقين المباشرة
     if contains_phrase(norm_text, DRIVER_PATTERNS):
         return False
 
-    # 3. قبول نية الطلب الصريحة من العميل
+    # 3. قبول نية الطلب الصريحة
     if contains_phrase(norm_text, REQUEST_INTENTS):
         return True
 
-    # 4. قبول عبارات المشاوير والتوصيل المباشرة
+    # 4. قبول العبارات المباشرة المرتبطة بالمشاوير
     if any(k in norm_text for k in ["مشوار", "توصيل", "توصيله", "توصيلة"]):
         return True
 
@@ -137,7 +130,7 @@ async def process_message(bot, message: Message):
         return
 
     PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 10000:
+    if len(PROCESSED_MESSAGES) > 15000:
         PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
@@ -147,17 +140,17 @@ async def process_message(bot, message: Message):
     if not raw_text:
         return
 
-    # الفلترة الذكية للطلب
+    # تطبيق الفلتر الذكي للطلبات
     if not is_customer_request(raw_text):
         return
 
-    # بصمة الطلب لمنع التكرار عبر القنوات المزدوجة
+    # منع تكرار الرسائل المتطابقة
     request_hash = make_request_fingerprint(raw_text)
     if request_hash in PROCESSED_REQUEST_HASHES:
         return
 
     PROCESSED_REQUEST_HASHES.add(request_hash)
-    if len(PROCESSED_REQUEST_HASHES) > 10000:
+    if len(PROCESSED_REQUEST_HASHES) > 15000:
         PROCESSED_REQUEST_HASHES.clear()
 
     buttons = []
@@ -200,25 +193,24 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ توجيه: {e}")
 
 # =========================
-# الماسح الدوري المستمر للقروبات والقنوات الكبيرة
+# الماسح الدوري الخلفي (لسحب القروبات الكبيرة والقنوات جبراً)
 # =========================
 
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            # فحص أول 60 محادثة نشطة بانتظام
+            # فحص أحدث 60 محادثة نشطة دورياً
             async for dialog in userbot.get_dialogs(limit=60):
                 try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
                         await process_message(bot, msg)
                 except Exception:
                     pass
                 await asyncio.sleep(0.1)
-
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص الدوري: {e}")
             
-        # يعيد الفحص كاملاً كل 5 ثوانٍ
+        # تكرار الفحص الشامل كل 5 ثوانٍ
         await asyncio.sleep(5)
 
 async def main():
@@ -240,16 +232,16 @@ async def main():
         in_memory=True
     )
 
-    # استماع لحظي لجميع الرسائل
+    # الاستماع اللحظي الأساسي
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح (استماع لحظي + ماسح دائم لكل القروبات القنوات).")
+    print("✅ تم التشغيل بنجاح: الفلترة الذكية للطلبات + الماسح الدوري للقروبات الكبيرة والقنوات.")
 
-    # تشغيل الماسح الدوري في الخلفية لسحب القروبات الكبيرة والقنوات القاسية
+    # تشغيل الماسح الخلفي القوي
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
