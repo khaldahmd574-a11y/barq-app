@@ -38,7 +38,7 @@ TARGET_USERS = [
 ]
 
 # =========================
-# القوائم الشاملة المحدثة
+# القوائم الشاملة المحدثة للطلبات
 # =========================
 
 REQUEST_INTENTS = [
@@ -65,7 +65,6 @@ REQUEST_INTENTS = [
     "مندوب", "مندوبة", "مندوبه", "كابتن", "مشوار", "مشاوير", "دفعات", "شهري", "شهريا"
 ]
 
-# عبارات استبعاد منشورات السائقين والمندوبين
 DRIVER_PATTERNS = [
     "انا مندوب", "أنا مندوب", "مندوب فاضي", "مندوب ثقه", "مندوب ثقة", 
     "انا سواق", "أنا سواق", "انا سائق", "أنا سائق",
@@ -80,12 +79,10 @@ def normalize_text(text: str) -> str:
     if not text:
         return ""
     text = text.lower()
-    # تنظيف الرموز والتأكيل
     text = re.sub(r"[أإآ]", "ا", text)
     text = text.replace("ة", "ه")
     text = text.replace("ى", "ي")
     text = re.sub(r"[\u064B-\u065F\u0670]", "", text)
-    # إزالة الرموز التعبيرية والخاصة
     text = re.sub(r"[^\w\s]", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
@@ -102,15 +99,15 @@ def is_customer_request(text):
     if re.search(r"05\d{8}", text.replace(" ", "")):
         return False
 
-    # 2. استبعاد منشورات السائقين بناءً على الكلمات الممنوعة
+    # 2. استبعاد منشورات السائقين المباشرة
     if contains_phrase(norm_text, DRIVER_PATTERNS):
         return False
 
-    # 3. قبول نية الطلب الصريحة من الزبون أولاً
+    # 3. قبول نية الطلب الصريحة من العميل
     if contains_phrase(norm_text, REQUEST_INTENTS):
         return True
 
-    # 4. قبول العبارات السريعة المباشرة بشرط ألا تكون إعلاناً
+    # 4. قبول عبارات المشاوير والتوصيل المباشرة
     if any(k in norm_text for k in ["مشوار", "توصيل", "توصيله", "توصيلة"]):
         return True
 
@@ -150,11 +147,11 @@ async def process_message(bot, message: Message):
     if not raw_text:
         return
 
-    # التثبت من فلترة الطلب
+    # الفلترة الذكية للطلب
     if not is_customer_request(raw_text):
         return
 
-    # بصمة منع التكرار
+    # بصمة الطلب لمنع التكرار عبر القنوات المزدوجة
     request_hash = make_request_fingerprint(raw_text)
     if request_hash in PROCESSED_REQUEST_HASHES:
         return
@@ -202,6 +199,28 @@ async def process_message(bot, message: Message):
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
 
+# =========================
+# الماسح الدوري المستمر للقروبات والقنوات الكبيرة
+# =========================
+
+async def real_time_channel_and_group_scanner(userbot, bot):
+    while True:
+        try:
+            # فحص أول 60 محادثة نشطة بانتظام
+            async for dialog in userbot.get_dialogs(limit=60):
+                try:
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء الفحص الدوري: {e}")
+            
+        # يعيد الفحص كاملاً كل 5 ثوانٍ
+        await asyncio.sleep(5)
+
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
@@ -221,13 +240,17 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message()
+    # استماع لحظي لجميع الرسائل
+    @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل الشامل مع التحديث الذكي لاستبعاد أرقام السائقين.")
+    print("✅ تم التشغيل والربط بنجاح (استماع لحظي + ماسح دائم لكل القروبات القنوات).")
+
+    # تشغيل الماسح الدوري في الخلفية لسحب القروبات الكبيرة والقنوات القاسية
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
