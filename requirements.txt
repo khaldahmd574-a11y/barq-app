@@ -1,2 +1,3 @@
 hydrogram
 tgcrypto
+google-generativeai
