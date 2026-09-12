@@ -10,7 +10,10 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
-print("⚡ [START] بداية تشغيل السكريبت...")
+# طباعة فورية لتأكيد بدء الملف
+print("=" * 50, flush=True)
+print("⚡ [START] تم تحميل السكريبت، جاري البدء...", flush=True)
+print("=" * 50, flush=True)
 
 # =========================================================
 # KEEP ALIVE SERVER
@@ -28,12 +31,12 @@ class DummyServer(BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, format, *args):
-        return # إخفاء سجلات الـ HTTP لعدم ملء الـ Logs
+        return
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), DummyServer)
-    print(f"🌐 سيرفر Render يعمل الآن على المنفذ {port}")
+    print(f"🌐 [HTTP Server] يعمل الآن على المنفذ {port}", flush=True)
     server.serve_forever()
 
 # =========================================================
@@ -65,12 +68,12 @@ def get_hash(text):
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY:
-        print("❌ [AI] مفتاح GROQ_API_KEY مفقود!")
+        print("❌ [AI] GROQ_API_KEY غير مضاف في Render!", flush=True)
         return {"is_request": False, "type": "none", "confidence": 0}
 
     system_prompt = """
 أنت خبير في تحليل منشورات مجموعات التوصيل والمشاوير بالسعودية.
-مهمتك: التمييز بين (الزبون الذي يطلب الخدمة) و(السائق/المندوب الذي يعرض خدمته).
+وظيفتك: التمييز بين (الزبون الذي يطلب الخدمة) و(السائق/المندوب الذي يعرض خدمته).
 
 قواعد الفرز:
 1. العميل (Customer): يبحث عن سيارة، سائق، توصيل غرض، مشوار.
@@ -114,7 +117,7 @@ def analyze_with_ai(text):
 
         return {"is_request": is_req, "type": req_type, "confidence": conf}
     except Exception as e:
-        print(f"❌ [AI Error]: {e}")
+        print(f"❌ [AI Error]: {e}", flush=True)
         return {"is_request": False, "type": "none", "confidence": 0}
 
 # =========================================================
@@ -149,7 +152,7 @@ async def process_message(bot, message: Message):
     req_type, conf = result["type"], result["confidence"]
     label = "📦 طلب توصيل" if req_type == "delivery" else ("🚗 طلب مشوار" if req_type == "ride" else "📦🚗 طلب مشترك")
     
-    print(f"🎯 [طلب جديد] {label} | الثقة: {conf:.2f} | النص: {text[:40]}")
+    print(f"🎯 [طلب جديد] {label} | الثقة: {conf:.2f} | النص: {text[:40]}", flush=True)
 
     rows = []
     if message.from_user:
@@ -170,27 +173,27 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"📤 تم الإرسال إلى {user}")
+            print(f"📤 تم الإرسال بنجاح إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
-            print(f"❌ فشل الإرسال إلى {user}: {e}")
+            print(f"❌ فشل الإرسال إلى {user}: {e}", flush=True)
 
 # =========================================================
 # MAIN
 # =========================================================
 
 async def main():
-    print("🔍 جاري التحقق من متغيرات البيئة...")
+    print("🔍 [CHECK] جاري الفحص عن المتغيرات...", flush=True)
     if not BOT_TOKEN:
-        print("❌ [خطأ] BOT_TOKEN غير موجود في Render!")
+        print("❌ [CRITICAL] BOT_TOKEN غير مضاف!", flush=True)
         return
     if not SESSION_STRING:
-        print("❌ [خطأ] SESSION_STRING غير موجود في Render!")
+        print("❌ [CRITICAL] SESSION_STRING غير مضاف!", flush=True)
         return
 
-    print("🔑 المتغيرات متوفرة، جاري تشغيل الحسابات...")
+    print("🔑 المتغيرات جاهزة. جاري ربط الحسابات وتجاوز الأقفال...", flush=True)
 
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
@@ -198,29 +201,32 @@ async def main():
     @userbot.on_message()
     async def global_listener(client, message):
         try:
-            # طباعة أي رسالة تصل من المجموعات
-            if message.chat and message.chat.type in ["group", "supergroup", "channel"]:
-                print(f"📩 [منشورة جديدة] من ({message.chat.title}): {(message.text or message.caption or '')[:30]}")
+            if message.chat and message.chat.type.value in ["group", "supergroup", "channel"]:
+                print(f"📩 [رسالة من مجموعة] ({message.chat.title}): {(message.text or message.caption or '')[:30]}", flush=True)
                 await process_message(bot, message)
         except Exception as e:
-            print(f"❌ [Listener Error]: {e}")
+            print(f"❌ [Listener Error]: {e}", flush=True)
 
-    await userbot.start()
-    print("✅ [Userbot] حساب السحب متصل ويستمع للمجموعات الآن!")
+    try:
+        print("⏳ جاري تسجيل دخول الـ Userbot...", flush=True)
+        await userbot.start()
+        print("✅ [Userbot] متصل بنجاح!", flush=True)
 
-    await bot.start()
-    print("✅ [Bot] بوت التوجيه متصل وجاهز للإرسال!")
+        print("⏳ جاري تسجيل دخول الـ Bot...", flush=True)
+        await bot.start()
+        print("✅ [Bot] متصل بنجاح!", flush=True)
 
-    print("🚀 النظام يعمل بنجاح 100%!")
-    await asyncio.Event().wait()
+        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة واستماع للرسائل!", flush=True)
+        await asyncio.Event().wait()
+    except Exception as e:
+        print(f"❌ [LOGIN ERROR] فشل اتصال الحسابات: {e}", flush=True)
 
 if __name__ == "__main__":
-    # تشغيل السيرفر في خيط منفصل
     t = threading.Thread(target=run_dummy_server, daemon=True)
     t.start()
     
     try:
         asyncio.run(main())
     except Exception as e:
-        print(f"❌ [CRITICAL ERROR]: {e}")
+        print(f"❌ [CRITICAL ERROR]: {e}", flush=True)
 
