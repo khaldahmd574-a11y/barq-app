@@ -249,8 +249,8 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع لجميع القنوات والقروبات العادية والمجموعات الفائقة
-    @userbot.on_message(filters.group | filters.channel | filters.supergroup)
+    # الاستماع لجميع القنوات والقروبات المتاحة (تغطي المجموعات العادية والفائقة تلقائياً)
+    @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
