@@ -2,6 +2,8 @@ import os
 import asyncio
 import re
 import hashlib
+import json
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
@@ -13,7 +15,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Barq Test Bot is Alive!")
+        self.wfile.write(b"Barq Bot is Awake 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -29,12 +31,49 @@ SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# عزل الذكاء الاصطناعي: قبول كل الرسائل فوراً لغرض الاختبار
 def analyze_with_ai(text: str) -> bool:
-    return True
+    if not GROQ_API_KEY:
+        return False
+
+    prompt = f"""
+أنت مساعد ذكي لتصنيف طلبات التوصيل.
+حدد هل النص عبارة عن "طلب توصيل مشوار/سائق/طلب من زبون حقيقي" أم لا؟
+
+استبعد فوراً (أجب بـ NO):
+1. إعلانات الخدمات والإجازات المرضية والتوظيف والمعاملات الحكومية وسكني وصحتي.
+2. منشورات السائقين (مثل: طالع من، متوفر توصيل، انا سواق).
+3. التنبيهات الإدارية والقوانين والترحيب.
+
+اقبل فقط (أجب بـ YES):
+- زبون يبحث عن توصيلة أو سواق أو مندوب لنفسه.
+
+الرسالة: "{text}"
+أجب بـ YES أو NO فقط.
+"""
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
+            "Content-Type": "application/json"
+        }
+        data = json.dumps({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0
+        }).encode("utf-8")
+
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=4) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            result = res_data["choices"][0]["message"]["content"].strip().upper()
+            return "YES" in result
+    except Exception as e:
+        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
+        return False
 
 PROCESSED_MESSAGES = set()
 PROCESSED_REQUEST_HASHES = set()
@@ -71,7 +110,11 @@ async def process_message(bot, message: Message):
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text or len(raw_text) < 3:
+    if not raw_text or len(raw_text) < 4:
+        return
+
+    is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
+    if not is_customer:
         return
 
     request_hash = make_request_fingerprint(raw_text)
@@ -97,10 +140,7 @@ async def process_message(bot, message: Message):
     if message.link:
         row.append(InlineKeyboardButton("📩 الرابط الأصلي", url=message.link))
 
-    if row:
-        buttons.append(row)
-
-    reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+    reply_markup = InlineKeyboardMarkup([row]) if row else None
 
     for user in TARGET_USERS:
         try:
@@ -120,6 +160,21 @@ async def process_message(bot, message: Message):
             )
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
+
+async def keep_alive_scanner(userbot, bot):
+    """ماسح دوري يبقي الاتصال حياً ويمنع نوم البوت"""
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=25):
+                try:
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.2)
+        except Exception as e:
+            print(f"⚠️ تنبيه الماسح الدوري: {e}")
+        await asyncio.sleep(10)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -146,10 +201,12 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("🚀 تم التشغيل في وضع الاختبار (مباشر بدون ذكاء اصطناعي).")
+    print("🚀 البوت شغال ومستمر 24/7 مع فلترة الذكاء الاصطناعي.")
+
+    # تشغيل الماسح المستمر للحل النهائي لظاهرة النوم
+    asyncio.create_task(keep_alive_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
