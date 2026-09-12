@@ -46,8 +46,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
-# الموديل المطلوب والمقترح في رسالة الخطأ لديك
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = "gemini-2.5-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -72,17 +71,12 @@ def get_hash(text):
 
 def analyze_with_ai(text):
     if not GEMINI_API_KEY or not gemini_client:
-        return {"is_request": False, "type": "none", "confidence": 0}
+        return True
 
     prompt = f"""
-أنت نظام ذكاء اصطناعي متخصص في فرز رسائل مجموعات التوصيل والمشاوير في السعودية.
-حدد هل المنشور "طلب خدمة حقيقي من عميل" أم لا.
-1. العميل: يبحث عن سواق/مندوب/توصيل غرض/مشوار.
-2. السائق: يعرض خدمته -> اختر none.
-
-التصنيفات: delivery, ride, both, none.
+هل هذا النص يمثل طلب خدمة توصيل أو مشوار من عميل؟
 النص: {text}
-أرجع JSON فقط: {{"is_request": true, "type": "ride", "confidence": 0.95}}
+أرجع JSON فقط: {{"is_request": true}} أو {{"is_request": false}}
 """
 
     try:
@@ -94,24 +88,11 @@ def analyze_with_ai(text):
                 temperature=0
             )
         )
-
         raw_text = (response.text or "").strip()
-        if not raw_text:
-            return {"is_request": False, "type": "none", "confidence": 0}
-
         ai = json.loads(raw_text)
-        is_req = bool(ai.get("is_request", False))
-        req_type = str(ai.get("type", "none")).lower().strip()
-        conf = float(ai.get("confidence", 0))
-
-        if req_type not in ("delivery", "ride", "both") or conf < 0.60 or not is_req:
-            return {"is_request": False, "type": "none", "confidence": conf}
-
-        return {"is_request": True, "type": req_type, "confidence": conf}
-
-    except Exception as e:
-        print(f"❌ [Gemini Error] {e}", flush=True)
-        return {"is_request": False, "type": "none", "confidence": 0}
+        return bool(ai.get("is_request", False))
+    except Exception:
+        return True
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -133,43 +114,38 @@ async def process_message(bot, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    result = await asyncio.to_thread(analyze_with_ai, text)
-    if not result["is_request"]:
+    is_request = await asyncio.to_thread(analyze_with_ai, text)
+    if not is_request:
         return
 
     PROCESSED_CONTENT.add(content_hash)
-    req_type, conf = result["type"], result["confidence"]
-    label = "📦 طلب توصيل" if req_type == "delivery" else ("🚗 طلب مشوار" if req_type == "ride" else "📦🚗 طلب توصيل ومشوار")
-
-    print(f"🎯 [طلب جديد بـ Gemini] {label} | الثقة: {conf:.2f}", flush=True)
 
     rows = []
+    # زر فتح المحادثة
     if message.from_user:
         username = message.from_user.username
         user_id = message.from_user.id
-        first_name = message.from_user.first_name or "الزبون"
 
         if username:
             user_url = f"https://t.me/{username}"
-            user_text = f"💬 المحادثة (@{username})"
         else:
             user_url = f"tg://openmessage?user_id={user_id}"
-            user_text = f"💬 المحادثة ({first_name})"
 
-        rows.append([InlineKeyboardButton(user_text, url=user_url)])
+        rows.append([InlineKeyboardButton("💬 فتح المحادثة", url=user_url)])
 
+    # زر فتح الرسالة
     if message.link:
-        rows.append([InlineKeyboardButton("📩 الرابط الأصلي", url=message.link)])
+        rows.append([InlineKeyboardButton("📩 فتح الرسالة", url=message.link)])
 
     reply_markup = InlineKeyboardMarkup(rows) if rows else None
-    full_msg = f"<b>{label}</b>\n\n{text}"
 
+    # الإرسال المباشر للنص فقط بدون عناوين
     for user in TARGET_USERS:
         try:
-            await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception:
             pass
 
@@ -180,16 +156,22 @@ async def main():
     @userbot.on_message()
     async def global_listener(client, message):
         try:
-            if message.chat:
-                await process_message(bot, message)
-        except Exception:
-            pass
+            await process_message(bot, message)
+        except Exception as e:
+            print(f"❌ [Error]: {e}", flush=True)
 
     await userbot.start()
     await bot.start()
+    
+    # مزامنة جميع القروبات بدون تخصيص
+    async for _ in userbot.get_dialogs():
+        pass
+
+    print("🚀 البوت يعمل الآن بسلاسة وسرعة على كافة المجموعات!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_dummy_server, daemon=True)
     t.start()
     asyncio.run(main())
+
