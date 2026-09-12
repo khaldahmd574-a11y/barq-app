@@ -8,7 +8,7 @@ import threading
 from google import genai
 from google.genai import types
 
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
@@ -46,6 +46,7 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
+# الموديل المعتمد لـ Gemini 2.5
 GEMINI_MODEL = "gemini-2.5-flash"
 gemini_client = None
 
@@ -69,14 +70,28 @@ def get_hash(text):
     cleaned = clean_text(text).lower()
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
+# =========================================================
+# STRICT AI FILTER
+# =========================================================
+
 def analyze_with_ai(text):
     if not GEMINI_API_KEY or not gemini_client:
-        return True
+        return False
 
     prompt = f"""
-هل هذا النص يمثل طلب خدمة توصيل أو مشوار من عميل؟
-النص: {text}
-أرجع JSON فقط: {{"is_request": true}} أو {{"is_request": false}}
+أنت فلاتر ذكي متخصص لفلترة رسائل المجموعات.
+وظيفتك الوحيدة تحديد هل الرسالة صادرة من (عميل/زبون) يريد خدمة توصيل أو مشوار.
+
+قواعد صارمة جداً:
+1. إذا كانت الرسالة من (سائق، مندوب، موصل، يعرض خدمته، يقول: فاضي، متوفر، جاهز، يوصل، رقم جوال للإعلان) -> إجابة حتمية: false
+2. إذا كانت الرسالة مجرد سلام، إعلان، أو استفسار عام -> إجابة حتمية: false
+3. فقط إذا كان كاتب الرسالة (زبون يبحث عن توصيل/مشوار، مثل: ابغى احد يجيب، فيه توصيل، ابغى مشوار، مين فاضي يوصلني) -> إجابة: true
+
+النص للتحليل:
+"{text}"
+
+أرجع النتيجة بصيغة JSON فقط:
+{{"is_client_request": true}} أو {{"is_client_request": false}}
 """
 
     try:
@@ -90,9 +105,14 @@ def analyze_with_ai(text):
         )
         raw_text = (response.text or "").strip()
         ai = json.loads(raw_text)
-        return bool(ai.get("is_request", False))
-    except Exception:
-        return True
+        return bool(ai.get("is_client_request", False))
+    except Exception as e:
+        print(f"❌ [AI Error]: {e}", flush=True)
+        return False
+
+# =========================================================
+# MESSAGE PROCESSING
+# =========================================================
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -103,6 +123,7 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(message_key)
 
+    # تجاهل رسائل البوت أو الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -114,14 +135,16 @@ async def process_message(bot, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    is_request = await asyncio.to_thread(analyze_with_ai, text)
-    if not is_request:
+    # الفحص الصارم عبر الذكاء الاصطناعي
+    is_client_request = await asyncio.to_thread(analyze_with_ai, text)
+    if not is_client_request:
         return
 
     PROCESSED_CONTENT.add(content_hash)
 
-    rows = []
-    # زر فتح المحادثة
+    # تجهيز الأزرار في صف واحد (بجانب بعض)
+    buttons = []
+
     if message.from_user:
         username = message.from_user.username
         user_id = message.from_user.id
@@ -131,43 +154,45 @@ async def process_message(bot, message: Message):
         else:
             user_url = f"tg://openmessage?user_id={user_id}"
 
-        rows.append([InlineKeyboardButton("💬 فتح المحادثة", url=user_url)])
+        buttons.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_url))
 
-    # زر فتح الرسالة
     if message.link:
-        rows.append([InlineKeyboardButton("📩 فتح الرسالة", url=message.link)])
+        buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
-    reply_markup = InlineKeyboardMarkup(rows) if rows else None
+    # التجميع في صف واحد افقي [[زر1, زر2]]
+    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
 
-    # الإرسال المباشر للنص فقط بدون عناوين
+    # إرسال نص الزبون المباشر بدون عناوين
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"✅ تم إرسال طلب عميل موثوق إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"❌ خطأ إرسال: {e}", flush=True)
+
+# =========================================================
+# MAIN ENTRYPOINT
+# =========================================================
 
 async def main():
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-    @userbot.on_message()
+    # استماع لكافة المجموعات والقنوات والمحادثات
+    @userbot.on_message(filters.all)
     async def global_listener(client, message):
         try:
             await process_message(bot, message)
         except Exception as e:
-            print(f"❌ [Error]: {e}", flush=True)
+            print(f"❌ [Listener Error]: {e}", flush=True)
 
     await userbot.start()
     await bot.start()
-    
-    # مزامنة جميع القروبات بدون تخصيص
-    async for _ in userbot.get_dialogs():
-        pass
 
-    print("🚀 البوت يعمل الآن بسلاسة وسرعة على كافة المجموعات!", flush=True)
+    print("🚀 تم تشغيل النظام بالفلترة الدقيقة واستماع كافة المجموعات!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
