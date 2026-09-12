@@ -30,45 +30,59 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
 
-# قائمة المشتركين (تم إضافة الحسابين الجديدين هنا)
+# قائمة المستلمين (تم استبعاد اليوزرات الثلاثة)
 TARGET_USERS = [
     "shaybq", 
     "Waaaaaaa33", 
-    "abood1317", 
-    "fs_990", 
-    "Ndhhyfvvjkcd", 
-    "mushtaq_28"
+    "abood1317"
 ]
 
-RAW_KEYWORDS = [
-    "جيزان", "جازان", "بيش", "الدرب", "صبيا", "ضمد", "الضبيه", "الظبيه", "مزهره", 
-    "ابو عريش", "العارضه", "مسليه", "رديس", "الخضراء", "فيفاء", "الداير", "الدائر", 
-    "المضايا", "الخمس", "الخميسين", "الأحد", "الدغارير", "صامطه", "الطوال", "السويس", 
-    "سويس", "الجامعه", "محليه", "البرج", "المجمع", "النخيل", "مخطط", "خمسه", "سته", 
-    "سبعه", "ثمانيه", "الاسكان", "اسكان", "إسكان", "الملك", "عبدالله", "العريش", 
-    "المخابشه", "الكربوس", "المطار", "الشواجره", "الشاطئ", "الواصلي", "الريان", 
-    "الخشابيه", "العسيله", "العسيلة", "الاسامله", "البديع", "القرفي", "خضير", 
-    "خضيره", "الغريب", "خبت سعيد", "الكوامله", "الكواملة", "الفقهاء", "العشوه", 
-    "صنبه", "مستشفى", "العام", "الأمير", "السبخه", "الحقاويه", "ام العرش", "الحرف", 
-    "الجديين", "الحجرين", "العرضه", "العدايا", "الطب", "الجنوبي", "الشمالي", 
-    "الاثله", "حي", "النور", "المعبوج", "الصفا", "الراشد", "الكادي", "هاف", "مليون", 
-    "ايت", "دونتس", "هرفي", "البيك", "يوصلني", "يوصلي", "يجيب", "يمر", "يجي", 
-    "يوصلنا", "يرجعنا", "يعطينا", "ينزلنا", "يداوم", "يلتزم", "دوز", "فندق", 
-    "دوار", "الحناوي", "الصناعيه", "معاه", "هايلوكس", "الشامل", "مضغوط", "ماك", 
-    "ماكدونالدز", "بيشه", "المقاريه", "الروابي", "شاكس", "تسالي", "دجى", "صيدليه", 
-    "مطعم", "طعميه", "ارجع", "بوفيه", "ابتسام", "التخصصي", "الثانويه", "الروضه", 
-    "صفوه", "المهيدب", "بوجا", "تويوتا", "الشقيري", "الجهو", "الرحاب", "البدر", 
-    "الوحله", "العقده", "الحوامضه", "المرابي", "الكبرى", "مغشيه", "السفلى", "رماده", 
-    "فهد", "المهدج", "قمبوره", "حاكمه", "فلس", "المجصص", "المدينه", "العيدابي", 
-    "بصبيا", "هايبر", "بنده", "حله", "الحسيني", "النهضه", "حرجه", "الحرجه", "الحمى", 
-    "جريبه", "الزرقاء", "النسيم", "مشاوي", "الزاكي", "قهوه", "حلا", "حلى", "اكل", 
-    "قاعه", "السوق", "الداخلي", "البلد", "محمصه", "مننا", "الطاهريه", "القعاريه", 
-    "العميريه", "مشوار", "الضاحيه", "جرير", "الحصمه", "الحصامه", "الحياه", "صبيحه", 
-    "كيان", "النجاميه", "العكره", "ابو المض", "دوامي", "سواقه", "سواق", "شهري", 
-    "الشهر", "ابها", "نازل", "ينزل", "طالع", "يطلع", "مندوب", "قريب", "قريه", 
-    "قرى", "البحر", "بحر", "ابو حجر", "حجر", "القصبه", "طلب", "وادي", "الرباح", 
-    "بعد", "اللقيه", "الوزاره", "كبري", "عند", "لجيزان", "ابي", "ابغا", "اريد", 
-    "لالمجمع", "ينقل", "يعرف", "يوصل", "الكلية", "الخارش", "العسيليه"
+# =========================
+# فلترة طلبات العملاء
+# =========================
+
+REQUEST_INTENTS = [
+    # صريحة
+    "ابغى", "ابغي", "أبغى", "ابغا", "أبغا",
+    "ابي", "أبي", "اريد", "أريد", "ودي", "ودّي",
+    "احتاج", "أحتاج", "محتاج", "محتاجة", "نحتاج", "نبغى", "نشتي",
+
+    # تساؤلات واستفسار عن توفر خدمة
+    "مين", "من", "فيه", "فية", "شي", "موجود", "الي", "اللي",
+
+    # أفعال الطلب والتوصيل
+    "يوصلني", "يوصل", "يوصلي", "يوصللي", "يوصل لي",
+    "يجيب", "يجيبلي", "يجيب لي", "ياخذ", "ياخذلي", "ياخذ لي",
+    "ينقل", "ينقلني", "ينزلنا", "يرجعنا", "يعطينا", "يمر",
+
+    # صيغ موجهة للسائقين مباشرة
+    "سواق", "سائقه", "سائقة", "سوقه", "سوقة", "سواقة",
+    "مندوب", "مندوبة", "مندوبه", "كابتن", "مشوار", "مشاوير"
+]
+
+SERVICE_WORDS = [
+    "مندوب", "سواق", "سواقه", "سائق", "سائقه",
+    "توصيل", "يوصلني", "يوصل لي", "يوصللي", "يوصلي",
+    "يجيب لي", "يجيبلي", "ياخذ لي", "ياخذلي",
+    "مشوار", "مشاوير", "يروح", "ينقلني", "ينقل",
+    "طلب", "طلبي", "غرض", "اغراض", "أغراض"
+]
+
+# عبارات تدل غالبًا أن الكاتب سائق/مندوب وليس عميل
+DRIVER_PATTERNS = [
+    "انا مندوب", "أنا مندوب", "مندوب فاضي", "مندوب متوفر", "مندوب متواجد",
+    "مندوب ثقه", "مندوب ثقة", "انا سواق", "أنا سواق", "انا سائق", "أنا سائق",
+    "سواق فاضي", "سواق متوفر", "سواق متواجد", "سائق فاضي", "سائق متوفر",
+    "سائق متواجد", "متوفر للتوصيل", "متاح للتوصيل", "متوفر للمشاوير",
+    "متاح للمشاوير", "اللي يحتاج يتواصل", "اللي يحتاج يكلمني",
+    "للتواصل خاص", "للتواصل واتس", "خدمات توصيل", "توصيل ومشاوير",
+    "فاضي بصبيا", "فاضي بجيزان", "فاضي ببيش", "مين يبغى توصيل"
+]
+
+LOCATION_WORDS = [
+    "جيزان", "جازان", "صبيا", "ضمد", "بيش", "الدرب", "ابو عريش", "أبو عريش",
+    "العارضة", "صامطة", "الطوال", "فيفاء", "الداير", "الدائر", "المطار",
+    "الجامعة", "السويس", "المجمع", "النخيل", "الاسكان", "الإسكان", "مخطط", "حي"
 ]
 
 def normalize_text(text: str) -> str:
@@ -76,13 +90,51 @@ def normalize_text(text: str) -> str:
         return ""
     text = text.lower()
     text = re.sub(r"[أإآ]", "ا", text)
-    text = re.sub(r"ة", "ه", text)
-    text = re.sub(r"ى", "ي", text)
+    text = text.replace("ة", "ه")
+    text = text.replace("ى", "ي")
+    text = re.sub(r"[\u064B-\u065F\u0670]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
 
-NORMALIZED_KEYWORDS = {word: normalize_text(word) for word in RAW_KEYWORDS}
+def contains_phrase(text, phrases):
+    return any(normalize_text(phrase) in text for phrase in phrases)
+
+def is_customer_request(text):
+    norm_text = normalize_text(text)
+    if not norm_text:
+        return False
+
+    # 1. استبعاد منشورات السائقين
+    if contains_phrase(norm_text, DRIVER_PATTERNS):
+        return False
+
+    # 2. نية طلب
+    has_intent = contains_phrase(norm_text, REQUEST_INTENTS)
+    if not has_intent:
+        return False
+
+    # 3. نوع الخدمة
+    has_service = contains_phrase(norm_text, SERVICE_WORDS)
+    if not has_service:
+        return False
+
+    return True
+
+# =========================
+# بصمة أولى للطلب
+# =========================
+
 PROCESSED_MESSAGES = set()
-PROCESSED_TEXT_HASHES = set()
+PROCESSED_REQUEST_HASHES = set()
+
+def make_request_fingerprint(text):
+    text = normalize_text(text)
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    text = re.sub(r"\d+", "", text)
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 async def process_message(bot, message: Message):
     if not message or not message.id:
@@ -91,9 +143,9 @@ async def process_message(bot, message: Message):
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
-    
+
     PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 5000:
+    if len(PROCESSED_MESSAGES) > 10000:
         PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
@@ -103,77 +155,59 @@ async def process_message(bot, message: Message):
     if not raw_text:
         return
 
-    searchable_text = normalize_text(raw_text)
-
-    # منع تكرار نفس الرسالة حتى لو نُشرت من قروبات مختلفة
-    text_hash = hashlib.md5(searchable_text.encode('utf-8')).hexdigest()
-    if text_hash in PROCESSED_TEXT_HASHES:
+    # فلترة طلب العميل
+    if not is_customer_request(raw_text):
         return
 
-    for original_word, norm_word in NORMALIZED_KEYWORDS.items():
-        if norm_word in searchable_text:
-            PROCESSED_TEXT_HASHES.add(text_hash)
-            if len(PROCESSED_TEXT_HASHES) > 3000:
-                PROCESSED_TEXT_HASHES.clear()
+    # بصمة الطلب لمنع التكرار
+    request_hash = make_request_fingerprint(raw_text)
+    if request_hash in PROCESSED_REQUEST_HASHES:
+        return
 
-            buttons = []
-            row = []
-            
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
+    PROCESSED_REQUEST_HASHES.add(request_hash)
+    if len(PROCESSED_REQUEST_HASHES) > 10000:
+        PROCESSED_REQUEST_HASHES.clear()
 
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-            
-            if row:
-                buttons.append(row)
-                
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+    # أزرار التواصل
+    buttons = []
+    row = []
 
-            for user in TARGET_USERS:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                    await bot.send_message(
-                        chat_id=user,
-                        text=raw_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception as e:
-                    print(f"❌ خطأ توجيه: {e}")
-            break
+    if message.from_user:
+        if message.from_user.username:
+            user_url = f"https://t.me/{message.from_user.username}"
+            user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+        else:
+            user_url = f"tg://openmessage?user_id={message.from_user.id}"
+            user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+        row.append(InlineKeyboardButton(user_label, url=user_url))
 
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
+    if message.link:
+        row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+
+    if row:
+        buttons.append(row)
+
+    reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+    # إرسال الطلب للمشتركين
+    for user in TARGET_USERS:
         try:
-            # فحص أول 50 محادثة نشطة
-            async for dialog in userbot.get_dialogs(limit=50):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                # تأخير 0.1 ثانية لحماية الحساب من الفحص السريع
-                await asyncio.sleep(0.1)
-
+            await bot.send_message(
+                chat_id=user,
+                text=raw_text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+            await bot.send_message(
+                chat_id=user,
+                text=raw_text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
         except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص: {e}")
-            
-        # فحص متكرر وسريع كل 7 ثوانٍ
-        await asyncio.sleep(7)
+            print(f"❌ خطأ توجيه: {e}")
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -200,9 +234,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل والربط بنجاح (فحص 50 محادثة كل 7 ثوانٍ بأمان تام).")
-
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
+    print("✅ تم التشغيل بنجاح مع الفلترة الذكية المحدثة.")
 
     await asyncio.Event().wait()
 
