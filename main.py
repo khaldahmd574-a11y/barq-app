@@ -4,6 +4,7 @@ import re
 import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import requests
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
@@ -29,96 +30,68 @@ SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
-TARGET_USERS = [
-    "shaybq", 
-    "Waaaaaaa33", 
-    "abood1317"
-]
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-# =========================
-# القوائم الذكية لطلبات العملاء
-# =========================
+def analyze_with_ai(text: str) -> bool:
+    if not GROQ_API_KEY:
+        return False
 
-REQUEST_INTENTS = [
-    "ابغى", "ابغي", "أبغى", "ابغا", "أبغا", "تبغى", "تبغا", "يبغى", "يبغا",
-    "ابي", "أبي", "تبي", "يبي", "نبي",
-    "اريد", "أريد", "ارغب", "أرغب",
-    "ودي", "ودّي",
-    "احتاج", "أحتاج", "محتاج", "محتاجة", "نحتاج", "نبغى", "نشتي",
-    "مين", "من", "فيه", "فية", "شي", "موجود", "موجوده", "الي", "اللي", "احصل", "أحصل", "الاقي", "ألاقي",
-    "يوصلني", "يوصل", "يوصلي", "يوصللي", "يوصل لي", "توصيلة", "توصيله", "يوصلنا",
-    "يجيب", "يجيبلي", "يجيب لي", "يجيبني",
-    "ياخذ", "ياخذلي", "ياخذ لي", "ياخذني",
-    "ينقل", "ينقلني", "ينزلنا", "ينزلني",
-    "يرجعنا", "يرجعني", "يوديني", "يودي", "يروح",
-    "يعطينا", "يمر", "يمرني", "يشيلني", "يشيل", "يودينا", "يطوفني",
-    "سواق", "سواقه", "سواقة", "سائق", "سائقه", "سائقة", "سوقه", "سوقة",
-    "مندوب", "مندوبة", "مندوبه", "كابتن", "مشوار", "مشاوير", "دفعات", "شهري", "شهريا"
-]
+    prompt = f"""
+أنت مساعد ذكي متخصص في التمييز بين طلبات التوصيل الإعلان والتنبيهات.
+حدد هل النص التالي عبارة عن "طلب توصيل مشوار/بضائع/سائق من زبون حقيقي" أم لا؟
 
-DRIVER_PATTERNS = [
-    "انا مندوب", "أنا مندوب", "مندوب فاضي", "مندوب ثقه", "مندوب ثقة", 
-    "انا سواق", "أنا سواق", "انا سائق", "أنا سائق",
-    "سواق فاضي", "سائق فاضي", "متوفر للتوصيل", "متاح للتوصيل", "متوفر للمشاوير",
-    "متاح للمشاوير", "اللي يحتاج يتواصل", "اللي يحتاج يكلمني",
-    "للتواصل خاص", "للتواصل واتس", "خدمات توصيل", "توصيل ومشاوير", "توصيل طلبات",
-    "فاضي بصبيا", "فاضي بجيزان", "فاضي ببيش", "مين يبغى توصيل", "مين يبغى مشوار",
-    "سيارة خاصة", "سياره خاصه", "حاضر للتوصيل", "جاهز للتوصيل", "وضواحيها"
-]
+قواعد الاستبعاد الصارمة (أجب بـ NO فوراً إذا تحققت):
+1. إعلانات الخدمات الحكوكية أو المعاملات مثل (إجازات مرضية، سكني، ترفيع، توثيق، منصة صحتي، إنجاز).
+2. إعلانات التوظيف، التعارف، المسيار، والربح أو التسويق.
+3. التنبيهات الإدارية وقوانين المجموعات.
+4. منشورات السائقين الذين يعرضون التوصيل (مثل: طالع من...، متوفر توصيل).
+
+الشرط الوحيد للقبول (أجب بـ YES):
+- أن يكون صاحب الرسالة (زبون) يطلب سائقاً، مشواراً، أو توصيل طلبات لنفسه بوضوح.
+
+الرسالة:
+"{text}"
+
+أجب بكلمة واحدة فقط: YES أو NO.
+"""
+    try:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.0
+            },
+            timeout=3
+        )
+        if response.status_code == 200:
+            result = response.json()["choices"][0]["message"]["content"].strip().upper()
+            return "YES" in result
+    except Exception as e:
+        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
+    
+    return False
+
+PROCESSED_MESSAGES = set()
+PROCESSED_REQUEST_HASHES = set()
 
 def normalize_text(text: str) -> str:
     if not text:
         return ""
     text = text.lower()
     text = re.sub(r"[أإآ]", "ا", text)
-    text = text.replace("ة", "ه")
-    text = text.replace("ى", "ي")
-    text = re.sub(r"[\u064B-\u065F\u0670]", "", text)
-    text = re.sub(r"[^\w\s]", " ", text)
+    text = text.replace("ة", "ه").replace("ى", "ي")
     text = re.sub(r"\s+", " ", text).strip()
     return text
-
-def contains_phrase(text, phrases):
-    return any(normalize_text(phrase) in text for phrase in phrases)
-
-def is_customer_request(text):
-    raw_clean = text.strip()
-    norm_text = normalize_text(raw_clean)
-    if not norm_text:
-        return False
-
-    # 1. استبعاد السائقين الذين يضعون أرقام هواتفهم
-    if re.search(r"05\d{8}", raw_clean.replace(" ", "")):
-        return False
-
-    # 2. استبعاد منشورات السائقين المباشرة
-    if contains_phrase(norm_text, DRIVER_PATTERNS):
-        return False
-
-    # 3. قبول نية الطلب الصريحة
-    if contains_phrase(norm_text, REQUEST_INTENTS):
-        return True
-
-    # 4. قبول العبارات المباشرة المرتبطة بالمشاوير
-    if any(k in norm_text for k in ["مشوار", "توصيل", "توصيله", "توصيلة"]):
-        return True
-
-    return False
-
-# =========================
-# بصمة ومنع التكرار
-# =========================
-
-PROCESSED_MESSAGES = set()
-PROCESSED_REQUEST_HASHES = set()
 
 def make_request_fingerprint(text):
     text = normalize_text(text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"@\w+", "", text)
     text = re.sub(r"\d+", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 async def process_message(bot, message: Message):
@@ -137,14 +110,14 @@ async def process_message(bot, message: Message):
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text:
+    if not raw_text or len(raw_text) < 5:
         return
 
-    # تطبيق الفلتر الذكي للطلبات
-    if not is_customer_request(raw_text):
+    # الفحص بالذكاء الاصطناعي
+    is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
+    if not is_customer:
         return
 
-    # منع تكرار الرسائل المتطابقة
     request_hash = make_request_fingerprint(raw_text)
     if request_hash in PROCESSED_REQUEST_HASHES:
         return
@@ -192,14 +165,9 @@ async def process_message(bot, message: Message):
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
 
-# =========================
-# الماسح الدوري الخلفي (لسحب القروبات الكبيرة والقنوات جبراً)
-# =========================
-
 async def real_time_channel_and_group_scanner(userbot, bot):
     while True:
         try:
-            # فحص أحدث 60 محادثة نشطة دورياً
             async for dialog in userbot.get_dialogs(limit=60):
                 try:
                     async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
@@ -208,9 +176,8 @@ async def real_time_channel_and_group_scanner(userbot, bot):
                     pass
                 await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص الدوري: {e}")
+            print(f"⚠️ خطأ الفحص الدوري: {e}")
             
-        # تكرار الفحص الشامل كل 5 ثوانٍ
         await asyncio.sleep(5)
 
 async def main():
@@ -232,16 +199,14 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع اللحظي الأساسي
     @userbot.on_message(filters.all)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل بنجاح: الفلترة الذكية للطلبات + الماسح الدوري للقروبات الكبيرة والقنوات.")
+    print("✅ تم التشغيل: تفعيل الذكاء الاصطناعي بنجاح.")
 
-    # تشغيل الماسح الخلفي القوي
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
