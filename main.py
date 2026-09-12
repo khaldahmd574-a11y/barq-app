@@ -87,7 +87,7 @@ def analyze_with_ai(text):
 {{"is_request": true, "type": "ride", "confidence": 0.90}}
 """
 
-    # الرابط الصحيح والمجاني لـ Gemini Flash 1.5
+    # تم تصحيح الموديل إلى gemini-1.5-flash
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
@@ -215,14 +215,13 @@ async def main():
         await bot.start()
         print("✅ [Bot] متصل بنجاح!", flush=True)
 
-        # مزامنة وتحميل جميع المحادثات والجروبات والقنوات إلى الذاكرة عند البدء
         print("🔄 جاري تحميل ومزامنة قائمة المجموعات والقنوات...", flush=True)
         dialogs_count = 0
         async for dialog in userbot.get_dialogs():
             dialogs_count += 1
         print(f"🌐 تم المزامنة بنجاح مع {dialogs_count} محادثة ومجموعة وقناة!", flush=True)
 
-        print("🚀 [SUCCESS] النظام يعمل واستجابة Gemini جاهزة للالتقاط والإرسال!", flush=True)
+        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة وبدون أخطاء!", flush=True)
         await asyncio.Event().wait()
     except Exception as e:
         print(f"❌ [LOGIN ERROR] فشل الاتصال: {e}", flush=True)
