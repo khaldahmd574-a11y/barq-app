@@ -12,7 +12,7 @@ from hydrogram.errors import FloodWait
 
 
 # =========================================================
-# KEEP ALIVE SERVER (سيرفر منع توقف الخادم)
+# KEEP ALIVE SERVER
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -35,34 +35,23 @@ def run_dummy_server():
 
 
 # =========================================================
-# TELEGRAM & GROQ SETTINGS (الإعدادات المباشرة)
+# SETTINGS
 # =========================================================
 
-# قراءة BOT_TOKEN فقط من Render Environment
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-
-# باقي البيانات مدمجة في الكود مباشرة
-API_ID = 39120728
-API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
-
-# اكتب SESSION_STRING الخاص بك هنا بين التنصيص إذا لم ترغب بوضعه في Environment
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
-# اكتب مفتاح GROQ الخاص بك هنا بين التنصيص إذا لم ترغب بوضعه في Environment
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+API_ID = 39120728
+API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-# قائمة الحسابات المستلمة للطلبات
+# يمكن وضع أرقام ID بدلاً من الأعرف لتجنب مشاكل القيود
 TARGET_USERS = [
     "shaybq",
     "Waaaaaaa33",
     "abood1317",
 ]
-
-
-# =========================================================
-# MEMORY & CLEANUP (ذاكرة منع التكرار)
-# =========================================================
 
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
@@ -80,39 +69,38 @@ def get_hash(text):
 
 
 # =========================================================
-# AI ANALYSIS (تحليل الذكاء الاصطناعي)
+# AI ANALYSIS (تحديد الزبون vs السائق)
 # =========================================================
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY:
-        print("❌ GROQ_API_KEY غير مضاف في الكود أو البيئة!")
+        print("❌ خطأ: GROQ_API_KEY غير موجود في متغيرات البيئة!")
         return {"is_request": False, "type": "none", "confidence": 0}
 
     system_prompt = """
-أنت نظام ذكاء اصطناعي متخصص في فهم رسائل العملاء في مجموعات التوصيل والمشاوير في السعودية.
-مهمتك تحليل الرسالة كاملة وفهم معناها وسياقها.
-لا تعتمد على كلمات محددة ولا على قائمة كلمات.
-نريد فقط اكتشاف الشخص الذي يبحث عن خدمة لنفسه.
+أنت خبير في تحليل منشورات مجموعات التوصيل والمشاوير بالسعودية.
+وظيفتك الوحيدة: التمييز بين (الزبون الذي يطلب الخدمة) و(السائق/المندوب الذي يعرض خدمته).
 
-التصنيفات:
-delivery = العميل يريد مندوب أو توصيل غرض أو طلب أو شيء.
-ride = العميل يريد مشوار أو سائق أو سائقة لإيصاله هو.
-both = العميل يريد توصيلًا ومشوارًا في نفس الرسالة.
-none = ليست رسالة طلب من عميل.
+قواعد الفرز:
+1. العميل (Customer): يبحث عن سيارة، سائق، توصيل غرض، مشوار. (مثال: محتاج سواق، من يوصلني، ابغى مندوب، مين يوصل طلب).
+2. السائق (Driver): يعرض خدمته هو. (مثال: متوفر الآن، سواق جاهز، توصيل طلبات، للتواصل خاص، توصيل مشاوير). -> النتيجة دائمًا none.
+3. الإعلانات والخدمات الأخرى (وظائف، صحي، إلكترونيات...) -> النتيجة دائمًا none.
 
-مهم جدًا:
-إذا كان الشخص يعرض خدماته هو، فالنتيجة none. (مثال: أنا مندوب، سواق متوفر، جاهز للتوصيل).
-أيضاً تجاهل: الإعلانات، الإجازات المرضية، الوظائف، والخدمات الحكومية.
+التصنيفات المتاحة:
+- delivery: زبون يطلب توصيل طرد/طلب/أغراض.
+- ride: زبون يطلب مشوار لنفسه أو لأشخاص.
+- both: زبون يطلب مشوار وتوصيل طلب.
+- none: ليس طلب زبون (سائق يعرض خدمته، أو إعلان، أو كلام عام).
 
-أرجع JSON فقط بهذا الشكل:
+أرجع JSON فقط بهذا الشكل وبدون أي نص آخر:
 {
   "is_request": true,
-  "type": "delivery",
-  "confidence": 0.95
+  "type": "ride",
+  "confidence": 0.90
 }
 """
 
-    user_prompt = f"حلل الرسالة التالية:\n{text}"
+    user_prompt = f"حلل النص التالي:\n{text}"
 
     payload = {
         "model": GROQ_MODEL,
@@ -136,7 +124,7 @@ none = ليست رسالة طلب من عميل.
             method="POST"
         )
 
-        with urllib.request.urlopen(request, timeout=5) as response:
+        with urllib.request.urlopen(request, timeout=8) as response:
             result = json.loads(response.read().decode("utf-8"))
 
         content = result["choices"][0]["message"]["content"]
@@ -146,19 +134,19 @@ none = ليست رسالة طلب من عميل.
         request_type = ai.get("type", "none")
         confidence = float(ai.get("confidence", 0))
 
-        if request_type not in ("delivery", "ride", "both", "none") or confidence < 0.65:
+        if request_type not in ("delivery", "ride", "both") or confidence < 0.60:
             is_request = False
             request_type = "none"
 
         return {"is_request": is_request, "type": request_type, "confidence": confidence}
 
     except Exception as e:
-        print(f"❌ Groq Error: {e}")
+        print(f"❌ Groq API Error: {e}")
         return {"is_request": False, "type": "none", "confidence": 0}
 
 
 # =========================================================
-# PROCESS MESSAGE (معالجة الرسائل وإرسالها)
+# PROCESS MESSAGE
 # =========================================================
 
 async def process_message(bot, message: Message):
@@ -170,11 +158,12 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(message_key)
 
+    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
     text = clean_text(message.text or message.caption or "")
-    if len(text) < 4:
+    if len(text) < 3:
         return
 
     content_hash = get_hash(text)
@@ -182,16 +171,15 @@ async def process_message(bot, message: Message):
         return
 
     result = await asyncio.to_thread(analyze_with_ai, text)
-    request_type = result["type"]
-    confidence = result["confidence"]
-
     if not result["is_request"]:
-        print(f"🚫 تجاهل | {confidence:.2f} | {text[:50]}")
         return
 
     PROCESSED_CONTENT.add(content_hash)
+    request_type = result["type"]
+    confidence = result["confidence"]
+
     label = "📦 طلب توصيل" if request_type == "delivery" else ("🚗 طلب مشوار" if request_type == "ride" else "📦🚗 طلب مشترك")
-    print(f"✅ {label} | الثقة: {confidence:.2f} | {text[:60]}")
+    print(f"🎯 تم السحب [{label}] | نسبة الثقة: {confidence:.2f}\nالرسالة: {text[:60]}")
 
     rows = []
     if message.from_user:
@@ -201,55 +189,58 @@ async def process_message(bot, message: Message):
         else:
             user_url = f"tg://openmessage?user_id={message.from_user.id}"
             user_text = f"💬 المحادثة ({message.from_user.first_name or 'الزبون'})"
-        rows.append(InlineKeyboardButton(user_text, url=user_url))
+        rows.append([InlineKeyboardButton(user_text, url=user_url)])
 
     if message.link:
-        rows.append(InlineKeyboardButton("📩 الرابط الأصلي", url=message.link))
+        rows.append([InlineKeyboardButton("📩 الرابط الأصلي للرسالة", url=message.link)])
 
-    reply_markup = InlineKeyboardMarkup([rows]) if rows else None
+    reply_markup = InlineKeyboardMarkup(rows) if rows else None
+    full_msg = f"<b>{label}</b>\n\n{text}"
 
     for user in TARGET_USERS:
         try:
-            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"📤 تم الإرسال إلى: {user}")
+            await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"📤 أرسلت إلى: {user}")
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=user, text=full_msg, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
-            print(f"❌ فشل الإرسال: {e}")
+            print(f"❌ فشل الإرسال إلى {user}: {e}")
 
 
 # =========================================================
-# MAIN (التشغيل الرئيسي)
+# MAIN
 # =========================================================
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     if not BOT_TOKEN:
-        print("❌ خطأ: BOT_TOKEN غير مضاف في Environment في لوحة Render!")
+        print("❌ خطأ: BOT_TOKEN مفقود في البيئة!")
         return
-
     if not SESSION_STRING:
-        print("❌ خطأ: SESSION_STRING غير مضاف!")
+        print("❌ خطأ: SESSION_STRING مفقود في البيئة!")
         return
+    if not GROQ_API_KEY:
+        print("⚠️ تحذير: GROQ_API_KEY غير مضاف! لن يتم تحليل أي رسائل.")
 
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-    # تم استخدام filters.group بدون supergroup لتجنب خطأ المكتبة
-    @userbot.on_message(filters.group | filters.channel)
+    # التقاط جميع رسائل المجموعات والمجموعات الخارقة والقنوات
+    @userbot.on_message()
     async def global_listener(client, message):
         try:
-            await process_message(bot, message)
+            # التأكد من أن الرسالة من مجموعة أو قناة
+            if message.chat and message.chat.type.value in ["group", "supergroup", "channel"]:
+                await process_message(bot, message)
         except Exception as e:
             print(f"❌ Listener Error: {e}")
 
     await userbot.start()
-    print("👤 حساب السحب متصل")
+    print("👤 حساب السحب (Userbot) يعمل الآن...")
     await bot.start()
-    print("🤖 بوت برق جازان متصل")
-    print("🚀 النظام يعمل الآن بنجاح 24/7")
+    print("🤖 بوت التوجيه يعمل الآن...")
 
     await asyncio.Event().wait()
 
@@ -258,7 +249,5 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("🛑 تم إيقاف النظام")
-    except Exception as e:
-        print(f"❌ خطأ رئيسي: {e}")
+        print("🛑 تم إيقاف التشغيل")
 
