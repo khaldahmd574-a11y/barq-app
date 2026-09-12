@@ -46,8 +46,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
-# الموديل المعتمد لـ Gemini 2.5
-GEMINI_MODEL = "gemini-2.5-flash"
+# التعديل الأهم: الموديل المطلوب حسب رسالة الخطأ لديك
+GEMINI_MODEL = "gemini-3.6-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -71,7 +71,7 @@ def get_hash(text):
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
 # =========================================================
-# STRICT AI FILTER
+# AI FILTERING
 # =========================================================
 
 def analyze_with_ai(text):
@@ -79,19 +79,14 @@ def analyze_with_ai(text):
         return False
 
     prompt = f"""
-أنت فلاتر ذكي متخصص لفلترة رسائل المجموعات.
-وظيفتك الوحيدة تحديد هل الرسالة صادرة من (عميل/زبون) يريد خدمة توصيل أو مشوار.
+حدد هل كاتب النص زبون/عميل يبحث عن خدمة توصيل أو مشوار؟
+قواعد صارمة:
+- سائق/مندوب/يعرض خدمته/يقول فاضي/إعلان -> false
+- سلام فقط/سؤال عام -> false
+- زبون يريد توصيل أو مشوار -> true
 
-قواعد صارمة جداً:
-1. إذا كانت الرسالة من (سائق، مندوب، موصل، يعرض خدمته، يقول: فاضي، متوفر، جاهز، يوصل، رقم جوال للإعلان) -> إجابة حتمية: false
-2. إذا كانت الرسالة مجرد سلام، إعلان، أو استفسار عام -> إجابة حتمية: false
-3. فقط إذا كان كاتب الرسالة (زبون يبحث عن توصيل/مشوار، مثل: ابغى احد يجيب، فيه توصيل، ابغى مشوار، مين فاضي يوصلني) -> إجابة: true
-
-النص للتحليل:
-"{text}"
-
-أرجع النتيجة بصيغة JSON فقط:
-{{"is_client_request": true}} أو {{"is_client_request": false}}
+النص: "{text}"
+أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -105,7 +100,7 @@ def analyze_with_ai(text):
         )
         raw_text = (response.text or "").strip()
         ai = json.loads(raw_text)
-        return bool(ai.get("is_client_request", False))
+        return bool(ai.get("is_client", False))
     except Exception as e:
         print(f"❌ [AI Error]: {e}", flush=True)
         return False
@@ -123,7 +118,6 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(message_key)
 
-    # تجاهل رسائل البوت أو الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -135,54 +129,44 @@ async def process_message(bot, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    # الفحص الصارم عبر الذكاء الاصطناعي
-    is_client_request = await asyncio.to_thread(analyze_with_ai, text)
-    if not is_client_request:
+    is_client = await asyncio.to_thread(analyze_with_ai, text)
+    if not is_client:
         return
 
     PROCESSED_CONTENT.add(content_hash)
 
-    # تجهيز الأزرار في صف واحد (بجانب بعض)
+    # أزرار بجانب بعضها
     buttons = []
-
     if message.from_user:
         username = message.from_user.username
         user_id = message.from_user.id
-
-        if username:
-            user_url = f"https://t.me/{username}"
-        else:
-            user_url = f"tg://openmessage?user_id={user_id}"
-
+        user_url = f"https://t.me/{username}" if username else f"tg://openmessage?user_id={user_id}"
         buttons.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_url))
 
     if message.link:
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
-    # التجميع في صف واحد افقي [[زر1, زر2]]
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
 
-    # إرسال نص الزبون المباشر بدون عناوين
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ تم إرسال طلب عميل موثوق إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-        except Exception as e:
-            print(f"❌ خطأ إرسال: {e}", flush=True)
+        except Exception:
+            pass
 
 # =========================================================
-# MAIN ENTRYPOINT
+# MAIN LOGIC
 # =========================================================
 
 async def main():
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 
-    # استماع لكافة المجموعات والقنوات والمحادثات
-    @userbot.on_message(filters.all)
+    # التقاط كافة الرسائل من جميع أنواع المجموعات والقنوات
+    @userbot.on_message(filters.group | filters.channel | filters.private)
     async def global_listener(client, message):
         try:
             await process_message(bot, message)
@@ -192,11 +176,10 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم تشغيل النظام بالفلترة الدقيقة واستماع كافة المجموعات!", flush=True)
+    print("🚀 تم التعديل إلى gemini-3.6-flash والتنصت على كافة المحادثات والمجموعات بنجاح!", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_dummy_server, daemon=True)
     t.start()
     asyncio.run(main())
-
