@@ -87,7 +87,7 @@ def analyze_with_ai(text):
 {{"is_request": true, "type": "ride", "confidence": 0.90}}
 """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -199,9 +199,14 @@ async def main():
     @userbot.on_message()
     async def global_listener(client, message):
         try:
-            if message.chat and message.chat.type.value in ["group", "supergroup", "channel"]:
-                print(f"📩 [رسالة من مجموعة] ({message.chat.title}): {(message.text or message.caption or '')[:30]}", flush=True)
-                await process_message(bot, message)
+            # يستمع لجميع أنواع المجموعات والقنوات العامة والخاصة بدون قيود
+            if message.chat:
+                chat_type = str(message.chat.type).lower()
+                if any(t in chat_type for t in ["group", "supergroup", "channel"]):
+                    chat_name = message.chat.title or message.chat.username or "مجموعة"
+                    msg_txt = (message.text or message.caption or '')[:30]
+                    print(f"📩 [{chat_name}]: {msg_txt}", flush=True)
+                    await process_message(bot, message)
         except Exception as e:
             print(f"❌ [Listener Error]: {e}", flush=True)
 
@@ -212,7 +217,7 @@ async def main():
         await bot.start()
         print("✅ [Bot] متصل بنجاح!", flush=True)
 
-        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة مع Gemini!", flush=True)
+        print("🚀 [SUCCESS] النظام يستمع الآن لكل المجموعات والقنوات!", flush=True)
         await asyncio.Event().wait()
     except Exception as e:
         print(f"❌ [LOGIN ERROR] فشل الاتصال: {e}", flush=True)
