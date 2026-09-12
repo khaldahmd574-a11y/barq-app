@@ -2,9 +2,10 @@ import os
 import asyncio
 import re
 import hashlib
+import json
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-import requests
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
@@ -43,7 +44,7 @@ def analyze_with_ai(text: str) -> bool:
 حدد هل النص التالي عبارة عن "طلب توصيل مشوار/بضائع/سائق من زبون حقيقي" أم لا؟
 
 قواعد الاستبعاد الصارمة (أجب بـ NO فوراً إذا تحققت):
-1. إعلانات الخدمات الحكوكية أو المعاملات مثل (إجازات مرضية، سكني، ترفيع، توثيق، منصة صحتي، إنجاز).
+1. إعلانات الخدمات الحكومية أو المعاملات مثل (إجازات مرضية، سكني، ترفيع، توثيق، منصة صحتي، إنجاز).
 2. إعلانات التوظيف، التعارف، المسيار، والربح أو التسويق.
 3. التنبيهات الإدارية وقوانين المجموعات.
 4. منشورات السائقين الذين يعرضون التوصيل (مثل: طالع من...، متوفر توصيل).
@@ -57,18 +58,21 @@ def analyze_with_ai(text: str) -> bool:
 أجب بكلمة واحدة فقط: YES أو NO.
 """
     try:
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.0
-            },
-            timeout=3
-        )
-        if response.status_code == 200:
-            result = response.json()["choices"][0]["message"]["content"].strip().upper()
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = json.dumps({
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0
+        }).encode("utf-8")
+
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=3) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            result = res_data["choices"][0]["message"]["content"].strip().upper()
             return "YES" in result
     except Exception as e:
         print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
@@ -113,7 +117,6 @@ async def process_message(bot, message: Message):
     if not raw_text or len(raw_text) < 5:
         return
 
-    # الفحص بالذكاء الاصطناعي
     is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_customer:
         return
