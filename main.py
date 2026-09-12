@@ -2,10 +2,10 @@ import os
 import asyncio
 import hashlib
 import json
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
+import google.generativeai as genai
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
@@ -45,6 +45,9 @@ def run_dummy_server():
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
@@ -87,26 +90,14 @@ def analyze_with_ai(text):
 {{"is_request": true, "type": "ride", "confidence": 0.90}}
 """
 
-    # تم تصحيح الموديل إلى gemini-1.5-flash
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"response_mime_type": "application/json"}
-    }
-
     try:
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
 
-        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        raw_text = response.text.strip()
         ai = json.loads(raw_text)
 
         is_req = bool(ai.get("is_request", False))
@@ -221,7 +212,7 @@ async def main():
             dialogs_count += 1
         print(f"🌐 تم المزامنة بنجاح مع {dialogs_count} محادثة ومجموعة وقناة!", flush=True)
 
-        print("🚀 [SUCCESS] النظام يعمل الآن بكفاءة وبدون أخطاء!", flush=True)
+        print("🚀 [SUCCESS] النظام يعمل الآن بنجاح مع Gemini الرسمية!", flush=True)
         await asyncio.Event().wait()
     except Exception as e:
         print(f"❌ [LOGIN ERROR] فشل الاتصال: {e}", flush=True)
@@ -234,4 +225,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except Exception as e:
         print(f"❌ [CRITICAL ERROR]: {e}", flush=True)
-
