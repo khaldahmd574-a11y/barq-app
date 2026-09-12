@@ -15,7 +15,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Bot is alive 24/7!")
+        self.wfile.write(b"Barq Bot is Awake 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -37,17 +37,17 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 def analyze_with_ai(text: str) -> bool:
     if not GROQ_API_KEY:
-        return False
+        return True
 
     prompt = f"""
-أنت مساعد ذكي متخصص في التمييز بين طلبات التوصيل الإعلان والتنبيهات.
+أنت مساعد ذكي متخصص في التمييز بين طلبات التوصيل والإعلانات والتنبيهات.
 حدد هل النص التالي عبارة عن "طلب توصيل مشوار/بضائع/سائق من زبون حقيقي" أم لا؟
 
 قواعد الاستبعاد الصارمة (أجب بـ NO فوراً إذا تحققت):
 1. إعلانات الخدمات الحكومية أو المعاملات مثل (إجازات مرضية، سكني، ترفيع، توثيق، منصة صحتي، إنجاز).
 2. إعلانات التوظيف، التعارف، المسيار، والربح أو التسويق.
-3. التنبيهات الإدارية وقوانين المجموعات.
-4. منشورات السائقين الذين يعرضون التوصيل (مثل: طالع من...، متوفر توصيل).
+3. التنبيهات الإدارية وقوانين المجموعات وترحيب البوتات.
+4. منشورات السائقين الذين يعرضون التوصيل (مثل: طالع من...، متوفر توصيل، انا سواق).
 
 الشرط الوحيد للقبول (أجب بـ YES):
 - أن يكون صاحب الرسالة (زبون) يطلب سائقاً، مشواراً، أو توصيل طلبات لنفسه بوضوح.
@@ -76,8 +76,7 @@ def analyze_with_ai(text: str) -> bool:
             return "YES" in result
     except Exception as e:
         print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
-    
-    return False
+        return True
 
 PROCESSED_MESSAGES = set()
 PROCESSED_REQUEST_HASHES = set()
@@ -114,7 +113,7 @@ async def process_message(bot, message: Message):
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text or len(raw_text) < 5:
+    if not raw_text or len(raw_text) < 4:
         return
 
     is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
@@ -168,21 +167,6 @@ async def process_message(bot, message: Message):
         except Exception as e:
             print(f"❌ خطأ توجيه: {e}")
 
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=60):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"⚠️ خطأ الفحص الدوري: {e}")
-            
-        await asyncio.sleep(5)
-
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
@@ -202,15 +186,13 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.all)
+    @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("✅ تم التشغيل: تفعيل الذكاء الاصطناعي بنجاح.")
-
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
+    print("🚀 البوت شغال بذكاء Groq وتصفية شاملة للإعلانات 24/7.")
 
     await asyncio.Event().wait()
 
