@@ -46,8 +46,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = 39120728
 API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 
-# الموديل المستقر والأحدث
-GEMINI_MODEL = "gemini-2.5-flash"
+# الموديل المطلوب والمقترح في رسالة الخطأ لديك
+GEMINI_MODEL = "gemini-3.6-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -193,4 +193,3 @@ if __name__ == "__main__":
     t = threading.Thread(target=run_dummy_server, daemon=True)
     t.start()
     asyncio.run(main())
-
