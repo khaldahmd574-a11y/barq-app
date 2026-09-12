@@ -2,8 +2,6 @@ import os
 import asyncio
 import re
 import hashlib
-import json
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
@@ -15,7 +13,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"Barq Bot is Awake 24/7!")
+        self.wfile.write(b"Barq Test Bot is Alive!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -31,52 +29,12 @@ SESSION_STRING = os.environ.get("SESSION_STRING")
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 BOT_TOKEN = "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
+# عزل الذكاء الاصطناعي: قبول كل الرسائل فوراً لغرض الاختبار
 def analyze_with_ai(text: str) -> bool:
-    if not GROQ_API_KEY:
-        return True
-
-    prompt = f"""
-أنت مساعد ذكي متخصص في التمييز بين طلبات التوصيل والإعلانات والتنبيهات.
-حدد هل النص التالي عبارة عن "طلب توصيل مشوار/بضائع/سائق من زبون حقيقي" أم لا؟
-
-قواعد الاستبعاد الصارمة (أجب بـ NO فوراً إذا تحققت):
-1. إعلانات الخدمات الحكومية أو المعاملات مثل (إجازات مرضية، سكني، ترفيع، توثيق، منصة صحتي، إنجاز).
-2. إعلانات التوظيف، التعارف، المسيار، والربح أو التسويق.
-3. التنبيهات الإدارية وقوانين المجموعات وترحيب البوتات.
-4. منشورات السائقين الذين يعرضون التوصيل (مثل: طالع من...، متوفر توصيل، انا سواق).
-
-الشرط الوحيد للقبول (أجب بـ YES):
-- أن يكون صاحب الرسالة (زبون) يطلب سائقاً، مشواراً، أو توصيل طلبات لنفسه بوضوح.
-
-الرسالة:
-"{text}"
-
-أجب بكلمة واحدة فقط: YES أو NO.
-"""
-    try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = json.dumps({
-            "model": "llama-3.3-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0
-        }).encode("utf-8")
-
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=3) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            result = res_data["choices"][0]["message"]["content"].strip().upper()
-            return "YES" in result
-    except Exception as e:
-        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}")
-        return True
+    return True
 
 PROCESSED_MESSAGES = set()
 PROCESSED_REQUEST_HASHES = set()
@@ -113,11 +71,7 @@ async def process_message(bot, message: Message):
         return
 
     raw_text = message.text or message.caption or ""
-    if not raw_text or len(raw_text) < 4:
-        return
-
-    is_customer = await asyncio.to_thread(analyze_with_ai, raw_text)
-    if not is_customer:
+    if not raw_text or len(raw_text) < 3:
         return
 
     request_hash = make_request_fingerprint(raw_text)
@@ -134,14 +88,14 @@ async def process_message(bot, message: Message):
     if message.from_user:
         if message.from_user.username:
             user_url = f"https://t.me/{message.from_user.username}"
-            user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+            user_label = f"💬 المحادثة (@{message.from_user.username})"
         else:
             user_url = f"tg://openmessage?user_id={message.from_user.id}"
-            user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+            user_label = f"💬 المحادثة ({message.from_user.first_name or 'زبون'})"
         row.append(InlineKeyboardButton(user_label, url=user_url))
 
     if message.link:
-        row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+        row.append(InlineKeyboardButton("📩 الرابط الأصلي", url=message.link))
 
     if row:
         buttons.append(row)
@@ -192,7 +146,7 @@ async def main():
 
     await userbot.start()
     await bot.start()
-    print("🚀 البوت شغال بذكاء Groq وتصفية شاملة للإعلانات 24/7.")
+    print("🚀 تم التشغيل في وضع الاختبار (مباشر بدون ذكاء اصطناعي).")
 
     await asyncio.Event().wait()
 
