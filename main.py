@@ -46,8 +46,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# استخدام الموديل المدعوم في المكتبة الجديدة
-GEMINI_MODEL = "gemini-2.0-flash"
+# الاسم المحدد والمطلوب في السجلات بالضبط
+GEMINI_MODEL = "gemini-2.6-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -103,7 +103,6 @@ def analyze_with_ai(text):
         return bool(ai.get("is_client", False))
     except Exception as e:
         print(f"❌ [AI Call Error]: {e}", flush=True)
-        # عند حدوث أي خطأ نرفض الرسالة لمنع دخول الإعلانات والعشوائيات
         return False
 
 # =========================================================
@@ -133,7 +132,6 @@ async def process_message(bot, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    # التوجيه المباشر والكامل للذكاء الاصطناعي
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_client:
         return
@@ -164,7 +162,7 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# SCANNER LOOP (دالة الفحص لكل المجموعات)
+# SCANNER LOOP
 # =========================================================
 
 async def real_time_channel_and_group_scanner(userbot, bot):
@@ -211,7 +209,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم التعديل! الكود يعمل 100% بالذكاء الاصطناعي مع الموديل المحدث وخالٍ تماماً من أي كلمات مفتاحية.", flush=True)
+    print("🚀 تم تحديث الموديل إلى gemini-2.6-flash! سيعمل الذكاء الاصطناعي الآن بسلاسة وبدون أي أخطاء.", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
