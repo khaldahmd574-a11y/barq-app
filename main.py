@@ -18,7 +18,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Fast Active 24/7!")
+        self.wfile.write(b"Barq Pure AI Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -30,7 +30,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION
+# CONFIGURATION & GROQ SETUP
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -43,48 +43,53 @@ groq_client = None
 if GROQ_API_KEY:
     try:
         groq_client = Groq(api_key=GROQ_API_KEY)
-        print("✅ تم الاتصال بـ Groq بنجاح", flush=True)
+        print("✅ تم الاتصال بمكتبة Groq للذكاء الاصطناعي بنجاح", flush=True)
     except Exception as e:
-        print(f"⚠️ تنبيه Groq: {e}", flush=True)
+        print(f"❌ [Groq Error] {e}", flush=True)
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_MSG_IDS = set()
 PROCESSED_TEXT_HASHES = set()
 
-# نمط كلمات مفتاحية للتصفية الفورية الفائقة السرعة
-FAST_KEYWORDS_PATTERN = re.compile(
-    r'(توصيل|مشوار|سواق|سائق|نوصل|من يوصل|مطلوب سواق|مطلوب سائق|ابغى سواق|ابي سواق|احتاج سواق|تاكسي|سيارة|خاص|باص|مندوب)',
-    re.IGNORECASE
-)
-
 # =========================================================
-# ULTRA FAST DETECTION ENGINE
+# PURE GROQ AI ENGINE (NO KEYWORDS)
 # =========================================================
 
-def fast_check_request(text: str) -> bool:
-    # 1. استبعاد الأرقام (عروض سواقين)
+def analyze_with_pure_ai(text: str) -> bool:
+    # استبعاد أرقام الجوال فوراً لأنها عروض سائقين وليست طلبات زبائن
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False
 
-    # 2. فحص سريع جداً بالكلمات (سريع كالبرق)
-    if FAST_KEYWORDS_PATTERN.search(text):
-        return True
+    if not GROQ_API_KEY or not groq_client:
+        return False
 
-    # 3. فحص الذكاء الاصطناعي للرسائل الغامضة
-    if GROQ_API_KEY and groq_client:
-        prompt = f"""هل هذه الرسالة طلب توصيل أو بحث عن سائق أو مشوار من زبون؟ أجب بـ YES أو NO فقط.\nالرسالة: "{text}"\nالجواب:"""
+    prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية طلبات التوصيل والمشاوير في السعودية.
+حدد هل الرسالة التالية صادرة من زبون يبحث عن (سائق، توصيل، مشوار، باص، مندوب، نقل)؟
+أجب بكلمة واحدة فقط: YES أو NO.
+
+الرسالة: "{text}"
+الجواب:"""
+
+    # الموديلات المعتمدة رسمياً في Groq لمنع أي خطأ 404
+    active_ai_models = [
+        "llama-3.3-70b-versatile",
+        "llama3-8b-8192",
+        "mixtral-8x7b-32768"
+    ]
+
+    for model_name in active_ai_models:
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
+                model=model_name,
                 temperature=0,
                 max_tokens=2
             )
             raw_res = response.choices[0].message.content.strip().upper()
             return "YES" in raw_res
         except Exception:
-            pass
+            continue
 
     return False
 
@@ -96,7 +101,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # منع التكرار برقم الرسالة
+    # 1. منع التكرار بواسطة ID الرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MSG_IDS:
         return
@@ -105,7 +110,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_MSG_IDS) > 20000:
         PROCESSED_MSG_IDS.clear()
 
-    # تجاهل رسائل الحساب الشخصي
+    # 2. تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -114,12 +119,13 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 3:
         return
 
-    # منع تكرار نفس النص إذا نُشر في أكثر من قروب بنفس الوكالة
+    # 3. منع تكرار نفس النص إذا نُشر في أكثر من قروب
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
         return
 
-    if fast_check_request(clean_text):
+    # 4. التقييم الشامل عبر الذكاء الاصطناعي فقط
+    if analyze_with_pure_ai(clean_text):
         PROCESSED_TEXT_HASHES.add(text_hash)
         if len(PROCESSED_TEXT_HASHES) > 10000:
             PROCESSED_TEXT_HASHES.clear()
@@ -144,7 +150,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-        # إرسال نص الرسالة الصافي فقط
+        # إرسال النص الصافي فقط بدون اسم القروب
         for user in TARGET_USERS:
             sent = False
             if bot:
@@ -183,7 +189,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# MAIN
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
@@ -211,12 +217,13 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع المباشر لكافة القروبات والقنوات
     @userbot.on_message(filters.group | filters.channel)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("⚡ النظام يعمل الآن بأقصى سرعة وبدون أي أخطاء!", flush=True)
+    print("🤖 تم التشغيل بنجاح! الذكاء الاصطناعي يحلل كافة القروبات الآن دون تكرار ودون أسماء قروبات.", flush=True)
 
     await asyncio.Event().wait()
 
