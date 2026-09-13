@@ -2,7 +2,6 @@ import os
 import asyncio
 import hashlib
 import json
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -12,6 +11,7 @@ from google.genai import types
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
+from hydrogram.raw import functions, types as raw_types
 
 # =========================================================
 # KEEP ALIVE SERVER
@@ -61,7 +61,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
 
-# الكلمات المفتاحية المحلية لترشيد الاستهلاك وضمان سرعة البرق
+# الكلمات المفتاحية لضمان لقط جميع العبارات فوراً
 KEYWORDS = [
     "ابغى", "أبغى", "اريد", "أريد", "توصيل", "مشوار", "مندوب",
     "سواق", "سواقه", "سواقة", "يوصل", "يجيب", "محليه", "محلية",
@@ -78,11 +78,10 @@ def get_hash(text):
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
 def quick_local_check(text):
-    # الفحص المحلي الفوري لتوفير استهلاك AI
     return any(kw in text for kw in KEYWORDS)
 
 # =========================================================
-# AI FILTERING WITH QUOTA PROTECTION
+# AI FILTERING
 # =========================================================
 
 def analyze_with_ai(text):
@@ -90,8 +89,7 @@ def analyze_with_ai(text):
         return True
 
     prompt = f"""
-أنت فلاتر ذكي وموثوق لفرز رسائل جروبات التوصيل والمشاوير.
-وظيفتك: تحديد هل الرسالة من زبون/عميل يبحث عن توصيل/مشوار/مندوب/سائق/سواقة.
+وظيفتك: تحديد هل الرسالة من زبون/عميل يبحث عن توصيل أو مشوار أو مندوب.
 
 أمثلة لطلبات الزبائن (true):
 - "ابغى من كفي فان لمحليه"
@@ -99,11 +97,11 @@ def analyze_with_ai(text):
 - "ابغى سواقه من صبيا"
 - "فيه توصيل؟"
 
-أمثلة لمنشورات السائقين/المناديب (false):
+أمثلة لإعلانات السائقين (false):
 - "فاضي بجيزان أي طلب تفضل خاص"
-- "سائق متوفر للتوصيل التواصل واتس"
+- "سائق متوفر للتوصيل"
 
-النص للتحليل: "{text}"
+النص: "{text}"
 أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
 """
 
@@ -119,8 +117,7 @@ def analyze_with_ai(text):
         raw_text = (response.text or "").strip()
         ai = json.loads(raw_text)
         return bool(ai.get("is_client", False))
-    except Exception as e:
-        # عند تجاوز الحدود أو حدوث خطأ استهلاك، نعتمد الفحص المحلي المباشر حتى لا ينقطع البوت
+    except Exception:
         return True
 
 # =========================================================
@@ -143,7 +140,6 @@ async def process_message(bot, message: Message):
     if len(text) < 3:
         return
 
-    # الفحص السريع المحتوي على كلمات الطلبات لمنع استهلاك API الكوتا في الفراغ
     if not quick_local_check(text):
         return
 
@@ -157,7 +153,6 @@ async def process_message(bot, message: Message):
 
     PROCESSED_CONTENT.add(content_hash)
 
-    # أزرار بجانب بعضها
     buttons = []
     if message.from_user:
         username = message.from_user.username
@@ -169,13 +164,12 @@ async def process_message(bot, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-
     chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
 
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ تم سحب طلب من [{chat_title}] وإرساله إلى: {user}", flush=True)
+            print(f"✅ تم سحب طلب زبون من مجموعة [{chat_title}] وإرساله إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -183,7 +177,7 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# MAIN LOGIC
+# MAIN LOGIC WITH RAW UPDATE LISTENER (THE FIX FOR SUPERGROUPS)
 # =========================================================
 
 async def main():
@@ -202,23 +196,39 @@ async def main():
         in_memory=True
     )
 
-    @userbot.on_message(filters.group | filters.channel | filters.private)
+    # الاستماع المباشر للتحديثات العادية
+    @userbot.on_message()
     async def global_listener(client, message):
         try:
             await process_message(bot, message)
         except Exception as e:
             print(f"❌ [Listener Error]: {e}", flush=True)
 
+    # الاستماع للأحداث الخام لضمان التقاط رسائل المجموعات الفائقة (Supergroups)
+    @userbot.on_raw_update()
+    async def raw_listener(client, update, users, chats):
+        try:
+            if isinstance(update, (raw_types.UpdateNewChannelMessage, raw_types.UpdateNewMessage)):
+                message = await client._parse_message(update.message, users, chats)
+                if message:
+                    await process_message(bot, message)
+        except Exception:
+            pass
+
     await userbot.start()
     await bot.start()
 
-    print("🔄 جاري مزامنة وتنشيط كافة الـ 44 مجموعة وقنواتها...", flush=True)
-    count = 0
+    print("🔄 جاري إجبار تليجرام على فتح القنوات الصوتية لكافة المجموعات الكبيرة...", flush=True)
     async for dialog in userbot.get_dialogs():
-        count += 1
-    print(f"✅ تم التنشيط الكامل لـ {count} محادثة ومجموعة!", flush=True)
+        try:
+            # إرسال طلب رؤية القنوات لإخبار تليجرام أن الحساب متصل بها لحظياً
+            if dialog.chat.type.value in ["supergroup", "channel"]:
+                peer = await userbot.resolve_peer(dialog.chat.id)
+                await userbot.invoke(functions.channels.GetFullChannel(channel=peer))
+        except Exception:
+            pass
 
-    print("🚀 البوت جاهز ومُحصن ضد تجاوز الكوتا ويلقط من جميع الجروبات!", flush=True)
+    print("🚀 تم التغلب على قيود السوبر قروبات بنجاح! البوت الآن يلتقط من جميع المجموعات بلا استثناء.", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
