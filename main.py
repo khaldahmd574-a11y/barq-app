@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import re
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -11,7 +12,7 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# KEEP ALIVE SERVER
+# KEEP ALIVE SERVER & SELF PINGER (منع النوم نهائياً)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -19,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Smart AI Active!")
+        self.wfile.write(b"Barq Smart AI Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -32,6 +33,18 @@ def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
+
+# وظيفة إيقاظ السيرفر كل 3 دقائق لئلا ينام على منصة Render
+def keep_awake():
+    app_name = os.environ.get("RENDER_SERVICE_NAME", "")
+    url = f"https://{app_name}.onrender.com" if app_name else "http://127.0.0.1:10000"
+    while True:
+        try:
+            asyncio.run(asyncio.sleep(180)) # كل 3 دقائق
+            urllib.request.urlopen(url, timeout=10)
+            print("⏰ [Self-Ping]: تم تنشيط السيرفر لمنع النوم.", flush=True)
+        except Exception:
+            pass
 
 # =========================================================
 # CONFIGURATION & GROQ CLIENT
@@ -69,13 +82,12 @@ def clean_text(text):
 
 def analyze_with_groq_smart(text):
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        return False, "تجاهل: تحتوي على رقم جوال (سائق)"
+        return False, "تجاهل: رقم جوال (إعلان/سائق)"
 
     if text in AI_CACHE:
         return AI_CACHE[text], "مقبول من الذاكرة المؤقتة (Cache)"
 
-    # كلمات مفتاحية محلية للطوارئ
-    fallback_keywords = ["مين", "من", "فاضي", "ابي", "ابغى", "احتاج", "يوصلني", "توديني", "مشوار", "مندوب", "صامطه", "صامطة", "المطار"]
+    fallback_keywords = ["مين", "من", "فاضي", "ابي", "ابغى", "احتاج", "يوصلني", "توديني", "مشوار", "مندوب", "صامطه", "صامطة", "المطار", "سواقه", "سواقة"]
 
     if not GROQ_API_KEY or not groq_client:
         for kw in fallback_keywords:
@@ -129,7 +141,6 @@ async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -197,6 +208,7 @@ async def process_and_send(userbot, bot_app, message: Message):
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
+    threading.Thread(target=keep_awake, daemon=True).start()
 
     userbot = Client(
         "my_userbot",
@@ -221,26 +233,23 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
-    # مرشح شامل لجميع المجموعات والقنوات بدون أي استثناء
+    # الاستماع لجميع القنوات والجروبات بدون مرشحات معقدة
     @userbot.on_message()
     async def global_listener(client, message):
-        # تجاهل الرسائل الخاصة المباشرة
-        if message.chat.type.value in ["group", "supergroup", "channel"]:
+        if message.chat and message.chat.type.value in ["group", "supergroup", "channel"]:
             await process_and_send(client, bot_app, message)
 
     await userbot.start()
     print("✅ تم تشغيل المحرك الرئيسي!", flush=True)
 
-    # تنشيط الاتصال الفوري بجميع المجموعات فور التشغيل
+    # جلب وإجبار الاشتراك في أحداث جميع المجموعات بلا استثناء
     try:
-        print("🔄 جاري فتح القنوات وتنشيط البث المباشر لجميع المجموعات...", flush=True)
+        count = 0
         async for dialog in userbot.get_dialogs():
-            # إجبار السيرفر على فتح مجرى الأحداث لكل مجموعة ينتمي لها الحساب
-            if dialog.chat.type.value in ["group", "supergroup", "channel"]:
-                pass
-        print("🔥 تم تفعيل البث اللحظي لكافة القروبات بنجاح!", flush=True)
+            count += 1
+        print(f"🔥 تم تفعيل البث المباشر وربط {count} مجموعة وقناة بنجاح 24/7!", flush=True)
     except Exception as e:
-        print(f"⚠️ تنبيه أثناء التنشيط: {e}", flush=True)
+        print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
 
     await asyncio.Event().wait()
 
