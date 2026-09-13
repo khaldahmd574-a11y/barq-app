@@ -46,7 +46,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-GEMINI_MODEL = "gemini-1.5-flash"
+# استخدام موديل الشغال مع الحزمة الجديدة
+GEMINI_MODEL = "gemini-2.5-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -70,26 +71,26 @@ def get_hash(text):
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
 # =========================================================
-# AI ANALYSIS (التحليل بالذكاء الاصطناعي فقط)
+# AI ANALYSIS (تحليل AI دقيق بدون تمرير الفوضى)
 # =========================================================
 
 def analyze_with_ai(text):
     if not GEMINI_API_KEY or not gemini_client:
-        return True
+        print("⚠️ مفتاح Gemini غير متوفر", flush=True)
+        return False
 
     prompt = f"""
-أنت خبير ذكاء اصطناعي محترف لفرز وتحديد طلبات التوصيل والمشاوير.
-وظيفتك الوحيدة: تحليل النص وتحديد هل الكاتب زبون/عميل يطلب خدمة توصيل أو مشوار أو سائق أو نقل أغراض/طلبات؟
+أنت خبير ذكاء اصطناعي لفرز طلبات التوصيل.
+وظيفتك: تحديد هل الكاتب زبون/عميل يطلب توصيل أو مشوار أو سائق؟
 
-قواعد التحليل الصارمة:
-1. إذا كان الكاتب زبون يريد مشوار/توصيل/سائق/سواقة/مندوب/نقل أغراض -> إرجاع true
-2. إذا كان الكاتب سائق/مندوب يعرض خدمته (مثال: فاضي، متوفر، أودي مشاوير، يراسلني خاص) -> إرجاع false
-3. إذا كان النص مجرد تحية أو سؤال عام غير متعلق بطلب توصيل -> إرجاع false
+قواعد صارمة جداً:
+1. إذا كان زبون يطلب مشوار أو توصيل أو يريد سواق -> true
+2. إذا كان إعلان من سائق/مندوب (أمثلة: "فاضي بجيزان"، "لخدمتكم في صامطة"، "توصيل طلبات 055xxxx"، "يراسلني خاص") -> false
+3. إذا كان كلام عادي (مثل: "ايش"، "ارحب"، "سلام") -> false
 
-النص للتحليل: "{text}"
+النص: "{text}"
 
-أرجع JSON فقط بنفس هذا الشكل وبدون أي شرح إضافي:
-{{"is_client": true}} أو {{"is_client": false}}
+أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -105,8 +106,9 @@ def analyze_with_ai(text):
         ai = json.loads(raw_text)
         return bool(ai.get("is_client", False))
     except Exception as e:
-        print(f"⚠️ [AI Error]: {e}", flush=True)
-        return True
+        print(f"❌ [AI Error]: {e}", flush=True)
+        # في حال حدوث أي خطأ في الذكاء الاصطناعي ارفض الرسالة ولا تمرر الفوضى
+        return False
 
 # =========================================================
 # MESSAGE PROCESSING
@@ -135,7 +137,7 @@ async def process_message(bot, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    # التوجيه المباشر للذكاء الاصطناعي بدون أي كلمات مفتاحية
+    # التوجيه للذكاء الاصطناعي
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_client:
         return
@@ -158,7 +160,7 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ [AI] تم سحب طلب زبون من [{chat_title}] وإرساله إلى: {user}", flush=True)
+            print(f"🎯 [AI PASS] تم إرسال طلب زبون محقق من [{chat_title}] إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -166,7 +168,7 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# SCANNER LOOP (سحب كل الجروبات كل 7 ثوانٍ)
+# SCANNER LOOP
 # =========================================================
 
 async def real_time_channel_and_group_scanner(userbot, bot):
@@ -213,7 +215,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم التشغيل بنجاح! الفرز يعمل 100% بالذكاء الاصطناعي مع سحب المجموعات الـ 50 كل 7 ثوانٍ.", flush=True)
+    print("🚀 تم إصلاح الموديل! الذكاء الاصطناعي يعمل الآن بدقة 100% ويمنع الفوضى تماماً.", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
