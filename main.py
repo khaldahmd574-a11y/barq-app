@@ -1,7 +1,7 @@
 import os
 import asyncio
 import hashlib
-import json
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Free Groq AI Active!")
+        self.wfile.write(b"Barq Bot Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -64,54 +64,69 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# SMART HYBRID ANALYSIS (فحص ذكي مزدوج لا يخطئ)
+# SMART FILTERING SYSTEM (تمييز الزبون عن السائق)
 # =========================================================
 
-# كلمات عروض السائقين الصريحة فقط للاستبعاد
-DRIVER_EXCLUDES = [
-    "متوفر توصيل", "أنا سائق", "انا سائق", "سيارة مع سائق", 
-    "يتوفر لدينا توصيل", "نوصل طلباتكم", "أبشر بالخدمة"
+# مؤشرات صريحة لأصحاب العروض والسائقين
+DRIVER_KEYWORDS = [
+    "تفضل خاص", "تفضلي خاص", "تواصل خاص", "تواصل معي", "خاص", 
+    "متوفر", "متوفره", "متوفرين", "جاهز", "نوصل", "توصيل طلبات", 
+    "أنا سائق", "انا سائق", "خدمة توصيل", "أسعار مناسبة", "اسعار مناسبه",
+    "نوصلكم", "جاهزين", "تحت خدمتكم", "ابشر بالخير", "أبشر بالخير"
 ]
 
-# مؤشرات سياق الطلب المباشر
-CLIENT_INDICATORS = [
-    "احتاج", "أحتاج", "ابي", "أبي", "مطلوب", "مين فاضي", "من فاضي", 
-    "يوصلني", "يرجعني", "يوصل", "مشوار", "توصيله", "توصيلة", "في احد", "سواق"
+# مؤشرات طلب العميل المباشر
+CLIENT_KEYWORDS = [
+    "ابغى", "أبغى", "ابي", "أبي", "احتاج", "أحتاج", "مطلوب", 
+    "مين فاضي", "من فاضي", "حد فاضي", "أحد فاضي", "من يوصلني", "مين يوصلني",
+    "يرجعني", "يوصلني", "يوصل صبيـا", "يوصل صامطه", "في احد يوصل", "في أحد يوصل"
 ]
 
-def analyze_smart(text):
-    text_lower = text.lower()
+def analyze_message_type(text):
+    text_clean = text.lower()
 
-    # 1. إذا كان إعلان سائق صريح -> استبعاد
-    for ex in DRIVER_EXCLUDES:
-        if ex in text_lower:
-            return False, "إعلان سائق"
+    # 1. فحص وجود رقم جوال -> غالباً سائق يعرض رقم تواصله
+    if re.search(r'(05\d{8}|\+?9665\d{8})', text):
+        return False, "إعلان سائق (يحتوي على رقم جوال)"
 
-    # 2. فحص سياق العميل الفوري (إذا احتوت أي مؤشر عميل تعتبر صحيحة مباشرة)
-    for ind in CLIENT_INDICATORS:
-        if ind in text_lower:
-            return True, "مطابقة سياق العميل الفوري"
+    # 2. فحص كلمات السائق العارضة للخدمة
+    for drv in DRIVER_KEYWORDS:
+        if drv in text_clean:
+            return False, f"عرض سائق ({drv})"
 
-    # 3. الاستعانة بالذكاء الاصطناعي للرسائل المبهمة فقط
+    # 3. فحص كلمات العميل المباشرة
+    for cli in CLIENT_KEYWORDS:
+        if cli in text_clean:
+            return True, f"طلب عميل صريح ({cli})"
+
+    # 4. الاستعانة بالذكاء الاصطناعي للرسائل غير الواضحة
     if GROQ_API_KEY and groq_client:
-        prompt = f"""Is this message a request from a customer looking for a taxi/ride/delivery service?
-Message: "{text}"
-Reply with ONLY 'YES' or 'NO'."""
-        
+        prompt = f"""
+تقييم رسالة تليجرام:
+هل صاحب هذه الرسالة زبون/عميل يبحث عن سائق ليقوم بتوصيله؟ أم أنه سائق يعرض خدمته؟
+
+الرسالة: "{text}"
+
+أجب فقط بكلمة واحدة:
+CUSTOMER : إذا كانت الرسالة طلب توصيل من زبون.
+DRIVER : إذا كانت من سائق أو تحتوي عرض خدمة أو إعلان.
+"""
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model="llama-3.3-70b-versatile",
                 temperature=0,
-                max_tokens=3
+                max_tokens=5
             )
             res = response.choices[0].message.content.strip().upper()
-            if "YES" in res:
-                return True, "تحليل Groq AI"
+            if "CUSTOMER" in res:
+                return True, "ذكاء اصطناعي (عميل)"
+            else:
+                return False, "ذكاء اصطناعي (سائق/غير مطاطق)"
         except Exception:
             pass
 
-    return False, "غير مطابقة"
+    return False, "لم تتطابق مع طلب عميل"
 
 # =========================================================
 # MESSAGE PROCESSING & FORWARDING
@@ -140,12 +155,12 @@ async def process_and_send(userbot, bot_app, message: Message):
     chat_title = message.chat.title or message.chat.first_name or "مجموعة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
-    # التحليل المزدوج
-    is_client, reason = analyze_smart(raw_text)
-    print(f"🎯 [النتيجة]: {is_client} | السبب: ({reason})", flush=True)
+    # التحليل والفرز
+    is_client, reason = analyze_message_type(raw_text)
+    print(f"🎯 [التقييم]: {is_client} | السبب: {reason}", flush=True)
 
     if not is_client:
-        print(f"⛔ [تجاهل الرسالة]: {reason}", flush=True)
+        print(f"⛔ [تجاهل]: {reason}", flush=True)
         return
 
     PROCESSED_CONTENT.add(content_hash)
@@ -163,17 +178,24 @@ async def process_and_send(userbot, bot_app, message: Message):
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
     text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
 
+    # الإرسال عبر البوت أولاً (bot_app)
     for user in TARGET_USERS:
-        try:
-            await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ [تم الإرسال بنجاح عبر اليوزربوت إلى {user}]", flush=True)
-        except Exception as e1:
-            if bot_app:
-                try:
-                    await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-                    print(f"✅ [تم الإرسال بنجاح عبر البوت إلى {user}]", flush=True)
-                except Exception as e2:
-                    print(f"❌ [فشل الإرسال إلى {user}]: {e1} | {e2}", flush=True)
+        sent_successfully = False
+        if bot_app:
+            try:
+                await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+                print(f"🤖 [تم الإرسال عبر البوت إلى {user}]", flush=True)
+                sent_successfully = True
+            except Exception as e_bot:
+                print(f"⚠️ [فشل إرسال البوت إلى {user}]: {e_bot}", flush=True)
+
+        # البديل: الإرسال عبر الحساب إذا تعذر البوت
+        if not sent_successfully:
+            try:
+                await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+                print(f"👤 [تم الإرسال عبر الحساب إلى {user}]", flush=True)
+            except Exception as e_user:
+                print(f"❌ [فشل الإرسال عبر الحساب والبوّت إلى {user}]: {e_user}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -201,20 +223,21 @@ async def main():
                 in_memory=True
             )
             await bot_app.start()
+            print("✅ تم تشغيل البوت المساعد للتحويل بنجاح!", flush=True)
         except Exception as e:
-            print(f"⚠️ لم يتم تشغيل البوت المساعد: {e}", flush=True)
+            print(f"⚠️ خطأ في تشغيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل نظام التصفية المزدوج الذكي بنجاح!", flush=True)
+    print("✅ تم تشغيل السكربت ونظام التصفية المحدث!", flush=True)
 
     try:
         async for dialog in userbot.get_dialogs(limit=200):
             pass
-        print("✅ تم ربط جميع المجموعات والقنوات بنجاح!", flush=True)
+        print("✅ تم ربط المجموعات بنجاح!", flush=True)
     except Exception as e:
         print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
 
@@ -222,3 +245,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
