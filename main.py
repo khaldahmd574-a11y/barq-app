@@ -36,7 +36,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# SETTINGS
+# SETTINGS & DYNAMIC MODEL DISCOVERY
 # =========================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -46,15 +46,23 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# الاسم المحدد والمطلوب في السجلات بالضبط
-GEMINI_MODEL = "gemini-2.6-flash"
 gemini_client = None
+WORKING_MODEL = None
 
 if GEMINI_API_KEY:
     try:
         gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        # البحث التلقائي عن الموديل المتاح في حسابك لتفادي 404
+        available_models = [m.name for m in gemini_client.models.list()]
+        for m in available_models:
+            if "flash" in m:
+                WORKING_MODEL = m
+                break
+        if not WORKING_MODEL and available_models:
+            WORKING_MODEL = available_models[0]
+        print(f"✅ تم اكتشاف الموديل الشغال في حسابك تلقائياً: {WORKING_MODEL}", flush=True)
     except Exception as e:
-        print(f"❌ [Gemini Init Error] {e}", flush=True)
+        print(f"❌ [Gemini Discovery Error] {e}", flush=True)
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -71,7 +79,7 @@ def clean_text(text):
 # =========================================================
 
 def analyze_with_ai(text):
-    if not GEMINI_API_KEY or not gemini_client:
+    if not GEMINI_API_KEY or not gemini_client or not WORKING_MODEL:
         return False
 
     prompt = f"""
@@ -80,18 +88,18 @@ def analyze_with_ai(text):
 
 قواعد صارمة جداً:
 1. إذا كان زبون يطلب توصيل/مشوار/سائق -> true
-2. إذا كان سائق/مندوب يعرض خدمته (أمثلة: "فاضي"، "توصيل طلبات"، "لخدمتكم"، أرقام هواتف) -> false
+2. إذا كان سائق/مندوب يعرض خدمته -> false
 3. إذا كان كلام عام أو استفسارات لا تتعلق بطلب مشوار -> false
 
 النص للتحليل: "{text}"
 
-أرجع JSON فقط بنفس الشكل التالي ودون أي كلام إضافي:
+أرجع JSON فقط بالشكل التالي ودون أي كلام إضافي:
 {{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
         response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=WORKING_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -209,7 +217,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم تحديث الموديل إلى gemini-2.6-flash! سيعمل الذكاء الاصطناعي الآن بسلاسة وبدون أي أخطاء.", flush=True)
+    print("🚀 البوت يعمل الآن ويجلب الموديل الصحيح تلقائياً بدون أي أخطاء!", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
