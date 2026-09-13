@@ -56,6 +56,7 @@ TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
 
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
+AI_CACHE = {} # تخزين مؤقت لنتائج الذكاء الاصطناعي لمنع استهلاك الـ Rate Limit
 
 def clean_text(text):
     if not text:
@@ -63,65 +64,66 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# PURE AI ANALYSIS
+# ADVANCED GROQ AI ANALYSIS (محسن لمنع تجاوز الحد)
 # =========================================================
 
-def analyze_with_pure_ai(text):
-    # استبعاد أرقام الجوال فوراً
+def analyze_with_groq_smart(text):
+    # 1. استبعاد أرقام الجوال فوراً (عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        return False, "تجاهل: تحتوي على رقم جوال (سائق/إعلان)"
+        return False, "تجاهل: تحتوي على رقم جوال (سائق)"
+
+    # فحص الكاش لمنع استهلاك الـ API إذا تم تكرار الرسالة
+    if text in AI_CACHE:
+        return AI_CACHE[text], "مقبول من الذاكرة المؤقتة (Cache)"
 
     if not GROQ_API_KEY or not groq_client:
-        return False, "تجاهل: لا يوجد مفتاح AI"
+        return False, "تجاهل: لا يوجد مفتاح Groq"
 
-    prompt = f"""
-أنت نظام ذكاء اصطناعي لفرز رسائل مجموعات التوصيل في السعودية.
-وظيفتك: تحديد ما إذا كانت الرسالة عبارة عن "طلب توصيل / مشوار / بحث عن سائق أو مندوب" قادم من زبون فقط.
+    # برومبت دقيق وذكي جداً يفهم اللهجة السعودية تماماً وبأقل استهلاك رموز (Tokens)
+    prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل مجموعات تليجرام في السعودية.
+حدد هل الرسالة التالية هي "طلب توصيل / مشوار / بحث عن سواق أو مندوب" قادم من زبون؟
+أجب بكلمة واحدة فقط: YES أو NO.
 
-الرسائل المقبولة (أجب بـ YES):
-- "مندوب فاضي قريب من مخطط 5"
-- "سواقه توصلني بيش"
-- "فيه مندوب ف ابو عريش ؟"
-- "من يوديني المطار"
-- "احتاج احد يرجعني"
-- "سيارة توديني صامطه"
-- "ابي مشوار"
+الرسالة: "{text}"
+الجواب:"""
 
-الرسائل المرفوضة (أجب بـ NO):
-- السلام عليكم / هلا / تفضلي / شو في الجروب
-- "توصيل طلبات ومشاوير تواصل خاص"
-- "أنا سائق متوفر الآن"
-- أي كلام عام أو سوالف
-
-الرسالة المراد تحليلها: "{text}"
-
-أجب فقط بكلمة واحدة: YES إذا كانت طلب توصيل صريح من زبون، أو NO لغير ذلك.
-"""
-
-    models_to_try = [
-        "llama-3.3-70b-versatile",
+    # استخدام النماذج الأكثر استقراراً والأقل عرضة لتجاوز الحد (Rate Limit)
+    models = [
         "llama-3.1-8b-instant",
+        "llama3-8b-8192",
         "mixtral-8x7b-32768"
     ]
 
-    for model_name in models_to_try:
+    for model_name in models:
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
                 model=model_name,
                 temperature=0,
-                max_tokens=3
+                max_tokens=2
             )
             raw_res = response.choices[0].message.content.strip().upper()
-            if "YES" in raw_res:
-                return True, f"طلب توصيل مقبول ({model_name})"
-            elif "NO" in raw_res:
-                return False, f"ليست طلب توصيل ({model_name})"
-        except Exception:
+            
+            is_valid = "YES" in raw_res
+            # تخزين النتيجة في الكاش
+            AI_CACHE[text] = is_valid
+            if len(AI_CACHE) > 500:
+                AI_CACHE.clear()
+                
+            return is_valid, f"قرار Groq الذكي ({model_name})"
+        except Exception as e:
+            # إذا ظهر خطأ تجاوز الحد، ننتقل للنموذج الذي يليه تلقائياً
+            if "rate_limit" in str(e).lower() or "429" in str(e):
+                continue
             continue
 
-    # في حال فشل AI يتم التجاهل بدلاً من التمرير
-    return False, "فشل الذكاء الاصطناعي في الفحص"
+    # كاحتياط أخير إذا ضغطت كل نماذج Groq مؤقتاً، نعتمد على الكلمات المفتاحية الذكية لكي لا يضيع أي طلب
+    fallback_keywords = ["مين", "من", "فاضي", "ابي", "ابغى", "احتاج", "يوصلني", "توديني", "مشوار", "مندوب", "صامطه", "صامطة", "المطار"]
+    for kw in fallback_keywords:
+        if kw in text.lower():
+            return True, "مقبول عبر الطوارئ الذكية (بسبب ضغط Groq)"
+
+    return False, "غير مقبول (فشل المؤقت)"
 
 # =========================================================
 # MESSAGE PROCESSING & FORWARDING
@@ -131,7 +133,6 @@ async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل الرسائل الصادرة من الحساب الوهمي نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -154,9 +155,9 @@ async def process_and_send(userbot, bot_app, message: Message):
     chat_title = message.chat.title or message.chat.first_name or "مجموعة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
-    # تحليل الذكاء الاصطناعي
-    is_client, reason = analyze_with_pure_ai(raw_text)
-    print(f"🤖 [قرار الذكاء الاصطناعي]: {is_client} | السبب: {reason}", flush=True)
+    # تحليل الذكاء الاصطناعي الذكي
+    is_client, reason = analyze_with_groq_smart(raw_text)
+    print(f"🤖 [Groq AI]: {is_client} | السبب: {reason}", flush=True)
 
     if not is_client:
         print(f"⛔ [تجاهل]: {reason}", flush=True)
@@ -177,7 +178,6 @@ async def process_and_send(userbot, bot_app, message: Message):
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
     text_to_send = raw_text
 
-    # الإرسال عبر البوت الحصري
     for user in TARGET_USERS:
         sent = False
         if bot_app:
@@ -225,15 +225,13 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
-    # الاستماع فقط للمجموعات والقنوات (تم إلغاء private لمنع المحادثات الخاصة)
     @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل المحرك واقتصار الاستماع على الجروبات والقنوات فقط!", flush=True)
+    print("✅ تم تشغيل المحرك الذكي بنجاح مع حماية الحد اليومي!", flush=True)
 
-    # مزامنة جميع المجموعات والقنوات
     try:
         dialog_count = 0
         async for dialog in userbot.get_dialogs():
