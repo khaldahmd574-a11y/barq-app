@@ -1,7 +1,6 @@
 import os
 import asyncio
 import hashlib
-import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -64,32 +63,39 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# FREE AI ANALYSIS (GROQ) - تخفيف القيود
+# SMART GROQ AI ANALYSIS (بدون تعقيد JSON)
 # =========================================================
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY or not groq_client:
-        return True  # إذا لم يوجد مفتاح أرسل كل شيء
+        return True
 
     prompt = f"""
-أنت نظام ذكاء اصطناعي لفرز رسائل التليجرام.
-حدد هل الكاتب زبون/عميل يبحث عن خدمة توصيل، سائق، مشوار، أو يطلب مساعدة في التنقل؟
+أنت مساعد ذكي لفرز رسائل مجموعات التليجرام.
+مهمتك: تحديد ما إذا كانت الرسالة عبارة عن "طلب توصيل / مشوار / بحث عن سائق أو مندوب".
 
-القواعد:
-1. أي شخص يطلب توصيل، سائق، مشوار، سيارة، يطلب الذهاب لمكان، أو يسأل "مين فاضي/يوصلني" -> true
-2. فقط إذا كان سائق/مندوب يعرض خدمته بشكل صريح (مثال: "أنا سائق أربيل توصيل"، "موجود توصيل") -> false
+أمثلة لرسائل العميل (أرجع كلمة YES فوراً):
+- "ابي سواق يرجعني من المدرسة"
+- "مين فاضي يوصلني صامطه"
+- "ابي احد يوصلني صبيا"
+- "محتاج سيارة الحين"
+- "من فاضي مشوار"
+- "في مندوب يوصل"
 
-النص للتحليل: "{text}"
+أمثلة لرسائل السائق أو الإعلانات (أرجع كلمة NO):
+- "موجود توصيل صامطه وصبيا تواصل خاص"
+- "أنا سائق متوفر الآن"
+- "نوصل جميع الطلبات والمشاوير"
 
-أرجع JSON فقط بالشكل التالي ودون أي كلام إضافي:
-{{"is_client": true}} أو {{"is_client": false}}
+النص المراد تحليله: "{text}"
+
+أجب بكلمة واحدة فقط: إما YES أو NO.
 """
 
     models_to_try = [
         "llama-3.3-70b-versatile",
-        "llama3-70b-8192",
-        "mixtral-8x7b-32768",
-        "llama-3.1-8b-instant"
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768"
     ]
 
     for model_name in models_to_try:
@@ -98,13 +104,12 @@ def analyze_with_ai(text):
                 messages=[{"role": "user", "content": prompt}],
                 model=model_name,
                 temperature=0,
-                response_format={"type": "json_object"}
+                max_tokens=5
             )
-            raw_text = response.choices[0].message.content.strip()
-            ai = json.loads(raw_text)
-            res = bool(ai.get("is_client", False))
-            return res
-        except Exception:
+            raw_res = response.choices[0].message.content.strip().upper()
+            is_match = "YES" in raw_res
+            return is_match
+        except Exception as e:
             continue
 
     return False
@@ -136,12 +141,12 @@ async def process_and_send(userbot, bot_app, message: Message):
     chat_title = message.chat.title or message.chat.first_name or "مجموعة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
-    # تحليل الذكاء الاصطناعي وطباعة النتيجة
+    # تحليل الذكاء الاصطناعي
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     print(f"🤖 [نتيجة تقييم Groq AI]: {is_client}", flush=True)
 
     if not is_client:
-        print(f"⛔ [تجاهل الرسالة]: الذكاء الاصطناعي اعتبرها ليست طلب توصيل.", flush=True)
+        print(f"⛔ [تجاهل الرسالة]: ليست طلب توصيل وفقاً للذكاء الاصطناعي.", flush=True)
         return
 
     PROCESSED_CONTENT.add(content_hash)
@@ -160,23 +165,16 @@ async def process_and_send(userbot, bot_app, message: Message):
     text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
 
     for user in TARGET_USERS:
-        sent = False
-        # جرب عبر اليوزربوت أولاً
         try:
             await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
             print(f"🎯 [تم الإرسال بنجاح عبر اليوزربوت إلى {user}]", flush=True)
-            sent = True
         except Exception as e1:
-            # إذا فشل اليوزربوت جرب عبر البوت
             if bot_app:
                 try:
                     await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-                    print(f"🎯 [تم الإرسال بنجاح عبر البوت المساعد إلى {user}]", flush=True)
-                    sent = True
+                    print(f"🎯 [تم الإرسال بنجاح عبر البوت إلى {user}]", flush=True)
                 except Exception as e2:
-                    print(f"❌ [فشل الإرسال بالبوت واليوزربوت إلى {user}]: {e1} | {e2}", flush=True)
-            else:
-                print(f"❌ [فشل الإرسال باليوزربوت إلى {user}]: {e1}", flush=True)
+                    print(f"❌ [فشل الإرسال إلى {user}]: {e1} | {e2}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -212,13 +210,12 @@ async def main():
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل اليوزربوت بنجاح!", flush=True)
+    print("✅ تم تشغيل الذكاء الاصطناعي الذكي بنجاح!", flush=True)
 
-    print("🔄 ربط جميع الجروبات والمحادثات...", flush=True)
     try:
         async for dialog in userbot.get_dialogs(limit=200):
             pass
-        print("✅ تم ربط جميع المجموعات والقنوات بنجاح دون أي حظر!", flush=True)
+        print("✅ تم ربط جميع المجموعات والقنوات بنجاح!", flush=True)
     except Exception as e:
         print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
 
