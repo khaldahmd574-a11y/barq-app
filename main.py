@@ -11,7 +11,6 @@ from google.genai import types
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
-from hydrogram.raw import functions, types as raw_types
 
 # =========================================================
 # KEEP ALIVE SERVER
@@ -22,7 +21,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Active!")
+        self.wfile.write(b"Barq AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,8 +43,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
-API_ID = 39120728
-API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
+API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
 GEMINI_MODEL = "gemini-1.5-flash"
 gemini_client = None
@@ -61,13 +60,6 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
 
-# الكلمات المفتاحية لضمان لقط جميع العبارات فوراً
-KEYWORDS = [
-    "ابغى", "أبغى", "اريد", "أريد", "توصيل", "مشوار", "مندوب",
-    "سواق", "سواقه", "سواقة", "يوصل", "يجيب", "محليه", "محلية",
-    "صبيا", "جيزان", "مطعم", "كفي", "كافيه", "فان", "فاضي"
-]
-
 def clean_text(text):
     if not text:
         return ""
@@ -77,11 +69,8 @@ def get_hash(text):
     cleaned = clean_text(text).lower()
     return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
 
-def quick_local_check(text):
-    return any(kw in text for kw in KEYWORDS)
-
 # =========================================================
-# AI FILTERING
+# AI ANALYSIS (التحليل بالذكاء الاصطناعي فقط)
 # =========================================================
 
 def analyze_with_ai(text):
@@ -89,20 +78,18 @@ def analyze_with_ai(text):
         return True
 
     prompt = f"""
-وظيفتك: تحديد هل الرسالة من زبون/عميل يبحث عن توصيل أو مشوار أو مندوب.
+أنت خبير ذكاء اصطناعي محترف لفرز وتحديد طلبات التوصيل والمشاوير.
+وظيفتك الوحيدة: تحليل النص وتحديد هل الكاتب زبون/عميل يطلب خدمة توصيل أو مشوار أو سائق أو نقل أغراض/طلبات؟
 
-أمثلة لطلبات الزبائن (true):
-- "ابغى من كفي فان لمحليه"
-- "مندوب فاضي الان"
-- "ابغى سواقه من صبيا"
-- "فيه توصيل؟"
+قواعد التحليل الصارمة:
+1. إذا كان الكاتب زبون يريد مشوار/توصيل/سائق/سواقة/مندوب/نقل أغراض -> إرجاع true
+2. إذا كان الكاتب سائق/مندوب يعرض خدمته (مثال: فاضي، متوفر، أودي مشاوير، يراسلني خاص) -> إرجاع false
+3. إذا كان النص مجرد تحية أو سؤال عام غير متعلق بطلب توصيل -> إرجاع false
 
-أمثلة لإعلانات السائقين (false):
-- "فاضي بجيزان أي طلب تفضل خاص"
-- "سائق متوفر للتوصيل"
+النص للتحليل: "{text}"
 
-النص: "{text}"
-أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
+أرجع JSON فقط بنفس هذا الشكل وبدون أي شرح إضافي:
+{{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -117,7 +104,8 @@ def analyze_with_ai(text):
         raw_text = (response.text or "").strip()
         ai = json.loads(raw_text)
         return bool(ai.get("is_client", False))
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ [AI Error]: {e}", flush=True)
         return True
 
 # =========================================================
@@ -128,26 +116,27 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
-    message_key = f"{message.chat.id}:{message.id}"
-    if message_key in PROCESSED_MESSAGES:
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MESSAGES:
         return
-    PROCESSED_MESSAGES.add(message_key)
+    PROCESSED_MESSAGES.add(msg_key)
+
+    if len(PROCESSED_MESSAGES) > 5000:
+        PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
         return
 
-    text = clean_text(message.text or message.caption or "")
-    if len(text) < 3:
+    raw_text = clean_text(message.text or message.caption or "")
+    if len(raw_text) < 3:
         return
 
-    if not quick_local_check(text):
-        return
-
-    content_hash = get_hash(text)
+    content_hash = get_hash(raw_text)
     if content_hash in PROCESSED_CONTENT:
         return
 
-    is_client = await asyncio.to_thread(analyze_with_ai, text)
+    # التوجيه المباشر للذكاء الاصطناعي بدون أي كلمات مفتاحية
+    is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_client:
         return
 
@@ -168,19 +157,40 @@ async def process_message(bot, message: Message):
 
     for user in TARGET_USERS:
         try:
-            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"✅ تم سحب طلب زبون من مجموعة [{chat_title}] وإرساله إلى: {user}", flush=True)
+            await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"✅ [AI] تم سحب طلب زبون من [{chat_title}] وإرساله إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# MAIN LOGIC WITH RAW UPDATE LISTENER (THE FIX FOR SUPERGROUPS)
+# SCANNER LOOP (سحب كل الجروبات كل 7 ثوانٍ)
+# =========================================================
+
+async def real_time_channel_and_group_scanner(userbot, bot):
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=50):
+                try:
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
+                        await process_message(bot, msg)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء الفحص: {e}", flush=True)
+
+        await asyncio.sleep(7)
+
+# =========================================================
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -196,43 +206,18 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع المباشر للتحديثات العادية
-    @userbot.on_message()
+    @userbot.on_message(filters.all)
     async def global_listener(client, message):
-        try:
-            await process_message(bot, message)
-        except Exception as e:
-            print(f"❌ [Listener Error]: {e}", flush=True)
-
-    # الاستماع للأحداث الخام لضمان التقاط رسائل المجموعات الفائقة (Supergroups)
-    @userbot.on_raw_update()
-    async def raw_listener(client, update, users, chats):
-        try:
-            if isinstance(update, (raw_types.UpdateNewChannelMessage, raw_types.UpdateNewMessage)):
-                message = await client._parse_message(update.message, users, chats)
-                if message:
-                    await process_message(bot, message)
-        except Exception:
-            pass
+        await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
 
-    print("🔄 جاري إجبار تليجرام على فتح القنوات الصوتية لكافة المجموعات الكبيرة...", flush=True)
-    async for dialog in userbot.get_dialogs():
-        try:
-            # إرسال طلب رؤية القنوات لإخبار تليجرام أن الحساب متصل بها لحظياً
-            if dialog.chat.type.value in ["supergroup", "channel"]:
-                peer = await userbot.resolve_peer(dialog.chat.id)
-                await userbot.invoke(functions.channels.GetFullChannel(channel=peer))
-        except Exception:
-            pass
+    print("🚀 تم التشغيل بنجاح! الفرز يعمل 100% بالذكاء الاصطناعي مع سحب المجموعات الـ 50 كل 7 ثوانٍ.", flush=True)
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
-    print("🚀 تم التغلب على قيود السوبر قروبات بنجاح! البوت الآن يلتقط من جميع المجموعات بلا استثناء.", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    t = threading.Thread(target=run_dummy_server, daemon=True)
-    t.start()
     asyncio.run(main())
 
