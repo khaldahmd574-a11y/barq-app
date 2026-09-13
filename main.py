@@ -63,11 +63,10 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# PURE AI ANALYSIS (ذكاء اصطناعي شامل بدون كلمات محددة)
+# PURE AI ANALYSIS
 # =========================================================
 
 def analyze_with_pure_ai(text):
-    # 1. استبعاد أرقام الهواتف مباشرة لأنها عروض سائقين/تجارية
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False, "تجاهل: تحتوي على رقم جوال (سائق/إعلان)"
 
@@ -130,7 +129,7 @@ async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل الرسائل الصادرة من الحساب الوهمي نفسه أو من البوت
+    # تجاهل رسائل الحساب الوهمي الصادرة منه نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -150,10 +149,9 @@ async def process_and_send(userbot, bot_app, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
+    chat_title = message.chat.title or message.chat.first_name or "دردشة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
-    # تحليل الذكاء الاصطناعي الصافي
     is_client, reason = analyze_with_pure_ai(raw_text)
     print(f"🤖 [قرار الذكاء الاصطناعي]: {is_client} | السبب: {reason}", flush=True)
 
@@ -174,11 +172,8 @@ async def process_and_send(userbot, bot_app, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-    
-    # إرسال المنشور الأصلي فقط بدون أي عناوين أو مقدمات
     text_to_send = raw_text
 
-    # الإرسال بالبوت الحصري
     for user in TARGET_USERS:
         sent = False
         if bot_app:
@@ -226,18 +221,20 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
-    # استقبال الرسائل من جميع المجموعات والقنوات التي يشترك فيها الحساب الوهمي
-    @userbot.on_message(filters.all)
+    # الاستماع الصريح لجميع أنواع المحادثات (مجموعات، قنوات، ومحادثات خاصة)
+    @userbot.on_message(filters.group | filters.channel | filters.private)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل المحرك لجميع المجموعات والقنوات بنجاح!", flush=True)
+    print("✅ تم تشغيل المحرك وتفعيل الاستماع الصريح للجروبات والقنوات!", flush=True)
 
+    # مزامنة جميع المجموعات والقنوات المشترك فيها الحساب
     try:
-        async for dialog in userbot.get_dialogs(limit=500):
-            pass
-        print("✅ تم مزامنة جميع الدردشات بنجاح!", flush=True)
+        dialog_count = 0
+        async for dialog in userbot.get_dialogs():
+            dialog_count += 1
+        print(f"✅ تم ربط ومزامنة {dialog_count} محادثة/مجموعة/قناة بنجاح!", flush=True)
     except Exception as e:
         print(f"⚠️ تنبيه أثناء المزامنة: {e}", flush=True)
 
