@@ -2,19 +2,17 @@ import os
 import asyncio
 import hashlib
 import json
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
-from google import genai
-from google.genai import types
+from groq import Groq
 
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
 # =========================================================
-# KEEP ALIVE SERVER
+# KEEP ALIVE SERVER (لضمان بقاء السيرفر شغالاً على Render)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -22,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq High Quota AI System Active!")
+        self.wfile.write(b"Barq Free Groq AI Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -37,25 +35,22 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# SETTINGS
+# CONFIGURATION & GROQ CLIENT
 # =========================================================
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# استخدام موديل 1.5-flash يمنحك 1500 طلب مجاني يومياً بدلاً من 20
-GEMINI_MODEL = "gemini-1.5-flash"
-gemini_client = None
-
-if GEMINI_API_KEY:
+groq_client = None
+if GROQ_API_KEY:
     try:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        groq_client = Groq(api_key=GROQ_API_KEY)
     except Exception as e:
-        print(f"❌ [Gemini Init Error] {e}", flush=True)
+        print(f"❌ [Groq Init Error] {e}", flush=True)
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -68,11 +63,11 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# PURE AI ANALYSIS
+# FREE AI ANALYSIS (GROQ)
 # =========================================================
 
 def analyze_with_ai(text):
-    if not GEMINI_API_KEY or not gemini_client:
+    if not GROQ_API_KEY or not groq_client:
         return False
 
     prompt = f"""
@@ -90,21 +85,29 @@ def analyze_with_ai(text):
 {{"is_client": true}} أو {{"is_client": false}}
 """
 
-    try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0
+    # قائمة بالنماذج المتاحة للتبديل التلقائي في حال عدم توفر أحدها
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama3-70b-8192",
+        "mixtral-8x7b-32768",
+        "llama-3.1-8b-instant"
+    ]
+
+    for model_name in models_to_try:
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_name,
+                temperature=0,
+                response_format={"type": "json_object"}
             )
-        )
-        raw_text = (response.text or "").strip()
-        ai = json.loads(raw_text)
-        return bool(ai.get("is_client", False))
-    except Exception as e:
-        print(f"❌ [AI Call Error]: {e}", flush=True)
-        return False
+            raw_text = response.choices[0].message.content.strip()
+            ai = json.loads(raw_text)
+            return bool(ai.get("is_client", False))
+        except Exception as e:
+            continue
+
+    return False
 
 # =========================================================
 # MESSAGE PROCESSING
@@ -155,7 +158,7 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [AI ACCEPTED] تم إرسال طلب زبون محقق من [{chat_title}] إلى: {user}", flush=True)
+            print(f"🎯 [Groq AI ACCEPTED] تم إرسال طلب من [{chat_title}] إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -179,7 +182,7 @@ async def real_time_channel_and_group_scanner(userbot, bot):
         except Exception as e:
             print(f"⚠️ خطأ أثناء الفحص: {e}", flush=True)
 
-        await asyncio.sleep(7)
+        await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -210,7 +213,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم التحديث إلى gemini-1.5-flash بسعة 1500 طلب يومياً!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح بالذكاء الاصطناعي المجاني كلياً عبر Groq!", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
