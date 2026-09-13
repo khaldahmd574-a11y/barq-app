@@ -67,17 +67,18 @@ def clean_text(text):
 # =========================================================
 
 def analyze_with_pure_ai(text):
+    # استبعاد أرقام الجوال فوراً
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False, "تجاهل: تحتوي على رقم جوال (سائق/إعلان)"
 
     if not GROQ_API_KEY or not groq_client:
-        return True, "تمرير تلقائي (لا يوجد مفتاح Groq)"
+        return False, "تجاهل: لا يوجد مفتاح AI"
 
     prompt = f"""
-أنت نظام ذكاء اصطناعي خبير لفرز الرسائل في مجموعات التوصيل السعودية (منطقة جازان وما حولها).
-وظيفتك: قراءة الرسالة وتحديد هل الكاتب "زبون/عميل" يطلب توصيل أو يبحث عن سائق/مندوب/سواقة/مشوار؟
+أنت نظام ذكاء اصطناعي لفرز رسائل مجموعات التوصيل في السعودية.
+وظيفتك: تحديد ما إذا كانت الرسالة عبارة عن "طلب توصيل / مشوار / بحث عن سائق أو مندوب" قادم من زبون فقط.
 
-أمثلة لرسائل العميل المقبولة (أجب بـ YES):
+الرسائل المقبولة (أجب بـ YES):
 - "مندوب فاضي قريب من مخطط 5"
 - "سواقه توصلني بيش"
 - "فيه مندوب ف ابو عريش ؟"
@@ -86,15 +87,15 @@ def analyze_with_pure_ai(text):
 - "سيارة توديني صامطه"
 - "ابي مشوار"
 
-أمثلة لرسائل السائق أو الإعلانات التلقائية (أجب بـ NO):
+الرسائل المرفوضة (أجب بـ NO):
+- السلام عليكم / هلا / تفضلي / شو في الجروب
 - "توصيل طلبات ومشاوير تواصل خاص"
 - "أنا سائق متوفر الآن"
-- "نوصل لجميع المناطق"
-- "موجود سيارة كامري"
+- أي كلام عام أو سوالف
 
 الرسالة المراد تحليلها: "{text}"
 
-أجب فقط بكلمة واحدة: YES إذا كانت طلب زبون، أو NO إذا كانت عرض سائق/كلام عام.
+أجب فقط بكلمة واحدة: YES إذا كانت طلب توصيل صريح من زبون، أو NO لغير ذلك.
 """
 
     models_to_try = [
@@ -113,13 +114,14 @@ def analyze_with_pure_ai(text):
             )
             raw_res = response.choices[0].message.content.strip().upper()
             if "YES" in raw_res:
-                return True, f"ذكاء اصطناعي مقبول ({model_name})"
+                return True, f"طلب توصيل مقبول ({model_name})"
             elif "NO" in raw_res:
-                return False, f"ذكاء اصطناعي مرفوض - عرض سائق أو كلام عام ({model_name})"
+                return False, f"ليست طلب توصيل ({model_name})"
         except Exception:
             continue
 
-    return True, "تمرير احتياطي لتعثر AI"
+    # في حال فشل AI يتم التجاهل بدلاً من التمرير
+    return False, "فشل الذكاء الاصطناعي في الفحص"
 
 # =========================================================
 # MESSAGE PROCESSING & FORWARDING
@@ -129,7 +131,7 @@ async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائل الحساب الوهمي الصادرة منه نفسه
+    # تجاهل الرسائل الصادرة من الحساب الوهمي نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -149,9 +151,10 @@ async def process_and_send(userbot, bot_app, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    chat_title = message.chat.title or message.chat.first_name or "دردشة"
+    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
+    # تحليل الذكاء الاصطناعي
     is_client, reason = analyze_with_pure_ai(raw_text)
     print(f"🤖 [قرار الذكاء الاصطناعي]: {is_client} | السبب: {reason}", flush=True)
 
@@ -174,6 +177,7 @@ async def process_and_send(userbot, bot_app, message: Message):
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
     text_to_send = raw_text
 
+    # الإرسال عبر البوت الحصري
     for user in TARGET_USERS:
         sent = False
         if bot_app:
@@ -221,20 +225,20 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
-    # الاستماع الصريح لجميع أنواع المحادثات (مجموعات، قنوات، ومحادثات خاصة)
-    @userbot.on_message(filters.group | filters.channel | filters.private)
+    # الاستماع فقط للمجموعات والقنوات (تم إلغاء private لمنع المحادثات الخاصة)
+    @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل المحرك وتفعيل الاستماع الصريح للجروبات والقنوات!", flush=True)
+    print("✅ تم تشغيل المحرك واقتصار الاستماع على الجروبات والقنوات فقط!", flush=True)
 
-    # مزامنة جميع المجموعات والقنوات المشترك فيها الحساب
+    # مزامنة جميع المجموعات والقنوات
     try:
         dialog_count = 0
         async for dialog in userbot.get_dialogs():
             dialog_count += 1
-        print(f"✅ تم ربط ومزامنة {dialog_count} محادثة/مجموعة/قناة بنجاح!", flush=True)
+        print(f"✅ تم ربط ومزامنة {dialog_count} مجموعة وقناة بنجاح!", flush=True)
     except Exception as e:
         print(f"⚠️ تنبيه أثناء المزامنة: {e}", flush=True)
 
