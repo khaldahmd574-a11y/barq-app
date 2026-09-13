@@ -53,7 +53,7 @@ if GROQ_API_KEY:
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
 
-# أضفنا رمز @ للتأكد من التعرف على اليوزر
+# معرفات الحسابات المستقبلة
 TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
 
 PROCESSED_MESSAGES = set()
@@ -105,7 +105,6 @@ def analyze_with_ai(text):
             raw_text = response.choices[0].message.content.strip()
             ai = json.loads(raw_text)
             res = bool(ai.get("is_client", False))
-            print(f"🤖 [Groq AI - {model_name}]: {res}", flush=True)
             return res
         except Exception:
             continue
@@ -113,10 +112,10 @@ def analyze_with_ai(text):
     return False
 
 # =========================================================
-# MESSAGE PROCESSING
+# MESSAGE PROCESSING & FORWARDING
 # =========================================================
 
-async def process_message(bot, message: Message):
+async def process_and_send(app, message: Message):
     if not message or not message.id:
         return
 
@@ -125,11 +124,10 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(msg_key)
 
-    raw_text = clean_text(message.text or message.caption or "")
-    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
-    
-    print(f"📩 [تم التقاط رسالة من {chat_title}]: {raw_text}", flush=True)
+    if len(PROCESSED_MESSAGES) > 10000:
+        PROCESSED_MESSAGES.clear()
 
+    raw_text = clean_text(message.text or message.caption or "")
     if len(raw_text) < 3:
         return
 
@@ -142,6 +140,7 @@ async def process_message(bot, message: Message):
         return
 
     PROCESSED_CONTENT.add(content_hash)
+    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
 
     buttons = []
     if message.from_user:
@@ -154,16 +153,40 @@ async def process_message(bot, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
+    text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
 
+    # الإرسال عبر اليوزربوت مباشرة لضمان الوصول لكافة الحسابات
     for user in TARGET_USERS:
         try:
-            await bot.send_message(chat_id=user, text=f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}", reply_markup=reply_markup)
-            print(f"🎯 [Groq AI ACCEPTED] تم الإرسال إلى: {user}", flush=True)
+            await app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"✅ [تم الإرسال بنجاح إلى {user}]: {raw_text[:20]}...", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await bot.send_message(chat_id=user, text=f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}", reply_markup=reply_markup)
+            await app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
-            print(f"❌ [خطأ تفصيلي بالإرسال إلى {user}]: {e}", flush=True)
+            print(f"❌ [فشل الإرسال إلى {user}]: {e}", flush=True)
+
+# =========================================================
+# SCRAPER LOOP (المسح الشامل لجميع المجموعات)
+# =========================================================
+
+async def fetch_history_loop(userbot):
+    print("🚀 بدء حلقة المسح الدوري لجميع المجموعات والقنوات...", flush=True)
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=100):
+                try:
+                    async for message in userbot.get_chat_history(dialog.chat.id, limit=5):
+                        await process_and_send(userbot, message)
+                except FloodWait as e:
+                    print(f"⏳ انتظار حظر التليجرام المؤقت: {e.value} ثانية", flush=True)
+                    await asyncio.sleep(e.value)
+                except Exception:
+                    continue
+            await asyncio.sleep(3)
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء المسح: {e}", flush=True)
+            await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -179,25 +202,17 @@ async def main():
         session_string=SESSION_STRING,
         in_memory=True
     )
-    bot = Client(
-        "helper_bot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN,
-        in_memory=True
-    )
 
+    # الاستماع للرسائل اللحظية
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
-        await process_message(bot, message)
+        await process_and_send(client, message)
 
     await userbot.start()
-    await bot.start()
+    print("✅ تم تشغيل اليوزربوت بنجاح!", flush=True)
 
-    print("🔄 جاري تحميل قائمة المحادثات والجروبات...", flush=True)
-    async for dialog in userbot.get_dialogs(limit=100):
-        pass
-    print("✅ تم ربط الاستماع بجميع المجموعات والقنوات بنجاح!", flush=True)
+    # تشغيل المسح الدوري الشامل لجميع المجموعات القنوات
+    asyncio.create_task(fetch_history_loop(userbot))
 
     await asyncio.Event().wait()
 
