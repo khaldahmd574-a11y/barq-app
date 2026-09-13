@@ -52,8 +52,6 @@ if GROQ_API_KEY:
         print("✅ تم الاتصال بمكتبة Groq بنجاح", flush=True)
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
-else:
-    print("⚠️ مفتاح GROQ_API_KEY غير موجود في متغيرات البيئة!", flush=True)
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -71,7 +69,6 @@ def clean_text(text):
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY or not groq_client:
-        print("⚠️ تم تخطي الذكاء الاصطناعي: مفتاح Groq مفقود", flush=True)
         return False
 
     prompt = f"""
@@ -107,9 +104,9 @@ def analyze_with_ai(text):
             raw_text = response.choices[0].message.content.strip()
             ai = json.loads(raw_text)
             res = bool(ai.get("is_client", False))
-            print(f"🤖 [Groq AI Result - {model_name}]: {res}", flush=True)
+            print(f"🤖 [Groq AI - {model_name}]: {res}", flush=True)
             return res
-        except Exception as e:
+        except Exception:
             continue
 
     return False
@@ -127,19 +124,17 @@ async def process_message(bot, message: Message):
         return
     PROCESSED_MESSAGES.add(msg_key)
 
-    if len(PROCESSED_MESSAGES) > 5000:
-        PROCESSED_MESSAGES.clear()
-
     raw_text = clean_text(message.text or message.caption or "")
+    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
+    
+    # طباعة كل رسالة تم التقاطها للتأكد
+    print(f"📩 [تم التقاط رسالة من {chat_title}]: {raw_text}", flush=True)
+
     if len(raw_text) < 3:
         return
 
-    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
-    print(f"📥 [رسالة جديدة من {chat_title}]: {raw_text[:30]}...", flush=True)
-
     content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
     if content_hash in PROCESSED_CONTENT:
-        print("⚠️ رسالة مكررة تم إهمالها", flush=True)
         return
 
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
@@ -162,11 +157,11 @@ async def process_message(bot, message: Message):
 
     for user in TARGET_USERS:
         try:
-            await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [Groq AI ACCEPTED] تم إرسال الطلب بنجاح إلى: {user}", flush=True)
+            await bot.send_message(chat_id=user, text=f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}", reply_markup=reply_markup)
+            print(f"🎯 [Groq AI ACCEPTED] تم الإرسال إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
-            await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
+            await bot.send_message(chat_id=user, text=f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}", reply_markup=reply_markup)
         except Exception as e:
             print(f"❌ خطأ إرسال إلى {user}: {e}", flush=True)
 
@@ -192,6 +187,7 @@ async def main():
         in_memory=True
     )
 
+    # مستمع لجميع الرسائل الواردة من اليوزربوت
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
         await process_message(bot, message)
@@ -199,7 +195,11 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم تشغيل الرادار الفوري بالذكاء الاصطناعي مجاناً!", flush=True)
+    # تحديث وقراءة الحوارات فور التشغيل لربط الاستماع بالجروبات والقنوات
+    print("🔄 جاري تحميل قائمة المحادثات والجروبات...", flush=True)
+    async for dialog in userbot.get_dialogs(limit=100):
+        pass
+    print("✅ تم ربط الاستماع بجميع المجموعات والقنوات بنجاح!", flush=True)
 
     await asyncio.Event().wait()
 
