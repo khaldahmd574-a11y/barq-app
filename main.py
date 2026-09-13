@@ -9,7 +9,6 @@ from groq import Groq
 
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from hydrogram.errors import FloodWait
 
 # =========================================================
 # KEEP ALIVE SERVER
@@ -20,7 +19,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Bot Active!")
+        self.wfile.write(b"Barq Smart AI Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -64,69 +63,65 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# SMART FILTERING SYSTEM (تمييز الزبون عن السائق)
+# PURE AI ANALYSIS (ذكاء اصطناعي شامل بدون كلمات محددة)
 # =========================================================
 
-# مؤشرات صريحة لأصحاب العروض والسائقين
-DRIVER_KEYWORDS = [
-    "تفضل خاص", "تفضلي خاص", "تواصل خاص", "تواصل معي", "خاص", 
-    "متوفر", "متوفره", "متوفرين", "جاهز", "نوصل", "توصيل طلبات", 
-    "أنا سائق", "انا سائق", "خدمة توصيل", "أسعار مناسبة", "اسعار مناسبه",
-    "نوصلكم", "جاهزين", "تحت خدمتكم", "ابشر بالخير", "أبشر بالخير"
-]
-
-# مؤشرات طلب العميل المباشر
-CLIENT_KEYWORDS = [
-    "ابغى", "أبغى", "ابي", "أبي", "احتاج", "أحتاج", "مطلوب", 
-    "مين فاضي", "من فاضي", "حد فاضي", "أحد فاضي", "من يوصلني", "مين يوصلني",
-    "يرجعني", "يوصلني", "يوصل صبيـا", "يوصل صامطه", "في احد يوصل", "في أحد يوصل"
-]
-
-def analyze_message_type(text):
-    text_clean = text.lower()
-
-    # 1. فحص وجود رقم جوال -> غالباً سائق يعرض رقم تواصله
+def analyze_with_pure_ai(text):
+    # 1. استبعاد أرقام الهواتف مباشرة لأنها عروض سائقين/تجارية
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        return False, "إعلان سائق (يحتوي على رقم جوال)"
+        return False, "تجاهل: تحتوي على رقم جوال (سائق/إعلان)"
 
-    # 2. فحص كلمات السائق العارضة للخدمة
-    for drv in DRIVER_KEYWORDS:
-        if drv in text_clean:
-            return False, f"عرض سائق ({drv})"
+    if not GROQ_API_KEY or not groq_client:
+        return True, "تمرير تلقائي (لا يوجد مفتاح Groq)"
 
-    # 3. فحص كلمات العميل المباشرة
-    for cli in CLIENT_KEYWORDS:
-        if cli in text_clean:
-            return True, f"طلب عميل صريح ({cli})"
+    prompt = f"""
+أنت نظام ذكاء اصطناعي خبير لفرز الرسائل في مجموعات التوصيل السعودية (منطقة جازان وما حولها).
+وظيفتك: قراءة الرسالة وتحديد هل الكاتب "زبون/عميل" يطلب توصيل أو يبحث عن سائق/مندوب/سواقة/مشوار؟
 
-    # 4. الاستعانة بالذكاء الاصطناعي للرسائل غير الواضحة
-    if GROQ_API_KEY and groq_client:
-        prompt = f"""
-تقييم رسالة تليجرام:
-هل صاحب هذه الرسالة زبون/عميل يبحث عن سائق ليقوم بتوصيله؟ أم أنه سائق يعرض خدمته؟
+أمثلة لرسائل العميل المقبولة (أجب بـ YES):
+- "مندوب فاضي قريب من مخطط 5"
+- "سواقه توصلني بيش"
+- "فيه مندوب ف ابو عريش ؟"
+- "من يوديني المطار"
+- "احتاج احد يرجعني"
+- "سيارة توديني صامطه"
+- "ابي مشوار"
 
-الرسالة: "{text}"
+أمثلة لرسائل السائق أو الإعلانات التلقائية (أجب بـ NO):
+- "توصيل طلبات ومشاوير تواصل خاص"
+- "أنا سائق متوفر الآن"
+- "نوصل لجميع المناطق"
+- "موجود سيارة كامري"
 
-أجب فقط بكلمة واحدة:
-CUSTOMER : إذا كانت الرسالة طلب توصيل من زبون.
-DRIVER : إذا كانت من سائق أو تحتوي عرض خدمة أو إعلان.
+الرسالة المراد تحليلها: "{text}"
+
+أجب فقط بكلمة واحدة: YES إذا كانت طلب زبون، أو NO إذا كانت عرض سائق/كلام عام.
 """
+
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "mixtral-8x7b-32768"
+    ]
+
+    for model_name in models_to_try:
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
+                model=model_name,
                 temperature=0,
-                max_tokens=5
+                max_tokens=3
             )
-            res = response.choices[0].message.content.strip().upper()
-            if "CUSTOMER" in res:
-                return True, "ذكاء اصطناعي (عميل)"
-            else:
-                return False, "ذكاء اصطناعي (سائق/غير مطاطق)"
+            raw_res = response.choices[0].message.content.strip().upper()
+            if "YES" in raw_res:
+                return True, f"ذكاء اصطناعي مقبول ({model_name})"
+            elif "NO" in raw_res:
+                return False, f"ذكاء اصطناعي مرفوض - عرض سائق أو كلام عام ({model_name})"
         except Exception:
-            pass
+            continue
 
-    return False, "لم تتطابق مع طلب عميل"
+    # في حال تعثر الذكاء الاصطناعي تماماً، نمرر الرسالة كي لا يفوتك شيء
+    return True, "تمرير احتياطي لتعثر AI"
 
 # =========================================================
 # MESSAGE PROCESSING & FORWARDING
@@ -155,9 +150,9 @@ async def process_and_send(userbot, bot_app, message: Message):
     chat_title = message.chat.title or message.chat.first_name or "مجموعة"
     print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
 
-    # التحليل والفرز
-    is_client, reason = analyze_message_type(raw_text)
-    print(f"🎯 [التقييم]: {is_client} | السبب: {reason}", flush=True)
+    # تحليل الذكاء الاصطناعي الصافي
+    is_client, reason = analyze_with_pure_ai(raw_text)
+    print(f"🤖 [قرار الذكاء الاصطناعي]: {is_client} | السبب: {reason}", flush=True)
 
     if not is_client:
         print(f"⛔ [تجاهل]: {reason}", flush=True)
@@ -178,24 +173,23 @@ async def process_and_send(userbot, bot_app, message: Message):
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
     text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
 
-    # الإرسال عبر البوت أولاً (bot_app)
+    # الإرسال بالبوت الحصري
     for user in TARGET_USERS:
-        sent_successfully = False
+        sent = False
         if bot_app:
             try:
                 await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
                 print(f"🤖 [تم الإرسال عبر البوت إلى {user}]", flush=True)
-                sent_successfully = True
+                sent = True
             except Exception as e_bot:
                 print(f"⚠️ [فشل إرسال البوت إلى {user}]: {e_bot}", flush=True)
 
-        # البديل: الإرسال عبر الحساب إذا تعذر البوت
-        if not sent_successfully:
+        if not sent:
             try:
                 await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
                 print(f"👤 [تم الإرسال عبر الحساب إلى {user}]", flush=True)
             except Exception as e_user:
-                print(f"❌ [فشل الإرسال عبر الحساب والبوّت إلى {user}]: {e_user}", flush=True)
+                print(f"❌ [فشل الإرسال إلى {user}]: {e_user}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -223,16 +217,16 @@ async def main():
                 in_memory=True
             )
             await bot_app.start()
-            print("✅ تم تشغيل البوت المساعد للتحويل بنجاح!", flush=True)
+            print("✅ تم تشغيل البوت المساعد لإرسال التنبيهات!", flush=True)
         except Exception as e:
-            print(f"⚠️ خطأ في تشغيل البوت المساعد: {e}", flush=True)
+            print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل السكربت ونظام التصفية المحدث!", flush=True)
+    print("✅ تم تشغيل المحرك القائم على الذكاء الاصطناعي الشامل بنجاح!", flush=True)
 
     try:
         async for dialog in userbot.get_dialogs(limit=200):
