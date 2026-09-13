@@ -120,7 +120,6 @@ def analyze_with_pure_ai(text):
         except Exception:
             continue
 
-    # في حال تعثر الذكاء الاصطناعي تماماً، نمرر الرسالة كي لا يفوتك شيء
     return True, "تمرير احتياطي لتعثر AI"
 
 # =========================================================
@@ -129,6 +128,10 @@ def analyze_with_pure_ai(text):
 
 async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
+        return
+
+    # تجاهل الرسائل الصادرة من الحساب الوهمي نفسه أو من البوت
+    if message.from_user and message.from_user.is_self:
         return
 
     msg_key = f"{message.chat.id}_{message.id}"
@@ -171,7 +174,9 @@ async def process_and_send(userbot, bot_app, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-    text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
+    
+    # إرسال المنشور الأصلي فقط بدون أي عناوين أو مقدمات
+    text_to_send = raw_text
 
     # الإرسال بالبوت الحصري
     for user in TARGET_USERS:
@@ -221,19 +226,20 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
+    # استقبال الرسائل من جميع المجموعات والقنوات التي يشترك فيها الحساب الوهمي
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
         await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل المحرك القائم على الذكاء الاصطناعي الشامل بنجاح!", flush=True)
+    print("✅ تم تشغيل المحرك لجميع المجموعات والقنوات بنجاح!", flush=True)
 
     try:
-        async for dialog in userbot.get_dialogs(limit=200):
+        async for dialog in userbot.get_dialogs(limit=500):
             pass
-        print("✅ تم ربط المجموعات بنجاح!", flush=True)
+        print("✅ تم مزامنة جميع الدردشات بنجاح!", flush=True)
     except Exception as e:
-        print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
+        print(f"⚠️ تنبيه أثناء المزامنة: {e}", flush=True)
 
     await asyncio.Event().wait()
 
