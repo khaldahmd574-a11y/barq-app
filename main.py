@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import json
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -11,16 +12,23 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
+
 # =========================================================
-# KEEP ALIVE SERVER
+# KEEP ALIVE - RENDER
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
+
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.send_header(
+            "Content-type",
+            "text/plain; charset=utf-8"
+        )
         self.end_headers()
-        self.wfile.write(b"Barq Free Groq AI Active!")
+        self.wfile.write(
+            b"Barq Jazan - Groq AI is running!"
+        )
 
     def do_HEAD(self):
         self.send_response(200)
@@ -29,194 +37,937 @@ class DummyServer(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+
 def run_dummy_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    port = int(os.environ.get("PORT", "10000"))
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        DummyServer
+    )
+
+    print(
+        f"🌐 Keep-Alive server running on port {port}",
+        flush=True
+    )
+
     server.serve_forever()
 
+
 # =========================================================
-# CONFIGURATION & GROQ CLIENT
+# ENVIRONMENT
 # =========================================================
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+BOT_TOKEN = os.environ.get(
+    "BOT_TOKEN",
+    ""
+).strip()
 
-API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
+GROQ_API_KEY = os.environ.get(
+    "GROQ_API_KEY",
+    ""
+).strip()
+
+SESSION_STRING = os.environ.get(
+    "SESSION_STRING",
+    ""
+).strip()
+
+
+API_ID = int(
+    os.environ.get(
+        "TELEGRAM_API_ID",
+        "39120728"
+    )
+)
+
+API_HASH = os.environ.get(
+    "TELEGRAM_API_HASH",
+    "1deec8393ce5aa05c54c0c7e280377d4"
+).strip()
+
+
+# =========================================================
+# TARGET USERS
+# =========================================================
+
+TARGET_USERS = [
+    "@abood1317",
+    "@Waaaaaaa33",
+    "@shaybq"
+]
+
+
+# =========================================================
+# GROQ
+# =========================================================
 
 groq_client = None
-if GROQ_API_KEY:
-    try:
-        groq_client = Groq(api_key=GROQ_API_KEY)
-        print("✅ تم الاتصال بمكتبة Groq بنجاح", flush=True)
-    except Exception as e:
-        print(f"❌ [Groq Init Error] {e}", flush=True)
 
-TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
+if GROQ_API_KEY:
+
+    try:
+
+        groq_client = Groq(
+            api_key=GROQ_API_KEY
+        )
+
+        print(
+            "✅ Groq AI connected successfully",
+            flush=True
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ Groq initialization error: {e}",
+            flush=True
+        )
+
+else:
+
+    print(
+        "❌ GROQ_API_KEY غير موجود",
+        flush=True
+    )
+
+
+# =========================================================
+# MEMORY / DEDUPLICATION
+# =========================================================
 
 PROCESSED_MESSAGES = set()
-PROCESSED_CONTENT = set()
+PROCESSED_CONTENT = {}
+
+MEMORY_LOCK = asyncio.Lock()
+
+
+# =========================================================
+# AI SETTINGS
+# =========================================================
+
+AI_MODEL = "openai/gpt-oss-120b"
+
+# عدد طلبات AI المتزامنة
+AI_CONCURRENCY = 8
+
+AI_SEMAPHORE = asyncio.Semaphore(
+    AI_CONCURRENCY
+)
+
+
+# =========================================================
+# TEXT CLEANING
+# =========================================================
 
 def clean_text(text):
+
     if not text:
         return ""
-    return " ".join(text.strip().split())
+
+    text = str(text)
+
+    # إزالة المسافات الزائدة
+    text = " ".join(
+        text.strip().split()
+    )
+
+    return text
+
 
 # =========================================================
-# FREE AI ANALYSIS (GROQ)
+# HASH
 # =========================================================
 
-def analyze_with_ai(text):
-    if not GROQ_API_KEY or not groq_client:
-        return False
+def make_hash(text):
 
-    prompt = f"""
-أنت نظام ذكاء اصطناعي لفرز رسائل التليجرام.
-حدد هل الكاتب زبون/عميل يبحث عن خدمة توصيل أو مشوار؟
+    normalized = clean_text(text).lower()
 
-قواعد صارمة جداً:
-1. إذا كان زبون يطلب توصيل/مشوار/سائق -> true
-2. إذا كان سائق/مندوب يعرض خدمته -> false
-3. إذا كان كلام عام أو استفسارات لا تتعلق بطلب مشوار -> false
+    return hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()
 
-النص للتحليل: "{text}"
 
-أرجع JSON فقط بالشكل التالي ودون أي كلام إضافي:
-{{"is_client": true}} أو {{"is_client": false}}
-"""
+# =========================================================
+# CLEAN MEMORY
+# =========================================================
 
-    models_to_try = [
-        "llama-3.3-70b-versatile",
-        "llama3-70b-8192",
-        "mixtral-8x7b-32768",
-        "llama-3.1-8b-instant"
+def cleanup_memory():
+
+    now = time.time()
+
+    # الاحتفاظ بالمحتوى لمدة 24 ساعة
+    expired = [
+        h
+        for h, timestamp in PROCESSED_CONTENT.items()
+        if now - timestamp > 86400
     ]
 
-    for model_name in models_to_try:
-        try:
-            response = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=model_name,
-                temperature=0,
-                response_format={"type": "json_object"}
+    for h in expired:
+        PROCESSED_CONTENT.pop(
+            h,
+            None
+        )
+
+    # منع تضخم الذاكرة
+    if len(PROCESSED_MESSAGES) > 50000:
+
+        PROCESSED_MESSAGES.clear()
+
+    if len(PROCESSED_CONTENT) > 50000:
+
+        PROCESSED_CONTENT.clear()
+
+
+# =========================================================
+# GROQ AI CLASSIFIER
+# =========================================================
+
+def analyze_with_ai_sync(text):
+
+    if not groq_client:
+        return False
+
+    if not text:
+        return False
+
+    system_prompt = """
+أنت نظام تصنيف ذكي لرسائل مجموعات تيليجرام في السعودية.
+
+مهمتك الوحيدة:
+تحديد هل الرسالة كتبها "عميل/زبون" يبحث فعليًا عن سائق أو مندوب أو توصيل أو مشوار أو نقل غرض/طلب.
+
+لا تعتمد على كلمات محددة.
+افهم معنى الرسالة وسياقها بالكامل.
+
+صنّف TRUE إذا كان واضحًا أو مرجحًا أن الكاتب:
+- يبحث عن شخص يوصله.
+- يبحث عن سائق أو سائقة.
+- يريد مندوبًا.
+- يريد توصيل طلب أو غرض.
+- يسأل عن شخص فاضي/قريب لتنفيذ مشوار.
+- يريد نقل شيء من مكان إلى مكان.
+- يطلب مشوارًا له أو لشخص آخر.
+- يبحث عن خدمة توصيل أو مشوار.
+
+صنّف FALSE إذا كان:
+- سائقًا أو مندوبًا يعرض خدماته.
+- إعلانًا عن سائق أو مندوب.
+- إعلانًا تجاريًا.
+- منشورًا عامًا.
+- نقاشًا.
+- تحية.
+- سؤالًا غير متعلق بطلب خدمة.
+- رسالة لا يوجد فيها طلب حقيقي.
+- شخصًا يعلن أنه متوفر للعمل.
+- منشورًا يشرح أسعار أو خدمات سائق دون أن يكون الكاتب طالبًا للخدمة.
+
+مهم جدًا:
+لا تعتبر وجود كلمة "سواق" أو "مندوب" وحدها كافيًا.
+افهم من هو الطالب ومن هو مقدم الخدمة.
+
+إذا كان هناك شك حقيقي، اختر FALSE.
+
+أرجع JSON فقط:
+
+{"is_client": true}
+
+أو:
+
+{"is_client": false}
+"""
+
+    try:
+
+        response = groq_client.chat.completions.create(
+
+            model=AI_MODEL,
+
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ],
+
+            temperature=0,
+
+            max_tokens=20,
+
+            response_format={
+                "type": "json_object"
+            }
+        )
+
+        result = (
+            response
+            .choices[0]
+            .message
+            .content
+            .strip()
+        )
+
+        data = json.loads(result)
+
+        return bool(
+            data.get(
+                "is_client",
+                False
             )
-            raw_text = response.choices[0].message.content.strip()
-            ai = json.loads(raw_text)
-            res = bool(ai.get("is_client", False))
-            return res
-        except Exception:
-            continue
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Groq AI Error: {e}",
+            flush=True
+        )
+
+        return False
+
+
+# =========================================================
+# ASYNC AI
+# =========================================================
+
+async def analyze_with_ai(text):
+
+    async with AI_SEMAPHORE:
+
+        return await asyncio.to_thread(
+            analyze_with_ai_sync,
+            text
+        )
+
+
+# =========================================================
+# MESSAGE LINK
+# =========================================================
+
+def get_message_link(message):
+
+    try:
+
+        if message.link:
+            return message.link
+
+    except Exception:
+        pass
+
+    return None
+
+
+# =========================================================
+# USER LINK
+# =========================================================
+
+def get_user_link(message):
+
+    try:
+
+        if not message.from_user:
+            return None
+
+        username = (
+            message.from_user.username
+        )
+
+        user_id = (
+            message.from_user.id
+        )
+
+        if username:
+
+            return (
+                f"https://t.me/{username}"
+            )
+
+        if user_id:
+
+            return (
+                f"tg://openmessage?user_id={user_id}"
+            )
+
+    except Exception:
+        pass
+
+    return None
+
+
+# =========================================================
+# SEND TO TARGET
+# =========================================================
+
+async def send_to_target(
+    userbot,
+    bot_app,
+    target,
+    text,
+    reply_markup
+):
+
+    # أولاً Userbot
+    try:
+
+        await userbot.send_message(
+            chat_id=target,
+            text=text,
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+
+        print(
+            f"🎯 تم الإرسال إلى {target} عبر Userbot",
+            flush=True
+        )
+
+        return True
+
+    except FloodWait as e:
+
+        print(
+            f"⏳ FloodWait: {e.value} ثانية",
+            flush=True
+        )
+
+        await asyncio.sleep(
+            e.value
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Userbot لم يرسل إلى {target}: {e}",
+            flush=True
+        )
+
+    # ثانياً البوت المساعد
+    if bot_app:
+
+        try:
+
+            await bot_app.send_message(
+                chat_id=target,
+                text=text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+
+            print(
+                f"🎯 تم الإرسال إلى {target} عبر Bot",
+                flush=True
+            )
+
+            return True
+
+        except Exception as e:
+
+            print(
+                f"❌ فشل الإرسال إلى {target}: {e}",
+                flush=True
+            )
 
     return False
 
+
 # =========================================================
-# MESSAGE PROCESSING & FORWARDING
+# PROCESS MESSAGE
 # =========================================================
 
-async def process_and_send(userbot, bot_app, message: Message):
-    if not message or not message.id:
+async def process_and_send(
+    userbot,
+    bot_app,
+    message
+):
+
+    if not message:
         return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    if msg_key in PROCESSED_MESSAGES:
+    if not message.id:
         return
-    PROCESSED_MESSAGES.add(msg_key)
 
-    if len(PROCESSED_MESSAGES) > 10000:
-        PROCESSED_MESSAGES.clear()
+    # -----------------------------------------------------
+    # Message ID dedupe
+    # -----------------------------------------------------
 
-    raw_text = clean_text(message.text or message.caption or "")
+    msg_key = (
+        f"{message.chat.id}:"
+        f"{message.id}"
+    )
+
+    async with MEMORY_LOCK:
+
+        if msg_key in PROCESSED_MESSAGES:
+            return
+
+        PROCESSED_MESSAGES.add(
+            msg_key
+        )
+
+    # -----------------------------------------------------
+    # Text
+    # -----------------------------------------------------
+
+    raw_text = clean_text(
+        message.text
+        or
+        message.caption
+        or
+        ""
+    )
+
     if len(raw_text) < 3:
         return
 
-    content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
-    if content_hash in PROCESSED_CONTENT:
-        return
+    # -----------------------------------------------------
+    # Content dedupe
+    # -----------------------------------------------------
 
-    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
-    print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text[:30]}...", flush=True)
+    content_hash = make_hash(
+        raw_text
+    )
 
-    is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
+    async with MEMORY_LOCK:
+
+        cleanup_memory()
+
+        if content_hash in PROCESSED_CONTENT:
+
+            print(
+                "♻️ طلب مكرر - تم تجاهله",
+                flush=True
+            )
+
+            return
+
+    # -----------------------------------------------------
+    # Chat name
+    # -----------------------------------------------------
+
+    try:
+
+        chat_title = (
+            message.chat.title
+            or
+            message.chat.first_name
+            or
+            "مجموعة"
+        )
+
+    except Exception:
+
+        chat_title = "مجموعة"
+
+    print(
+        f"📩 [{chat_title}] "
+        f"{raw_text[:100]}",
+        flush=True
+    )
+
+    # -----------------------------------------------------
+    # AI
+    # -----------------------------------------------------
+
+    is_client = await analyze_with_ai(
+        raw_text
+    )
+
     if not is_client:
+
+        print(
+            "🚫 AI: ليست رسالة عميل",
+            flush=True
+        )
+
         return
 
-    PROCESSED_CONTENT.add(content_hash)
+    # -----------------------------------------------------
+    # Mark as processed only AFTER AI
+    # -----------------------------------------------------
+
+    async with MEMORY_LOCK:
+
+        PROCESSED_CONTENT[
+            content_hash
+        ] = time.time()
+
+    print(
+        "✅ AI: تم اكتشاف طلب عميل",
+        flush=True
+    )
+
+    # -----------------------------------------------------
+    # Buttons
+    # -----------------------------------------------------
 
     buttons = []
-    if message.from_user:
-        username = message.from_user.username
-        user_id = message.from_user.id
-        user_url = f"https://t.me/{username}" if username else f"tg://openmessage?user_id={user_id}"
-        buttons.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_url))
 
-    if message.link:
-        buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+    user_link = get_user_link(
+        message
+    )
 
-    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-    text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
+    if user_link:
 
-    for user in TARGET_USERS:
-        # المحاولة عبر اليوزربوت أولاً
-        try:
-            await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [تم الإرسال عبر اليوزربوت إلى {user}]", flush=True)
-        except Exception as e1:
-            # إذا فشل اليوزربوت يجرب عبر البوت المساعد
-            try:
-                if bot_app:
-                    await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-                    print(f"🎯 [تم الإرسال عبر البوت إلى {user}]", flush=True)
-            except Exception as e2:
-                print(f"❌ [فشل الإرسال إلى {user}]: {e1} | {e2}", flush=True)
+        buttons.append(
+            InlineKeyboardButton(
+                "💬 فتح حساب العميل",
+                url=user_link
+            )
+        )
+
+    message_link = get_message_link(
+        message
+    )
+
+    if message_link:
+
+        buttons.append(
+            InlineKeyboardButton(
+                "📩 فتح الرسالة",
+                url=message_link
+            )
+        )
+
+    reply_markup = None
+
+    if buttons:
+
+        reply_markup = InlineKeyboardMarkup(
+            [buttons]
+        )
+
+    # -----------------------------------------------------
+    # Final message
+    # -----------------------------------------------------
+
+    text_to_send = (
+        f"🚗 **طلب عميل جديد**\n\n"
+        f"📍 **المجموعة:** {chat_title}\n\n"
+        f"💬 **الطلب:**\n"
+        f"{raw_text}"
+    )
+
+    # -----------------------------------------------------
+    # Send to all targets
+    # -----------------------------------------------------
+
+    for target in TARGET_USERS:
+
+        await send_to_target(
+            userbot,
+            bot_app,
+            target,
+            text_to_send,
+            reply_markup
+        )
+
 
 # =========================================================
-# MAIN ENTRYPOINT
+# MAIN
 # =========================================================
 
 async def main():
-    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    # -----------------------------------------------------
+    # Render server
+    # -----------------------------------------------------
+
+    threading.Thread(
+        target=run_dummy_server,
+        daemon=True
+    ).start()
+
+    # -----------------------------------------------------
+    # Validate Session
+    # -----------------------------------------------------
+
+    if not SESSION_STRING:
+
+        print(
+            "❌ SESSION_STRING غير موجود!",
+            flush=True
+        )
+
+        return
+
+    if not GROQ_API_KEY:
+
+        print(
+            "❌ GROQ_API_KEY غير موجود!",
+            flush=True
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # Userbot
+    # -----------------------------------------------------
 
     userbot = Client(
-        "my_userbot",
+
+        "barq_userbot",
+
         api_id=API_ID,
+
         api_hash=API_HASH,
+
         session_string=SESSION_STRING,
+
         in_memory=True
     )
 
+    # -----------------------------------------------------
+    # Helper Bot
+    # -----------------------------------------------------
+
     bot_app = None
+
     if BOT_TOKEN:
+
         try:
+
             bot_app = Client(
-                "helper_bot",
+
+                "barq_helper_bot",
+
                 api_id=API_ID,
+
                 api_hash=API_HASH,
+
                 bot_token=BOT_TOKEN,
+
                 in_memory=True
             )
+
             await bot_app.start()
+
+            print(
+                "🤖 البوت المساعد يعمل",
+                flush=True
+            )
+
         except Exception as e:
-            print(f"⚠️ لم يتم تشغيل البوت المساعد: {e}", flush=True)
 
-    @userbot.on_message(filters.all)
-    async def global_listener(client, message):
-        await process_and_send(client, bot_app, message)
+            print(
+                f"⚠️ البوت المساعد لم يعمل: {e}",
+                flush=True
+            )
 
-    await userbot.start()
-    print("✅ تم تشغيل اليوزربوت بنجاح!", flush=True)
+            bot_app = None
 
-    # تحديث الحوارات مرة واحدة فقط لربط جميع الجروبات دون حظر
-    print("🔄 ربط جميع الجروبات والمحادثات...", flush=True)
+    # -----------------------------------------------------
+    # Listener
+    # -----------------------------------------------------
+
+    @userbot.on_message(
+        filters.all
+    )
+    async def global_listener(
+        client,
+        message
+    ):
+
+        try:
+
+            await process_and_send(
+                client,
+                bot_app,
+                message
+            )
+
+        except Exception as e:
+
+            print(
+                f"❌ Message Handler Error: {e}",
+                flush=True
+            )
+
+    # -----------------------------------------------------
+    # Start Userbot
+    # -----------------------------------------------------
+
     try:
-        async for dialog in userbot.get_dialogs(limit=200):
-            pass
-        print("✅ تم ربط جميع المجموعات والقنوات بنجاح دون أي حظر!", flush=True)
+
+        await userbot.start()
+
+        print(
+            "✅ Userbot يعمل بنجاح!",
+            flush=True
+        )
+
     except Exception as e:
-        print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
+
+        print(
+            f"❌ فشل تشغيل Userbot: {e}",
+            flush=True
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # Load dialogs
+    # -----------------------------------------------------
+
+    print(
+        "🔄 تحميل المحادثات والقروبات...",
+        flush=True
+    )
+
+    try:
+
+        count = 0
+
+        async for dialog in userbot.get_dialogs():
+
+            count += 1
+
+            if count % 50 == 0:
+
+                print(
+                    f"📚 تم تحميل {count} محادثة...",
+                    flush=True
+                )
+
+        print(
+            f"✅ تم تحميل {count} محادثة",
+            flush=True
+        )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ خطأ أثناء تحميل المحادثات: {e}",
+            flush=True
+        )
+
+    # -----------------------------------------------------
+    # Ready
+    # -----------------------------------------------------
+
+    print(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        flush=True
+    )
+
+    print(
+        "🚀 Barq Jazan AI Listener جاهز",
+        flush=True
+    )
+
+    print(
+        f"🧠 AI Model: {AI_MODEL}",
+        flush=True
+    )
+
+    print(
+        f"⚡ AI Concurrency: {AI_CONCURRENCY}",
+        flush=True
+    )
+
+    print(
+        "📡 يراقب الرسائل التي يستطيع الحساب رؤيتها",
+        flush=True
+    )
+
+    print(
+        "🎯 الإرسال إلى:",
+        flush=True
+    )
+
+    for target in TARGET_USERS:
+
+        print(
+            f"   • {target}",
+            flush=True
+        )
+
+    print(
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        flush=True
+    )
+
+    # -----------------------------------------------------
+    # Keep alive
+    # -----------------------------------------------------
 
     await asyncio.Event().wait()
 
-if __name__ == "__main__":
-    asyncio.run(main())
 
+# =========================================================
+# RUN
+# =========================================================
+
+if __name__ == "__main__":
+
+    try:
+
+        asyncio.run(
+            main()
+        )
+
+    except KeyboardInterrupt:
+
+        print(
+            "🛑 تم إيقاف البرنامج",
+            flush=True
+        )
+
+    except Exception as e:
+
+        print(
+            f"💥 Fatal Error: {e}",
+            flush=True
+        )
+
+أهم شيء في Render
+
+تأكد أن Environment Variables عندك بهذا الشكل:
+
+GROQ_API_KEY=مفتاح_Groq
+SESSION_STRING=جلسة_الحساب
+TELEGRAM_API_ID=39120728
+TELEGRAM_API_HASH=مفتاح_API_HASH
+BOT_TOKEN=توكن_البوت
+
+"BOT_TOKEN" اختياري في هذه النسخة، لكن "SESSION_STRING" و"GROQ_API_KEY" أساسيان.
+
+والـAI هنا لا يعتمد على قائمة كلمات؛ أعطيته وصفًا للسلوك الذي نريد اكتشافه، بحيث يميز مثلًا:
+
+«"يا جماعة احتاج أحد يوديني من صبيا لجيزان"»
+
+على أنه عميل،
+
+بينما:
+
+«"متوفر مشاوير داخل جيزان وصبيا"»
+
+على أنه سائق ولا يرسله.
+
+وهذا النوع من التصنيف مناسب جدًا لـGroq؛ Groq يدعم JSON mode، والـAPI الحالي يدعم نماذج حديثة مخصصة للتصنيف السريع.
+
+تنبيه مهم: الكود لا يستطيع التقاط رسائل من قروبات لا يكون حساب الـSession عضوًا فيها أو لا يستطيع رؤيتها. لا توجد طريقة تجعل Hydrogram يرى قروبات غير متاحة للحساب.
+
+بعد تشغيله في Render، أول شيء راقب الـLogs. المفروض تشوف:
+
+✅ Groq AI connected successfully
+🤖 البوت المساعد يعمل
+✅ Userbot يعمل بنجاح!
+🔄 تحميل المحادثات والقروبات...
+🚀 Barq Jazan AI Listener جاهز
+
+ثم عند أي رسالة:
+
+📩 [اسم القروب] ...
+🚫 AI: ليست رسالة عميل
+
+أو:
+
+📩 [اسم القروب] ...
+✅ AI: تم اكتشاف طلب عميل
+🎯 تم الإرسال إلى @abood1317 عبر Userbot
+
+إذا ظهر عندك خطأ في Render بعد وضع هذه النسخة، أرسل لي الـLogs كما تظهر، وسأحدد لك السطر الذي يوقف التشغيل.
