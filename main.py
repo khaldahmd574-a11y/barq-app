@@ -12,7 +12,7 @@ from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
 # =========================================================
-# KEEP ALIVE SERVER (لضمان بقاء السيرفر شغالاً على Render)
+# KEEP ALIVE SERVER
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -49,8 +49,11 @@ groq_client = None
 if GROQ_API_KEY:
     try:
         groq_client = Groq(api_key=GROQ_API_KEY)
+        print("✅ تم الاتصال بمكتبة Groq بنجاح", flush=True)
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
+else:
+    print("⚠️ مفتاح GROQ_API_KEY غير موجود في متغيرات البيئة!", flush=True)
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
@@ -68,6 +71,7 @@ def clean_text(text):
 
 def analyze_with_ai(text):
     if not GROQ_API_KEY or not groq_client:
+        print("⚠️ تم تخطي الذكاء الاصطناعي: مفتاح Groq مفقود", flush=True)
         return False
 
     prompt = f"""
@@ -85,7 +89,6 @@ def analyze_with_ai(text):
 {{"is_client": true}} أو {{"is_client": false}}
 """
 
-    # قائمة بالنماذج المتاحة للتبديل التلقائي في حال عدم توفر أحدها
     models_to_try = [
         "llama-3.3-70b-versatile",
         "llama3-70b-8192",
@@ -103,7 +106,9 @@ def analyze_with_ai(text):
             )
             raw_text = response.choices[0].message.content.strip()
             ai = json.loads(raw_text)
-            return bool(ai.get("is_client", False))
+            res = bool(ai.get("is_client", False))
+            print(f"🤖 [Groq AI Result - {model_name}]: {res}", flush=True)
+            return res
         except Exception as e:
             continue
 
@@ -125,15 +130,16 @@ async def process_message(bot, message: Message):
     if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
-    if message.from_user and message.from_user.is_self:
-        return
-
     raw_text = clean_text(message.text or message.caption or "")
     if len(raw_text) < 3:
         return
 
+    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
+    print(f"📥 [رسالة جديدة من {chat_title}]: {raw_text[:30]}...", flush=True)
+
     content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
     if content_hash in PROCESSED_CONTENT:
+        print("⚠️ رسالة مكررة تم إهمالها", flush=True)
         return
 
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
@@ -153,36 +159,16 @@ async def process_message(bot, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-    chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
 
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [Groq AI ACCEPTED] تم إرسال طلب من [{chat_title}] إلى: {user}", flush=True)
+            print(f"🎯 [Groq AI ACCEPTED] تم إرسال الطلب بنجاح إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
         except Exception as e:
-            print(f"❌ خطأ إرسال: {e}", flush=True)
-
-# =========================================================
-# SCANNER LOOP
-# =========================================================
-
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=50):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص: {e}", flush=True)
-
-        await asyncio.sleep(5)
+            print(f"❌ خطأ إرسال إلى {user}: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -213,8 +199,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم تشغيل البوت بنجاح بالذكاء الاصطناعي المجاني كلياً عبر Groq!", flush=True)
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
+    print("🚀 تم تشغيل الرادار الفوري بالذكاء الاصطناعي مجاناً!", flush=True)
 
     await asyncio.Event().wait()
 
