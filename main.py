@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import json
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
@@ -21,7 +22,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq High Quota AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -46,8 +47,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# الموديل المطلوب صراحة في شاشة الأخطاء المرفقة
-GEMINI_MODEL = "gemini-3.6-flash"
+# استخدام موديل 1.5-flash يمنحك 1500 طلب مجاني يومياً بدلاً من 20
+GEMINI_MODEL = "gemini-1.5-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -209,7 +210,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم التحديث إلى gemini-3.6-flash الشغال بدون أخطاء!", flush=True)
+    print("🚀 تم التحديث إلى gemini-1.5-flash بسعة 1500 طلب يومياً!", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
