@@ -21,7 +21,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq AI System Active!")
+        self.wfile.write(b"Barq Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -46,8 +46,8 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# استخدام موديل الشغال مع الحزمة الجديدة
-GEMINI_MODEL = "gemini-2.5-flash"
+# استخدام الموديل المدعوم في المكتبة الجديدة
+GEMINI_MODEL = "gemini-2.0-flash"
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -66,31 +66,27 @@ def clean_text(text):
         return ""
     return " ".join(text.strip().split())
 
-def get_hash(text):
-    cleaned = clean_text(text).lower()
-    return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
-
 # =========================================================
-# AI ANALYSIS (تحليل AI دقيق بدون تمرير الفوضى)
+# PURE AI ANALYSIS
 # =========================================================
 
 def analyze_with_ai(text):
     if not GEMINI_API_KEY or not gemini_client:
-        print("⚠️ مفتاح Gemini غير متوفر", flush=True)
         return False
 
     prompt = f"""
-أنت خبير ذكاء اصطناعي لفرز طلبات التوصيل.
-وظيفتك: تحديد هل الكاتب زبون/عميل يطلب توصيل أو مشوار أو سائق؟
+أنت نظام ذكاء اصطناعي لفرز رسائل التليجرام.
+حدد هل الكاتب زبون/عميل يبحث عن خدمة توصيل أو مشوار؟
 
 قواعد صارمة جداً:
-1. إذا كان زبون يطلب مشوار أو توصيل أو يريد سواق -> true
-2. إذا كان إعلان من سائق/مندوب (أمثلة: "فاضي بجيزان"، "لخدمتكم في صامطة"، "توصيل طلبات 055xxxx"، "يراسلني خاص") -> false
-3. إذا كان كلام عادي (مثل: "ايش"، "ارحب"، "سلام") -> false
+1. إذا كان زبون يطلب توصيل/مشوار/سائق -> true
+2. إذا كان سائق/مندوب يعرض خدمته (أمثلة: "فاضي"، "توصيل طلبات"، "لخدمتكم"، أرقام هواتف) -> false
+3. إذا كان كلام عام أو استفسارات لا تتعلق بطلب مشوار -> false
 
-النص: "{text}"
+النص للتحليل: "{text}"
 
-أرجع JSON فقط: {{"is_client": true}} أو {{"is_client": false}}
+أرجع JSON فقط بنفس الشكل التالي ودون أي كلام إضافي:
+{{"is_client": true}} أو {{"is_client": false}}
 """
 
     try:
@@ -106,8 +102,8 @@ def analyze_with_ai(text):
         ai = json.loads(raw_text)
         return bool(ai.get("is_client", False))
     except Exception as e:
-        print(f"❌ [AI Error]: {e}", flush=True)
-        # في حال حدوث أي خطأ في الذكاء الاصطناعي ارفض الرسالة ولا تمرر الفوضى
+        print(f"❌ [AI Call Error]: {e}", flush=True)
+        # عند حدوث أي خطأ نرفض الرسالة لمنع دخول الإعلانات والعشوائيات
         return False
 
 # =========================================================
@@ -133,11 +129,11 @@ async def process_message(bot, message: Message):
     if len(raw_text) < 3:
         return
 
-    content_hash = get_hash(raw_text)
+    content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
     if content_hash in PROCESSED_CONTENT:
         return
 
-    # التوجيه للذكاء الاصطناعي
+    # التوجيه المباشر والكامل للذكاء الاصطناعي
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_client:
         return
@@ -160,7 +156,7 @@ async def process_message(bot, message: Message):
     for user in TARGET_USERS:
         try:
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [AI PASS] تم إرسال طلب زبون محقق من [{chat_title}] إلى: {user}", flush=True)
+            print(f"🎯 [AI ACCEPTED] تم إرسال طلب زبون محقق من [{chat_title}] إلى: {user}", flush=True)
         except FloodWait as e:
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=raw_text, reply_markup=reply_markup, disable_web_page_preview=True)
@@ -168,7 +164,7 @@ async def process_message(bot, message: Message):
             print(f"❌ خطأ إرسال: {e}", flush=True)
 
 # =========================================================
-# SCANNER LOOP
+# SCANNER LOOP (دالة الفحص لكل المجموعات)
 # =========================================================
 
 async def real_time_channel_and_group_scanner(userbot, bot):
@@ -215,7 +211,7 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    print("🚀 تم إصلاح الموديل! الذكاء الاصطناعي يعمل الآن بدقة 100% ويمنع الفوضى تماماً.", flush=True)
+    print("🚀 تم التعديل! الكود يعمل 100% بالذكاء الاصطناعي مع الموديل المحدث وخالٍ تماماً من أي كلمات مفتاحية.", flush=True)
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
