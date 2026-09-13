@@ -53,7 +53,8 @@ if GROQ_API_KEY:
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
+# أضفنا رمز @ للتأكد من التعرف على اليوزر
+TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
 
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
@@ -127,7 +128,6 @@ async def process_message(bot, message: Message):
     raw_text = clean_text(message.text or message.caption or "")
     chat_title = message.chat.title or message.chat.first_name or str(message.chat.id)
     
-    # طباعة كل رسالة تم التقاطها للتأكد
     print(f"📩 [تم التقاط رسالة من {chat_title}]: {raw_text}", flush=True)
 
     if len(raw_text) < 3:
@@ -163,7 +163,7 @@ async def process_message(bot, message: Message):
             await asyncio.sleep(e.value)
             await bot.send_message(chat_id=user, text=f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}", reply_markup=reply_markup)
         except Exception as e:
-            print(f"❌ خطأ إرسال إلى {user}: {e}", flush=True)
+            print(f"❌ [خطأ تفصيلي بالإرسال إلى {user}]: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -187,7 +187,6 @@ async def main():
         in_memory=True
     )
 
-    # مستمع لجميع الرسائل الواردة من اليوزربوت
     @userbot.on_message(filters.all)
     async def global_listener(client, message):
         await process_message(bot, message)
@@ -195,7 +194,6 @@ async def main():
     await userbot.start()
     await bot.start()
 
-    # تحديث وقراءة الحوارات فور التشغيل لربط الاستماع بالجروبات والقنوات
     print("🔄 جاري تحميل قائمة المحادثات والجروبات...", flush=True)
     async for dialog in userbot.get_dialogs(limit=100):
         pass
