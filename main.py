@@ -1,6 +1,7 @@
 import os
 import asyncio
 import re
+import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from groq import Groq
@@ -9,7 +10,7 @@ from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7
+# SERVER TO KEEP ALIVE 24/7
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -17,11 +18,10 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Smart AI Bot Active 24/7!")
+        self.wfile.write(b"Barq Super Fast AI Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
 
 def run_dummy_server():
@@ -47,83 +47,90 @@ if GROQ_API_KEY:
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
 
-# يمكنك إضافة الـ ID الرقمي هنا بدلاً من اليوزر إذا لم تصلك الرسائل من البوت
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
-PROCESSED_MESSAGES = set()
 
-# الكلمات المفتاحية المباشرة للاختبار والسحب السريع
-KEYWORDS = ["توصيل", "مشوار", "سواق", "سائق", "طلب", "من يوصل", "مطلوب سواق", "تجربة", "تست", "test"]
+# ذاكرة حماية لمنع التكرار الشامل (بالـ ID وبالنص)
+PROCESSED_MSG_IDS = set()
+PROCESSED_TEXT_HASHES = set()
 
 # =========================================================
-# FILTERING ENGINE
+# GROQ AI DECISION ENGINE (MODEL FIXED)
 # =========================================================
 
-def is_delivery_request(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال (غالباً عروض سائقين)
+def analyze_with_groq_fast(text: str) -> bool:
+    # 1. استبعاد أرقام الجوال فوراً (إعلانات أو عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False
 
-    # 2. فحص الكلمات المفتاحية المباشرة (سريع ومضمون)
-    text_lower = text.lower()
-    if any(kw in text_lower for kw in KEYWORDS):
-        return True
+    if not GROQ_API_KEY or not groq_client:
+        return False
 
-    # 3. فحص الذكاء الاصطناعي (Groq)
-    if GROQ_API_KEY and groq_client:
-        prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل طلبات التوصيل.
-هل الرسالة التالية تحتوي على طلب توصيل أو مشوار أو بحث عن سائق أو تجربة؟
-أجب بـ YES أو NO فقط.
+    prompt = f"""أنت ذكاء اصطناعي محترف لتصنيف الطلبات.
+هل الرسالة التالية عبارة عن طلب توصيل / مشوار / طلب سواق / طلب مندوب من قبل زبون يبحث عن خدمة؟
+أجب بكلمة واحدة فقط: YES أو NO.
 
 الرسالة: "{text}"
 الجواب:"""
+
+    # استخدام النماذج المعتمدة الحالية في Groq لمنع خطأ 404
+    active_models = [
+        "llama-3.3-70b-versatile",
+        "llama3-8b-8192",
+        "mixtral-8x7b-32768"
+    ]
+
+    for model_name in active_models:
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
+                model=model_name,
                 temperature=0,
                 max_tokens=2
             )
             raw_res = response.choices[0].message.content.strip().upper()
             return "YES" in raw_res
-        except Exception as e:
-            print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
+        except Exception:
+            continue
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSING & FORWARDING
+# REAL-TIME INSTANT PROCESSING (بدون بطء وبدون تكرار)
 # =========================================================
 
-async def process_message(userbot: Client, bot: Client, message: Message):
+async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # فحص الرسائل في المجموعات والقنوات فقط
-    if message.chat and message.chat.type.value not in ["group", "supergroup", "channel"]:
+    # 1. منع تكرار معرف الرسالة
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MSG_IDS:
         return
+    PROCESSED_MSG_IDS.add(msg_key)
 
-    # عدم معالجة الرسائل الصادرة من الحساب نفسه
+    if len(PROCESSED_MSG_IDS) > 20000:
+        PROCESSED_MSG_IDS.clear()
+
+    # 2. استبعاد رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    if msg_key in PROCESSED_MESSAGES:
-        return
-    
-    PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 5000:
-        PROCESSED_MESSAGES.clear()
-
     raw_text = message.text or message.caption or ""
-    if len(raw_text.strip()) < 2:
+    clean_text = raw_text.strip()
+    if len(clean_text) < 3:
         return
 
-    chat_title = message.chat.title or "مجموعة"
-    print(f"📩 رسالة جديدة من [{chat_title}]: {raw_text[:40]}...", flush=True)
+    # 3. منع تكرار نفس النص إذا نُشر في عدة قروبات بنفس اللحظة
+    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+    if text_hash in PROCESSED_TEXT_HASHES:
+        return
 
-    if is_delivery_request(raw_text):
-        print(f"🎯 تم رصد طلب جديد متطابق! جاري التوجيه...", flush=True)
-        
+    # 4. التقييم بالذكاء الاصطناعي
+    if analyze_with_groq_fast(clean_text):
+        PROCESSED_TEXT_HASHES.add(text_hash)
+        if len(PROCESSED_TEXT_HASHES) > 10000:
+            PROCESSED_TEXT_HASHES.clear()
+
         buttons = []
         row = []
         
@@ -143,11 +150,12 @@ async def process_message(userbot: Client, bot: Client, message: Message):
             buttons.append(row)
             
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-        text_to_send = f"📌 من: {chat_title}\n\n{raw_text}"
+        
+        # إرسال نص الرسالة الصافي فقط بدون اسم القروب
+        text_to_send = clean_text
 
         for user in TARGET_USERS:
             sent = False
-            # المحاولة عبر البوت أولاً
             if bot:
                 try:
                     await bot.send_message(
@@ -157,11 +165,21 @@ async def process_message(userbot: Client, bot: Client, message: Message):
                         disable_web_page_preview=True
                     )
                     sent = True
-                    print(f"✅ تم التوجيه بنجاح إلى {user} عبر البوت", flush=True)
-                except Exception as e:
-                    print(f"⚠️ فشل إرسال البوت إلى {user}: {e}", flush=True)
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=text_to_send,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                        sent = True
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
 
-            # إذا فشل البوت، يرسل عبر الحساب الشخصي مباشرة
             if not sent:
                 try:
                     await userbot.send_message(
@@ -170,31 +188,8 @@ async def process_message(userbot: Client, bot: Client, message: Message):
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                    print(f"✅ تم التوجيه بنجاح إلى {user} عبر الحساب الشخصي", flush=True)
                 except Exception as e:
-                    print(f"❌ فشل الإرسال بالحساب الشخصي إلى {user}: {e}", flush=True)
-    else:
-        print(f"⏩ الرسالة لا تحتوي على طلب توصيل (تم التخطي).", flush=True)
-
-# =========================================================
-# REAL TIME SCANNER
-# =========================================================
-
-async def real_time_channel_and_group_scanner(userbot: Client, bot: Client):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=50):
-                if dialog.chat.type.value in ["group", "supergroup", "channel"]:
-                    try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                            await process_message(userbot, bot, msg)
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"⚠️ خطأ فحص القروبات: {e}", flush=True)
-            
-        await asyncio.sleep(5)
+                    print(f"❌ خطأ توجيه: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -224,16 +219,15 @@ async def main():
             await bot.start()
             print("✅ تم تشغيل البوت المساعد بنجاح!", flush=True)
         except Exception as e:
-            print(f"⚠️ فشل تشغيل البوت المساعد: {e}", flush=True)
+            print(f"⚠️ خطأ البوت: {e}", flush=True)
 
+    # الاستماع المباشر واللحظي لجميع القروبات القنوات
     @userbot.on_message(filters.group | filters.channel)
-    async def global_listener(client: Client, message: Message):
-        await process_message(client, bot, message)
+    async def global_live_listener(client: Client, message: Message):
+        await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("✅ تم تشغيل الحساب وجاري مراقبة القروبات...", flush=True)
-
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
+    print("⚡ تم التفعيل الفوري! السحب يعمل بأقصى سرعة وبذكاء اصطناعي بدون تكرار.", flush=True)
 
     await asyncio.Event().wait()
 
