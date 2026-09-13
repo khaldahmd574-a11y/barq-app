@@ -30,7 +30,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION & CONFIG RECOVERY
+# CONFIGURATION
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -47,53 +47,46 @@ if GROQ_API_KEY:
     except Exception as e:
         print(f"❌ [Groq Init Error] {e}", flush=True)
 
+# يمكنك إضافة الـ ID الرقمي هنا بدلاً من اليوزر إذا لم تصلك الرسائل من البوت
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MESSAGES = set()
-AI_CACHE = {}
+
+# الكلمات المفتاحية المباشرة للاختبار والسحب السريع
+KEYWORDS = ["توصيل", "مشوار", "سواق", "سائق", "طلب", "من يوصل", "مطلوب سواق", "تجربة", "تست", "test"]
 
 # =========================================================
-# ADVANCED GROQ AI DECISION ENGINE
+# FILTERING ENGINE
 # =========================================================
 
-def analyze_with_groq(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال فوراً (عروض سائقين أو إعلانات)
+def is_delivery_request(text: str) -> bool:
+    # 1. استبعاد أرقام الجوال (غالباً عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False
 
-    # 2. فحص الذاكرة المؤقتة لمنع تكرار الاستهلاك
-    if text in AI_CACHE:
-        return AI_CACHE[text]
+    # 2. فحص الكلمات المفتاحية المباشرة (سريع ومضمون)
+    text_lower = text.lower()
+    if any(kw in text_lower for kw in KEYWORDS):
+        return True
 
-    if not GROQ_API_KEY or not groq_client:
-        return False
-
-    prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل مجموعات تليجرام في السعودية.
-حدد هل الرسالة التالية هي "طلب توصيل / مشوار / بحث عن سواق أو مندوب" قادم من زبون فقط؟
-أجب بكلمة واحدة فقط: YES أو NO.
+    # 3. فحص الذكاء الاصطناعي (Groq)
+    if GROQ_API_KEY and groq_client:
+        prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل طلبات التوصيل.
+هل الرسالة التالية تحتوي على طلب توصيل أو مشوار أو بحث عن سائق أو تجربة؟
+أجب بـ YES أو NO فقط.
 
 الرسالة: "{text}"
 الجواب:"""
-
-    models = ["llama-3.1-8b-instant", "llama3-8b-8192", "mixtral-8x7b-32768"]
-
-    for model_name in models:
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model=model_name,
+                model="llama-3.1-8b-instant",
                 temperature=0,
                 max_tokens=2
             )
             raw_res = response.choices[0].message.content.strip().upper()
-            is_valid = "YES" in raw_res
-            
-            AI_CACHE[text] = is_valid
-            if len(AI_CACHE) > 1000:
-                AI_CACHE.clear()
-
-            return is_valid
-        except Exception:
-            continue
+            return "YES" in raw_res
+        except Exception as e:
+            print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -105,11 +98,11 @@ async def process_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل المحادثات الخاصة المباشرة
+    # فحص الرسائل في المجموعات والقنوات فقط
     if message.chat and message.chat.type.value not in ["group", "supergroup", "channel"]:
         return
 
-    # تجاهل رسائل الحساب نفسه
+    # عدم معالجة الرسائل الصادرة من الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -118,14 +111,19 @@ async def process_message(userbot: Client, bot: Client, message: Message):
         return
     
     PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 10000:
+    if len(PROCESSED_MESSAGES) > 5000:
         PROCESSED_MESSAGES.clear()
 
     raw_text = message.text or message.caption or ""
-    if len(raw_text.strip()) < 3:
+    if len(raw_text.strip()) < 2:
         return
 
-    if analyze_with_groq(raw_text):
+    chat_title = message.chat.title or "مجموعة"
+    print(f"📩 رسالة جديدة من [{chat_title}]: {raw_text[:40]}...", flush=True)
+
+    if is_delivery_request(raw_text):
+        print(f"🎯 تم رصد طلب جديد متطابق! جاري التوجيه...", flush=True)
+        
         buttons = []
         row = []
         
@@ -145,11 +143,11 @@ async def process_message(userbot: Client, bot: Client, message: Message):
             buttons.append(row)
             
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-        chat_title = message.chat.title or "مجموعة"
         text_to_send = f"📌 من: {chat_title}\n\n{raw_text}"
 
         for user in TARGET_USERS:
             sent = False
+            # المحاولة عبر البوت أولاً
             if bot:
                 try:
                     await bot.send_message(
@@ -159,21 +157,11 @@ async def process_message(userbot: Client, bot: Client, message: Message):
                         disable_web_page_preview=True
                     )
                     sent = True
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=text_to_send,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                        sent = True
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                    print(f"✅ تم التوجيه بنجاح إلى {user} عبر البوت", flush=True)
+                except Exception as e:
+                    print(f"⚠️ فشل إرسال البوت إلى {user}: {e}", flush=True)
 
+            # إذا فشل البوت، يرسل عبر الحساب الشخصي مباشرة
             if not sent:
                 try:
                     await userbot.send_message(
@@ -182,11 +170,14 @@ async def process_message(userbot: Client, bot: Client, message: Message):
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
+                    print(f"✅ تم التوجيه بنجاح إلى {user} عبر الحساب الشخصي", flush=True)
                 except Exception as e:
-                    print(f"❌ خطأ توجيه بالحساب: {e}", flush=True)
+                    print(f"❌ فشل الإرسال بالحساب الشخصي إلى {user}: {e}", flush=True)
+    else:
+        print(f"⏩ الرسالة لا تحتوي على طلب توصيل (تم التخطي).", flush=True)
 
 # =========================================================
-# REAL TIME SCANNER (المحرك التكراري لسحب جميع القروبات)
+# REAL TIME SCANNER
 # =========================================================
 
 async def real_time_channel_and_group_scanner(userbot: Client, bot: Client):
@@ -201,9 +192,9 @@ async def real_time_channel_and_group_scanner(userbot: Client, bot: Client):
                         pass
                     await asyncio.sleep(0.1)
         except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص: {e}", flush=True)
+            print(f"⚠️ خطأ فحص القروبات: {e}", flush=True)
             
-        await asyncio.sleep(7)
+        await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -231,16 +222,16 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-            print("✅ تم اتصال وتشغيل البوت المساعد بالتوافق مع التوكن الجديد!", flush=True)
+            print("✅ تم تشغيل البوت المساعد بنجاح!", flush=True)
         except Exception as e:
-            print(f"⚠️ خطأ تشغيل البوت: {e}", flush=True)
+            print(f"⚠️ فشل تشغيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message(filters.group | filters.channel)
     async def global_listener(client: Client, message: Message):
         await process_message(client, bot, message)
 
     await userbot.start()
-    print("✅ تم تشغيل الحساب وربط جميع القروبات 100% بنجاح!", flush=True)
+    print("✅ تم تشغيل الحساب وجاري مراقبة القروبات...", flush=True)
 
     asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
