@@ -38,6 +38,7 @@ def run_dummy_server():
 # CONFIGURATION & GROQ CLIENT
 # =========================================================
 
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
@@ -113,7 +114,7 @@ def analyze_with_ai(text):
 # MESSAGE PROCESSING & FORWARDING
 # =========================================================
 
-async def process_and_send(app, message: Message):
+async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
@@ -133,14 +134,14 @@ async def process_and_send(app, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    print(f"📩 [رسالة جديدة من {message.chat.title or message.chat.first_name}]: {raw_text[:30]}...", flush=True)
+    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
+    print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text[:30]}...", flush=True)
 
     is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
     if not is_client:
         return
 
     PROCESSED_CONTENT.add(content_hash)
-    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
 
     buttons = []
     if message.from_user:
@@ -156,14 +157,18 @@ async def process_and_send(app, message: Message):
     text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
 
     for user in TARGET_USERS:
+        # المحاولة عبر اليوزربوت أولاً
         try:
-            await app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-            print(f"🎯 [تم الإرسال بنجاح إلى {user}]", flush=True)
-        except FloodWait as e:
-            await asyncio.sleep(e.value)
-            await app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
-        except Exception as e:
-            print(f"❌ [فشل الإرسال إلى {user}]: {e}", flush=True)
+            await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"🎯 [تم الإرسال عبر اليوزربوت إلى {user}]", flush=True)
+        except Exception as e1:
+            # إذا فشل اليوزربوت يجرب عبر البوت المساعد
+            try:
+                if bot_app:
+                    await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+                    print(f"🎯 [تم الإرسال عبر البوت إلى {user}]", flush=True)
+            except Exception as e2:
+                print(f"❌ [فشل الإرسال إلى {user}]: {e1} | {e2}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -180,13 +185,35 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع المباشر لجميع الرسائل من كافة الجروبات دون التسبب بالحظر
-    @userbot.on_message(filters.group | filters.channel | filters.private)
+    bot_app = None
+    if BOT_TOKEN:
+        try:
+            bot_app = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot_app.start()
+        except Exception as e:
+            print(f"⚠️ لم يتم تشغيل البوت المساعد: {e}", flush=True)
+
+    @userbot.on_message(filters.all)
     async def global_listener(client, message):
-        await process_and_send(client, message)
+        await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل اليوزربوت بنجاح بدون حظر!", flush=True)
+    print("✅ تم تشغيل اليوزربوت بنجاح!", flush=True)
+
+    # تحديث الحوارات مرة واحدة فقط لربط جميع الجروبات دون حظر
+    print("🔄 ربط جميع الجروبات والمحادثات...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=200):
+            pass
+        print("✅ تم ربط جميع المجموعات والقنوات بنجاح دون أي حظر!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
 
     await asyncio.Event().wait()
 
