@@ -2,152 +2,228 @@ import os
 import asyncio
 import hashlib
 import json
-import threading
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 from groq import Groq
+
 from hydrogram import Client, filters
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait
 
-
 # =========================================================
-# إعدادات Render - السيرفر الوهمي
+# KEEP ALIVE SERVER
 # =========================================================
 
-class HealthHandler(BaseHTTPRequestHandler):
-
+class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Bot is alive 24/7")
+        self.wfile.write(b"Barq Free Groq AI Active!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
     def log_message(self, format, *args):
-        pass
+        return
 
-
-def start_health_server():
-    port = int(os.getenv("PORT", "10000"))
-
-    server = HTTPServer(
-        ("0.0.0.0", port),
-        HealthHandler
-    )
-
-    print(f"🌐 Health server started on port {port}", flush=True)
-
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-
 # =========================================================
-# المتغيرات
-# =========================================================
-
-SESSION_STRING = os.getenv("SESSION_STRING", "").strip()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-
-API_ID = int(
-    os.getenv(
-        "TELEGRAM_API_ID",
-        "39120728"
-    )
-)
-
-API_HASH = os.getenv(
-    "TELEGRAM_API_HASH",
-    "1deec8393ce5aa05c54c0c7e280377d4"
-).strip()
-
-
-# =========================================================
-# الأشخاص الذين يستقبلون الطلبات
+# CONFIGURATION & GROQ CLIENT
 # =========================================================
 
-TARGET_USERS = [
-    "@abood1317",
-    "@Waaaaaaa33",
-    "@shaybq"
-]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 
+API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")
 
-# =========================================================
-# نموذج Groq سريع
-# =========================================================
+groq_client = None
+if GROQ_API_KEY:
+    try:
+        groq_client = Groq(api_key=GROQ_API_KEY)
+        print("✅ تم الاتصال بمكتبة Groq بنجاح", flush=True)
+    except Exception as e:
+        print(f"❌ [Groq Init Error] {e}", flush=True)
 
-AI_MODEL = "openai/gpt-oss-20b"
+TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
 
-
-if not SESSION_STRING:
-    raise RuntimeError(
-        "❌ SESSION_STRING غير موجود في Render"
-    )
-
-if not GROQ_API_KEY:
-    raise RuntimeError(
-        "❌ GROQ_API_KEY غير موجود في Render"
-    )
-
-
-# =========================================================
-# Groq
-# =========================================================
-
-groq_client = Groq(
-    api_key=GROQ_API_KEY
-)
-
-print("✅ Groq جاهز", flush=True)
-
-
-# =========================================================
-# Telegram Userbot
-# =========================================================
-
-userbot = Client(
-    "jazan_listener",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    session_string=SESSION_STRING,
-    in_memory=True
-)
-
-
-# =========================================================
-# منع التكرار
-# =========================================================
-
-processed_messages = set()
-
-processed_requests = {}
-
-dedupe_lock = asyncio.Lock()
-
-
-# مدة منع تكرار نفس طلب الشخص
-# 6 ساعات
-DEDUP_SECONDS = 6 * 60 * 60
-
-
-# =========================================================
-# تنظيف النص
-# =========================================================
+PROCESSED_MESSAGES = set()
+PROCESSED_CONTENT = set()
 
 def clean_text(text):
-
     if not text:
         return ""
-
-    text = text.replace("\n", " ")
-    text = " ".join(text.split())
-
-    return text.strip()
-
+    return " ".join(text.strip().split())
 
 # =========================================================
-# بص
+# FREE AI ANALYSIS (GROQ) - تخفيف القيود
+# =========================================================
+
+def analyze_with_ai(text):
+    if not GROQ_API_KEY or not groq_client:
+        return True  # إذا لم يوجد مفتاح أرسل كل شيء
+
+    prompt = f"""
+أنت نظام ذكاء اصطناعي لفرز رسائل التليجرام.
+حدد هل الكاتب زبون/عميل يبحث عن خدمة توصيل، سائق، مشوار، أو يطلب مساعدة في التنقل؟
+
+القواعد:
+1. أي شخص يطلب توصيل، سائق، مشوار، سيارة، يطلب الذهاب لمكان، أو يسأل "مين فاضي/يوصلني" -> true
+2. فقط إذا كان سائق/مندوب يعرض خدمته بشكل صريح (مثال: "أنا سائق أربيل توصيل"، "موجود توصيل") -> false
+
+النص للتحليل: "{text}"
+
+أرجع JSON فقط بالشكل التالي ودون أي كلام إضافي:
+{{"is_client": true}} أو {{"is_client": false}}
+"""
+
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama3-70b-8192",
+        "mixtral-8x7b-32768",
+        "llama-3.1-8b-instant"
+    ]
+
+    for model_name in models_to_try:
+        try:
+            response = groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model_name,
+                temperature=0,
+                response_format={"type": "json_object"}
+            )
+            raw_text = response.choices[0].message.content.strip()
+            ai = json.loads(raw_text)
+            res = bool(ai.get("is_client", False))
+            return res
+        except Exception:
+            continue
+
+    return False
+
+# =========================================================
+# MESSAGE PROCESSING & FORWARDING
+# =========================================================
+
+async def process_and_send(userbot, bot_app, message: Message):
+    if not message or not message.id:
+        return
+
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MESSAGES:
+        return
+    PROCESSED_MESSAGES.add(msg_key)
+
+    if len(PROCESSED_MESSAGES) > 10000:
+        PROCESSED_MESSAGES.clear()
+
+    raw_text = clean_text(message.text or message.caption or "")
+    if len(raw_text) < 3:
+        return
+
+    content_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
+    if content_hash in PROCESSED_CONTENT:
+        return
+
+    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
+    print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
+
+    # تحليل الذكاء الاصطناعي وطباعة النتيجة
+    is_client = await asyncio.to_thread(analyze_with_ai, raw_text)
+    print(f"🤖 [نتيجة تقييم Groq AI]: {is_client}", flush=True)
+
+    if not is_client:
+        print(f"⛔ [تجاهل الرسالة]: الذكاء الاصطناعي اعتبرها ليست طلب توصيل.", flush=True)
+        return
+
+    PROCESSED_CONTENT.add(content_hash)
+
+    buttons = []
+    if message.from_user:
+        username = message.from_user.username
+        user_id = message.from_user.id
+        user_url = f"https://t.me/{username}" if username else f"tg://openmessage?user_id={user_id}"
+        buttons.append(InlineKeyboardButton("💬 فتح المحادثة", url=user_url))
+
+    if message.link:
+        buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
+
+    reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
+    text_to_send = f"📍 **طلب توصيل جديد من {chat_title}:**\n\n{raw_text}"
+
+    for user in TARGET_USERS:
+        sent = False
+        # جرب عبر اليوزربوت أولاً
+        try:
+            await userbot.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+            print(f"🎯 [تم الإرسال بنجاح عبر اليوزربوت إلى {user}]", flush=True)
+            sent = True
+        except Exception as e1:
+            # إذا فشل اليوزربوت جرب عبر البوت
+            if bot_app:
+                try:
+                    await bot_app.send_message(chat_id=user, text=text_to_send, reply_markup=reply_markup, disable_web_page_preview=True)
+                    print(f"🎯 [تم الإرسال بنجاح عبر البوت المساعد إلى {user}]", flush=True)
+                    sent = True
+                except Exception as e2:
+                    print(f"❌ [فشل الإرسال بالبوت واليوزربوت إلى {user}]: {e1} | {e2}", flush=True)
+            else:
+                print(f"❌ [فشل الإرسال باليوزربوت إلى {user}]: {e1}", flush=True)
+
+# =========================================================
+# MAIN ENTRYPOINT
+# =========================================================
+
+async def main():
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot_app = None
+    if BOT_TOKEN:
+        try:
+            bot_app = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot_app.start()
+        except Exception as e:
+            print(f"⚠️ لم يتم تشغيل البوت المساعد: {e}", flush=True)
+
+    @userbot.on_message(filters.all)
+    async def global_listener(client, message):
+        await process_and_send(client, bot_app, message)
+
+    await userbot.start()
+    print("✅ تم تشغيل اليوزربوت بنجاح!", flush=True)
+
+    print("🔄 ربط جميع الجروبات والمحادثات...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=200):
+            pass
+        print("✅ تم ربط جميع المجموعات والقنوات بنجاح دون أي حظر!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء الربط: {e}", flush=True)
+
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
