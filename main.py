@@ -56,7 +56,7 @@ TARGET_USERS = ["@shaybq", "@Waaaaaaa33", "@abood1317"]
 
 PROCESSED_MESSAGES = set()
 PROCESSED_CONTENT = set()
-AI_CACHE = {} # تخزين مؤقت لنتائج الذكاء الاصطناعي لمنع استهلاك الـ Rate Limit
+AI_CACHE = {}
 
 def clean_text(text):
     if not text:
@@ -64,30 +64,32 @@ def clean_text(text):
     return " ".join(text.strip().split())
 
 # =========================================================
-# ADVANCED GROQ AI ANALYSIS (محسن لمنع تجاوز الحد)
+# ADVANCED GROQ AI ANALYSIS
 # =========================================================
 
 def analyze_with_groq_smart(text):
-    # 1. استبعاد أرقام الجوال فوراً (عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         return False, "تجاهل: تحتوي على رقم جوال (سائق)"
 
-    # فحص الكاش لمنع استهلاك الـ API إذا تم تكرار الرسالة
     if text in AI_CACHE:
         return AI_CACHE[text], "مقبول من الذاكرة المؤقتة (Cache)"
 
+    # كلمات مفتاحية محلية للطوارئ
+    fallback_keywords = ["مين", "من", "فاضي", "ابي", "ابغى", "احتاج", "يوصلني", "توديني", "مشوار", "مندوب", "صامطه", "صامطة", "المطار"]
+
     if not GROQ_API_KEY or not groq_client:
+        for kw in fallback_keywords:
+            if kw in text.lower():
+                return True, "مقبول عبر الطوارئ المحلية"
         return False, "تجاهل: لا يوجد مفتاح Groq"
 
-    # برومبت دقيق وذكي جداً يفهم اللهجة السعودية تماماً وبأقل استهلاك رموز (Tokens)
-    prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل مجموعات تليجرام في السعودية.
+    prompt = f"""أنت ذكاء اصطناعي لتصنيف رسائل مجموعات تليجرام.
 حدد هل الرسالة التالية هي "طلب توصيل / مشوار / بحث عن سواق أو مندوب" قادم من زبون؟
 أجب بكلمة واحدة فقط: YES أو NO.
 
 الرسالة: "{text}"
 الجواب:"""
 
-    # استخدام النماذج الأكثر استقراراً والأقل عرضة لتجاوز الحد (Rate Limit)
     models = [
         "llama-3.1-8b-instant",
         "llama3-8b-8192",
@@ -103,27 +105,21 @@ def analyze_with_groq_smart(text):
                 max_tokens=2
             )
             raw_res = response.choices[0].message.content.strip().upper()
-            
             is_valid = "YES" in raw_res
-            # تخزين النتيجة في الكاش
+            
             AI_CACHE[text] = is_valid
             if len(AI_CACHE) > 500:
                 AI_CACHE.clear()
                 
             return is_valid, f"قرار Groq الذكي ({model_name})"
-        except Exception as e:
-            # إذا ظهر خطأ تجاوز الحد، ننتقل للنموذج الذي يليه تلقائياً
-            if "rate_limit" in str(e).lower() or "429" in str(e):
-                continue
+        except Exception:
             continue
 
-    # كاحتياط أخير إذا ضغطت كل نماذج Groq مؤقتاً، نعتمد على الكلمات المفتاحية الذكية لكي لا يضيع أي طلب
-    fallback_keywords = ["مين", "من", "فاضي", "ابي", "ابغى", "احتاج", "يوصلني", "توديني", "مشوار", "مندوب", "صامطه", "صامطة", "المطار"]
     for kw in fallback_keywords:
         if kw in text.lower():
-            return True, "مقبول عبر الطوارئ الذكية (بسبب ضغط Groq)"
+            return True, "مقبول عبر الطوارئ الذكية"
 
-    return False, "غير مقبول (فشل المؤقت)"
+    return False, "غير مقبول"
 
 # =========================================================
 # MESSAGE PROCESSING & FORWARDING
@@ -133,9 +129,12 @@ async def process_and_send(userbot, bot_app, message: Message):
     if not message or not message.id:
         return
 
+    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
+    chat_title = message.chat.title or message.chat.first_name or f"Chat_{message.chat.id}"
+    
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
@@ -152,15 +151,12 @@ async def process_and_send(userbot, bot_app, message: Message):
     if content_hash in PROCESSED_CONTENT:
         return
 
-    chat_title = message.chat.title or message.chat.first_name or "مجموعة"
-    print(f"📩 [رسالة جديدة من {chat_title}]: {raw_text}", flush=True)
+    print(f"📩 [رسالة واردة من {chat_title}]: {raw_text}", flush=True)
 
-    # تحليل الذكاء الاصطناعي الذكي
     is_client, reason = analyze_with_groq_smart(raw_text)
-    print(f"🤖 [Groq AI]: {is_client} | السبب: {reason}", flush=True)
+    print(f"🤖 [التقييم]: {is_client} | السبب: {reason}", flush=True)
 
     if not is_client:
-        print(f"⛔ [تجاهل]: {reason}", flush=True)
         return
 
     PROCESSED_CONTENT.add(content_hash)
@@ -176,7 +172,7 @@ async def process_and_send(userbot, bot_app, message: Message):
         buttons.append(InlineKeyboardButton("📩 فتح الرسالة", url=message.link))
 
     reply_markup = InlineKeyboardMarkup([buttons]) if buttons else None
-    text_to_send = raw_text
+    text_to_send = f"📌 من: {chat_title}\n\n{raw_text}"
 
     for user in TARGET_USERS:
         sent = False
@@ -225,20 +221,26 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ في تشغيل البوت: {e}", flush=True)
 
-    @userbot.on_message(filters.group | filters.channel)
+    # مرشح شامل لجميع المجموعات والقنوات بدون أي استثناء
+    @userbot.on_message()
     async def global_listener(client, message):
-        await process_and_send(client, bot_app, message)
+        # تجاهل الرسائل الخاصة المباشرة
+        if message.chat.type.value in ["group", "supergroup", "channel"]:
+            await process_and_send(client, bot_app, message)
 
     await userbot.start()
-    print("✅ تم تشغيل المحرك الذكي بنجاح مع حماية الحد اليومي!", flush=True)
+    print("✅ تم تشغيل المحرك الرئيسي!", flush=True)
 
+    # تنشيط الاتصال الفوري بجميع المجموعات فور التشغيل
     try:
-        dialog_count = 0
+        print("🔄 جاري فتح القنوات وتنشيط البث المباشر لجميع المجموعات...", flush=True)
         async for dialog in userbot.get_dialogs():
-            dialog_count += 1
-        print(f"✅ تم ربط ومزامنة {dialog_count} مجموعة وقناة بنجاح!", flush=True)
+            # إجبار السيرفر على فتح مجرى الأحداث لكل مجموعة ينتمي لها الحساب
+            if dialog.chat.type.value in ["group", "supergroup", "channel"]:
+                pass
+        print("🔥 تم تفعيل البث اللحظي لكافة القروبات بنجاح!", flush=True)
     except Exception as e:
-        print(f"⚠️ تنبيه أثناء المزامنة: {e}", flush=True)
+        print(f"⚠️ تنبيه أثناء التنشيط: {e}", flush=True)
 
     await asyncio.Event().wait()
 
