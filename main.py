@@ -1,7 +1,6 @@
 import os
 import asyncio
 import re
-import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -41,39 +40,37 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_MSG_IDS = set()
-PROCESSED_TEXT_HASHES = set()
 
-# الكلمات المفتاحية المحلية المباشرة (تتجاوز الذكاء الاصطناعي فوراً)
+# الكلمات المفتاحية الفورية
 EXPRESS_KEYWORDS = [
-    "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", "نوصل", "توصيل", 
-    "سائق", "سواق", "سواقة", "سواقه", "مندوب", "مشوار", "ويرجعني", "يرجعني", "الشاخر", "رديس"
+    "مشوار", "توصيل", "سائق", "سواق", "سواقة", "سواقه", 
+    "مندوب", "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", 
+    "نوصل", "ويرجعني", "يرجعني", "الشاخر", "رديس", "مزهره", "مزهرة", "صبيا", "جازان", "ابوعريش"
 ]
 
 # =========================================================
-# OPENROUTER AI ENGINE WITH LOCAL HYBRID FALLBACK
+# AI & KEYWORD ANALYSIS
 # =========================================================
 
 def analyze_message(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال فوراً (إعلانات سائقين)
+    # 1. استبعاد أرقام الجوال (عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        print(f"🚫 [استبعاد]: تحتوي على رقم جوال", flush=True)
+        print(f"🚫 [استبعاد]: رقم جوال موجود", flush=True)
         return False
 
     clean = text.lower()
 
-    # 2. فحص الكلمات السريعة التلقائية (مثل "مين فاضي" أو "الشاخر")
+    # 2. مطابقة فورية للكلمات
     for kw in EXPRESS_KEYWORDS:
         if kw in clean:
-            print(f"⚡ [اعتماد فوري محلي]: احتوت على كلمة مفتاحية '{kw}'", flush=True)
+            print(f"⚡ [اعتماد فوري]: كلمة مفتاحية '{kw}'", flush=True)
             return True
 
-    # 3. التحليل عبر الذكاء الاصطناعي للعبارات الأخرى
+    # 3. فحص الذكاء الاصطناعي
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""هل الرسالة التالية عبارة عن طلب توصيل أو مشوار أو بحث عن سائق/باص/مندوب أو استفسار عن شخص فاضي للتوصيل؟
-أجب بكلمة واحدة فقط: YES أو NO.
-
+    prompt = f"""هل هذه الرسالة طلب توصيل/مشوار/مندوب/سائق؟ أجب بـ YES أو NO فقط.
 الرسالة: "{text}"
 الجواب:"""
 
@@ -83,27 +80,19 @@ def analyze_message(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    models_to_try = [
-        "qwen/qwen-2.5-7b-instruct",
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "google/gemini-flash-1.5"
-    ]
-
-    for model_name in models_to_try:
-        try:
-            payload = {
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 5
-            }
-            res = requests.post(url, headers=headers, json=payload, timeout=4)
-            if res.status_code == 200:
-                answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [تحليل AI عبر {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
-                return "YES" in answer
-        except Exception:
-            continue
+    try:
+        payload = {
+            "model": "qwen/qwen-2.5-7b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 5
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            return "YES" in answer
+    except Exception:
+        pass
 
     return False
 
@@ -115,29 +104,32 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
+    # يتجاهل الرسائل الخاصة المباشرة مع الحساب الوهمي ويستمع للقروبات فقط
+    if message.chat.type.name not in ["GROUP", "SUPERGROUP", "CHANNEL"]:
+        return
+
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MSG_IDS:
         return
     PROCESSED_MSG_IDS.add(msg_key)
 
+    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 3:
+    if len(clean_text) < 2:
         return
 
-    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-    if text_hash in PROCESSED_TEXT_HASHES:
-        return
+    chat_title = getattr(message.chat, 'title', str(message.chat.id))
+    print(f"📩 [رسالة من قروب: {chat_title}]: {clean_text[:40]}", flush=True)
 
     loop = asyncio.get_event_loop()
     is_valid = await loop.run_in_executor(None, analyze_message, clean_text)
 
     if is_valid:
-        print("✅ [تم الاعتماد]: جارٍ الإرسال إلى الحسابات المستهدفة...", flush=True)
-        PROCESSED_TEXT_HASHES.add(text_hash)
+        print(f"✅ [اعتماد وإرسال من: {chat_title}]...", flush=True)
 
         buttons = []
         row = []
@@ -213,13 +205,13 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع لجميع القنوات والقروبات (سواء عادية أو سوبر) بدون أخطاء
-    @userbot.on_message(filters.group | filters.channel)
+    # الاستماع لجميع التحديثات والرسائل بدون أي فلاتر لتجنب تجاوز القروبات الكبيرة
+    @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح وبدون أي أخطاء!", flush=True)
+    print("🚀 تم التحديث: السحب ملتقط لجميع القروبات بدون استثناء!", flush=True)
 
     await asyncio.Event().wait()
 
