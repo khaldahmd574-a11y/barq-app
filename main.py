@@ -1,7 +1,6 @@
 import os
 import asyncio
 import hashlib
-import re
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -17,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Strict Filtering Active!")
+        self.wfile.write(b"Barq Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -43,39 +42,35 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# STRICT HYBRID FILTERING ENGINE (تصفية صارمة)
+# PURE AI ANALYSIS ENGINE (100% ذكاء اصطناعي فقط)
 # =========================================================
 
-def analyze_message_strict(text: str) -> bool:
-    clean = text.lower()
-
-    # 1. رفض فوري لأي رسالة تحتوي على رقم جوال (إعلانات السواقين والمندوبين)
-    if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
-        print(f"🛑 [استبعاد فوري - رقم جوال]: {text[:30]}...", flush=True)
-        return False
-
-    # 2. رفض فوري لكلمات تقديم الخدمات والإعلانات
-    driver_offer_triggers = [
-        "نقل من", "نوفر", "توصيل طلبات", "سائق للمشاوير", "سيارة لنقل", 
-        "تواصل مع", "للتواصل", "خدماتنا", "على الرقم", "واتساب", "تواصل خاص"
-    ]
-    for trigger in driver_offer_triggers:
-        if trigger in clean and not any(req in clean for req in ["احتاج", "أحتاج", "ابي", "ابغى", "مطلوب"]):
-            print(f"🛑 [استبعاد فوري - إعلان سائق]: {text[:30]}...", flush=True)
-            return False
-
-    # 3. التحليل بالذكاء الاصطناعي مع أوامر صارمة
+def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت نظام تصفية صارم جداً. مهمتك تحديد هل النص هو "طلب زبون يبحث عن توصيل" أم "إعلان سائق/مندوب يقدم خدمة".
+    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير.
+مهمتك: تحديد هل كاتب الرسالة "زبون يطلب خدمة" أم "سائق/مندوب يعرض خدمة أو إعلاناً".
 
-قواعد التصنيف:
-- أجب بـ YES فقط إذا كان كاتب الرسالة زبوناً أو عميلاً يطلب مشوار، توصيل، سائق، أو مندوب (مثل: "احتاج سواق"، "مين فاضي يوصلني"، "ابي مشوار").
-- أجب بـ NO فوراً إذا كانت الرسالة إعلاناً لسائق يقدم خدمة نقل، عرض توصيل، رقم جوال سائق، أو تنبيهاً.
+قواعد التصنيف الصارمة:
+1. أجب بـ YES فقط إذا كان الكاتب زبوناً/عميلاً يبحث عن توصيل، سائق، مشوار، أو مندوب.
+   - أمثلة لطلبات الزبائن (YES):
+     * "ابغى سواق مروح من جازان"
+     * "احتاج توصيل من ضمد للمستشفى"
+     * "مين فاضي يوصلني"
+     * "مطلوب مندوب فاضي الحين"
 
-الرسالة: "{text}"
-الجواب (أجب بـ YES أو NO فقط):"""
+2. أجب بـ NO إذا كان الكاتب سائقاً يعرض التوصيل، أو إعلاناً تجارياً، أو تنبيهاً، أو وضع رقم جوال للتواصل مع سائق.
+   - أمثلة لعروض السائقين والإعلانات (NO):
+     * "مروح من جازان إلى المسارحة اللي يبي مشوار خاص"
+     * "نقل من ضمد وضواحيها 0592986679"
+     * "مع بوت برق جازان الطلبات هي اللي تبحث عنك"
+     * "نوفر لكم أفضل السائقين"
+
+الرسالة المراد تحليلها:
+"{text}"
+
+الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -93,10 +88,10 @@ def analyze_message_strict(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=2.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:25]}...' -> {answer}", flush=True)
+            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -116,7 +111,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 4:
         return
 
-    # منع التكرار الصارم
+    # منع التكرار بالـ ID وبنص الرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -129,12 +124,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # التصفية الصارمة
+    # التحليل بالذكاء الاصطناعي الصافي فقط
     loop = asyncio.get_event_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_message_strict, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [تم اعتماد طلب زبون حقيقي]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -182,7 +177,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# FAST & LIGHTWEIGHT MULTI-GROUP SCANNER
+# FAST MULTI-GROUP SCANNER
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
@@ -231,7 +226,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التحديث: تصفية صارمة تجنب إعلانات السائقين تماماً وترسل طلبات الزبائن فقط!", flush=True)
+    print("🚀 تم التشغيل: الاعتماد 100% على الذكاء الاصطناعي الصافي بدون أي كلمات مفتاحية!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
