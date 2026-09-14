@@ -1,6 +1,6 @@
 import os
 import asyncio
-import re
+import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -39,94 +39,92 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
-PROCESSED_MSG_IDS = set()
-
-# الكلمات المفتاحية الشاملة
-EXPRESS_KEYWORDS = [
-    "مشوار", "توصيل", "سائق", "سواق", "سواقة", "سواقه", 
-    "مندوب", "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", 
-    "نوصل", "ويرجعني", "يرجعني", "الشاخر", "رديس", "مزهره", "مزهرة", "صبيا", "جازان", "ابوعريش"
-]
+PROCESSED_KEYS = set()
 
 # =========================================================
-# AI & KEYWORD ANALYSIS
+# STRICT PURE AI ENGINE (100% AI ONLY)
 # =========================================================
 
-def analyze_message(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال (عروض سائقين)
-    if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        return False
-
-    clean = text.lower()
-
-    # 2. مطابقة فورية للكلمات
-    for kw in EXPRESS_KEYWORDS:
-        if kw in clean:
-            print(f"⚡ [مطابقة فورية]: {kw}", flush=True)
-            return True
-
-    # 3. فحص الذكاء الاصطناعي
+def analyze_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""هل هذه الرسالة طلب توصيل/مشوار/مندوب/سائق؟ أجب بـ YES أو NO فقط.
-الرسالة: "{text}"
-الجواب:"""
+    # تعليمات دقيقة للذكاء الاصطناعي للتمييز بين طلب العميل وإعلان السائق
+    prompt = f"""أنت مساعد ذكي لتصنيف رسائل التليجرام.
+حدد هل كاتب هذه الرسالة "زبون/عميل" يبحث عن توصيل/مشوار/سائق/مندوب؟
+- إذا كانت الرسالة طلب توصيل من زبون: أجب بـ YES.
+- إذا كانت الرسالة إعلان لسائق، إعلان لمندوب، عرض خدمات، تحذير أو إعلان قروب: أجب بـ NO.
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
+الرسالة: "{text}"
+الجواب (YES أو NO فقط):"""
+
+    url = "https://openrouter.ai/ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    try:
-        payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 5
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            return "YES" in answer
-    except Exception:
-        pass
+    # موديلات خفيفة وسريعة جداً
+    models = [
+        "qwen/qwen-2.5-7b-instruct",
+        "meta-llama/llama-3.1-8b-instruct:free"
+    ]
+
+    for model_name in models:
+        try:
+            payload = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 3
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=2.0)
+            if res.status_code == 200:
+                answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"🤖 [AI {model_name}]: '{text[:25]}...' -> {answer}", flush=True)
+                return "YES" in answer
+        except Exception:
+            continue
 
     return False
 
 # =========================================================
-# LIVE MESSAGE PROCESSOR
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    if msg_key in PROCESSED_MSG_IDS:
-        return
-    PROCESSED_MSG_IDS.add(msg_key)
-
-    # عدم معالجة الرسائل القديمة جداً عند التشغيل الأول
-    if len(PROCESSED_MSG_IDS) > 5000:
-        PROCESSED_MSG_IDS.clear()
-
+    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 2:
+    if len(clean_text) < 4:
         return
 
-    chat_title = getattr(message.chat, 'title', str(message.chat.id))
+    # منع التكرار الصارم باستعمال ID الرسالة والـ Hash الخاص بالنص
+    msg_key = f"{message.chat.id}_{message.id}"
+    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+    
+    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+        return
+        
+    PROCESSED_KEYS.add(msg_key)
+    PROCESSED_KEYS.add(text_hash)
 
+    # تنظيف الذاكرة دورياً
+    if len(PROCESSED_KEYS) > 10000:
+        PROCESSED_KEYS.clear()
+
+    # التحليل بالذكاء الاصطناعي فقط
     loop = asyncio.get_event_loop()
-    is_valid = await loop.run_in_executor(None, analyze_message, clean_text)
+    is_client = await loop.run_in_executor(None, analyze_with_ai, clean_text)
 
-    if is_valid:
-        print(f"✅ [صيد رسالة من {chat_title}]: {clean_text[:30]}", flush=True)
+    if is_client:
+        print(f"✅ [تم اعتماد طلب عميل عبر AI]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -174,27 +172,24 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# HARDWARE SCANNER LOOP (حل مشكلة القروبات الكبيرة)
+# SCANNER LOOP FOR HIGH VOLUME GROUPS
 # =========================================================
 
 async def active_chat_scanner(userbot: Client, bot: Client):
-    """حلقة مسح دورية تجبر تلغرام على إعطاء السكربت آخر الرسائل من كافة المحادثات"""
-    await asyncio.sleep(10)
-    print("🔄 [تفعيل الماسح المباشر للقروبات الكبيرة والقنوات]...", flush=True)
-    
+    await asyncio.sleep(5)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=100):
+            async for dialog in userbot.get_dialogs(limit=40):
                 if dialog.chat.type.name in ["GROUP", "SUPERGROUP", "CHANNEL"]:
                     try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
+                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
                             await process_live_message(userbot, bot, msg)
                     except Exception:
                         continue
-        except Exception as e:
-            print(f"⚠️ خطأ في حلقة المسح: {e}", flush=True)
+        except Exception:
+            pass
             
-        await asyncio.sleep(7)  # يفحص كل القروبات كل 7 ثوانٍ مجدداً
+        await asyncio.sleep(4)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -230,9 +225,8 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت + حلقة السحب الدورية الشاملة!", flush=True)
+    print("🚀 تم التحديث: النظام يعمل 100% بالذكاء الاصطناعي وبسحب سريع وبدون تكرار!", flush=True)
 
-    # تشغيل حلقة الفحص النشط للقروبات الكبيرة في الخلفية
     asyncio.create_task(active_chat_scanner(userbot, bot))
 
     await asyncio.Event().wait()
