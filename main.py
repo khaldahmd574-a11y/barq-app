@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq AI System Active 24/7!")
+        self.wfile.write(b"Barq Multi-Group System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,16 +42,16 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (100% الذكاء الاصطناعي فقط)
+# PURE AI ENGINE (100% AI FILTER)
 # =========================================================
 
 def analyze_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت مساعد ذكي لفلترة الطلبات.
-قم بتحليل النص التالي واختيار YES فقط إذا كان الكاتب زبوناً/عميلاً يطلب خدمة توصيل أو مشوار أو بحث عن سائق/مندوب.
-إذا كان النص إعلاناً لسائق، إعلاناً لمندوب، عرض خدمات، أو تنبيهاً أجب بـ NO.
+    prompt = f"""أنت مساعد ذكي لفلترة الرسائل.
+قم بتحليل النص التالي واختيار YES فقط إذا كان الكاتب زبوناً/عميلاً يطلب خدمة توصيل أو مشوار أو يطلب سائق/مندوب.
+إذا كانت الرسالة إعلاناً لسائق، إعلاناً لمندوب، عرض خدمات، أو تحذيراً أجب بـ NO.
 
 الرسالة: "{text}"
 الجواب (أجب بـ YES أو NO فقط):"""
@@ -75,7 +75,7 @@ def analyze_with_ai(text: str) -> bool:
             print(f"🤖 [تحليل الذكاء الاصطناعي]: '{text[:25]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -96,7 +96,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 4:
         return
 
-    # منع التكرار الصارم باستعمال ID الرسالة ومعرف المحادثة والهاش
+    # منع التكرار الصارم
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -110,12 +110,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # التحليل بالذكاء الاصطناعي فقط
+    # التحليل بالذكاء الاصطناعي 100%
     loop = asyncio.get_event_loop()
     is_client = await loop.run_in_executor(None, analyze_with_ai, clean_text)
 
     if is_client:
-        print(f"✅ [طلب عميل معتمد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول عبر الذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -163,6 +163,23 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
+# FAST & LIGHTWEIGHT MULTI-GROUP SCANNER (NO WAIT 9 SEC)
+# =========================================================
+
+async def fast_dialog_poller(userbot: Client, bot: Client):
+    await asyncio.sleep(3)
+    while True:
+        try:
+            # جلب آخر رسالة فقط من المحادثات (limit=1) لعدم تجاوز حدود تليجرام
+            async for dialog in userbot.get_dialogs(limit=30):
+                if dialog.top_message:
+                    await process_live_message(userbot, bot, dialog.top_message)
+        except Exception:
+            pass
+            
+        await asyncio.sleep(2)  # فحص خفيف كل ثانيتين بدون حظر
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -191,13 +208,15 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع المباشر السريع لكافة التحديثات والقروبات بدون سحب بطيء
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التشغيل: استماع مباشر، تصفية 100% بالذكاء الاصطناعي، وبأقصى سرعة!", flush=True)
+    print("🚀 تم التحديث: جلب من كل القروبات الكبيرة + ذكاء اصطناعي 100% بدون حظر!", flush=True)
+
+    # تشغيل الماسح الخفيف السريع للقروبات المكتومة
+    asyncio.create_task(fast_dialog_poller(userbot, bot))
 
     await asyncio.Event().wait()
 
