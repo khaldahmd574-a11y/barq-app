@@ -1,6 +1,7 @@
 import os
 import asyncio
 import hashlib
+import re
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Multi-Group System Active!")
+        self.wfile.write(b"Barq Strict Filtering Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,16 +43,36 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ENGINE (100% AI FILTER)
+# STRICT HYBRID FILTERING ENGINE (تصفية صارمة)
 # =========================================================
 
-def analyze_with_ai(text: str) -> bool:
+def analyze_message_strict(text: str) -> bool:
+    clean = text.lower()
+
+    # 1. رفض فوري لأي رسالة تحتوي على رقم جوال (إعلانات السواقين والمندوبين)
+    if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
+        print(f"🛑 [استبعاد فوري - رقم جوال]: {text[:30]}...", flush=True)
+        return False
+
+    # 2. رفض فوري لكلمات تقديم الخدمات والإعلانات
+    driver_offer_triggers = [
+        "نقل من", "نوفر", "توصيل طلبات", "سائق للمشاوير", "سيارة لنقل", 
+        "تواصل مع", "للتواصل", "خدماتنا", "على الرقم", "واتساب", "تواصل خاص"
+    ]
+    for trigger in driver_offer_triggers:
+        if trigger in clean and not any(req in clean for req in ["احتاج", "أحتاج", "ابي", "ابغى", "مطلوب"]):
+            print(f"🛑 [استبعاد فوري - إعلان سائق]: {text[:30]}...", flush=True)
+            return False
+
+    # 3. التحليل بالذكاء الاصطناعي مع أوامر صارمة
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت مساعد ذكي لفلترة الرسائل.
-قم بتحليل النص التالي واختيار YES فقط إذا كان الكاتب زبوناً/عميلاً يطلب خدمة توصيل أو مشوار أو يطلب سائق/مندوب.
-إذا كانت الرسالة إعلاناً لسائق، إعلاناً لمندوب، عرض خدمات، أو تحذيراً أجب بـ NO.
+    prompt = f"""أنت نظام تصفية صارم جداً. مهمتك تحديد هل النص هو "طلب زبون يبحث عن توصيل" أم "إعلان سائق/مندوب يقدم خدمة".
+
+قواعد التصنيف:
+- أجب بـ YES فقط إذا كان كاتب الرسالة زبوناً أو عميلاً يطلب مشوار، توصيل، سائق، أو مندوب (مثل: "احتاج سواق"، "مين فاضي يوصلني"، "ابي مشوار").
+- أجب بـ NO فوراً إذا كانت الرسالة إعلاناً لسائق يقدم خدمة نقل، عرض توصيل، رقم جوال سائق، أو تنبيهاً.
 
 الرسالة: "{text}"
 الجواب (أجب بـ YES أو NO فقط):"""
@@ -69,10 +90,10 @@ def analyze_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=2.0)
+        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل الذكاء الاصطناعي]: '{text[:25]}...' -> {answer}", flush=True)
+            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:25]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
@@ -87,7 +108,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -106,16 +126,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     PROCESSED_KEYS.add(msg_key)
     PROCESSED_KEYS.add(text_hash)
 
-    # تنظيف الذاكرة دورياً
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # التحليل بالذكاء الاصطناعي 100%
+    # التصفية الصارمة
     loop = asyncio.get_event_loop()
-    is_client = await loop.run_in_executor(None, analyze_with_ai, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_message_strict, clean_text)
 
-    if is_client:
-        print(f"✅ [طلب عميل مقبول عبر الذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+    if is_client_request:
+        print(f"✅ [تم اعتماد طلب زبون حقيقي]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -163,21 +182,20 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# FAST & LIGHTWEIGHT MULTI-GROUP SCANNER (NO WAIT 9 SEC)
+# FAST & LIGHTWEIGHT MULTI-GROUP SCANNER
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(3)
     while True:
         try:
-            # جلب آخر رسالة فقط من المحادثات (limit=1) لعدم تجاوز حدود تليجرام
-            async for dialog in userbot.get_dialogs(limit=30):
+            async for dialog in userbot.get_dialogs(limit=35):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
         except Exception:
             pass
             
-        await asyncio.sleep(2)  # فحص خفيف كل ثانيتين بدون حظر
+        await asyncio.sleep(2)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -213,9 +231,8 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التحديث: جلب من كل القروبات الكبيرة + ذكاء اصطناعي 100% بدون حظر!", flush=True)
+    print("🚀 تم التحديث: تصفية صارمة تجنب إعلانات السائقين تماماً وترسل طلبات الزبائن فقط!", flush=True)
 
-    # تشغيل الماسح الخفيف السريع للقروبات المكتومة
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
     await asyncio.Event().wait()
