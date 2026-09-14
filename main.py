@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq OpenRouter Active 24/7!")
+        self.wfile.write(b"Barq AI System Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,49 +42,40 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# STRICT PURE AI ENGINE (100% AI ONLY)
+# PURE AI ANALYSIS ENGINE (100% الذكاء الاصطناعي فقط)
 # =========================================================
 
 def analyze_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # تعليمات دقيقة للذكاء الاصطناعي للتمييز بين طلب العميل وإعلان السائق
-    prompt = f"""أنت مساعد ذكي لتصنيف رسائل التليجرام.
-حدد هل كاتب هذه الرسالة "زبون/عميل" يبحث عن توصيل/مشوار/سائق/مندوب؟
-- إذا كانت الرسالة طلب توصيل من زبون: أجب بـ YES.
-- إذا كانت الرسالة إعلان لسائق، إعلان لمندوب، عرض خدمات، تحذير أو إعلان قروب: أجب بـ NO.
+    prompt = f"""أنت مساعد ذكي لفلترة الطلبات.
+قم بتحليل النص التالي واختيار YES فقط إذا كان الكاتب زبوناً/عميلاً يطلب خدمة توصيل أو مشوار أو بحث عن سائق/مندوب.
+إذا كان النص إعلاناً لسائق، إعلاناً لمندوب، عرض خدمات، أو تنبيهاً أجب بـ NO.
 
 الرسالة: "{text}"
-الجواب (YES أو NO فقط):"""
+الجواب (أجب بـ YES أو NO فقط):"""
 
-    url = "https://openrouter.ai/ai/v1/chat/completions"
+    url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # موديلات خفيفة وسريعة جداً
-    models = [
-        "qwen/qwen-2.5-7b-instruct",
-        "meta-llama/llama-3.1-8b-instruct:free"
-    ]
-
-    for model_name in models:
-        try:
-            payload = {
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 3
-            }
-            res = requests.post(url, headers=headers, json=payload, timeout=2.0)
-            if res.status_code == 200:
-                answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [AI {model_name}]: '{text[:25]}...' -> {answer}", flush=True)
-                return "YES" in answer
-        except Exception:
-            continue
+    try:
+        payload = {
+            "model": "qwen/qwen-2.5-7b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 3
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=2.0)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [تحليل الذكاء الاصطناعي]: '{text[:25]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -105,7 +96,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 4:
         return
 
-    # منع التكرار الصارم باستعمال ID الرسالة والـ Hash الخاص بالنص
+    # منع التكرار الصارم باستعمال ID الرسالة ومعرف المحادثة والهاش
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -124,7 +115,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     is_client = await loop.run_in_executor(None, analyze_with_ai, clean_text)
 
     if is_client:
-        print(f"✅ [تم اعتماد طلب عميل عبر AI]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل معتمد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -172,26 +163,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# SCANNER LOOP FOR HIGH VOLUME GROUPS
-# =========================================================
-
-async def active_chat_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=40):
-                if dialog.chat.type.name in ["GROUP", "SUPERGROUP", "CHANNEL"]:
-                    try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=2):
-                            await process_live_message(userbot, bot, msg)
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-            
-        await asyncio.sleep(4)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -220,14 +191,13 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع المباشر السريع لكافة التحديثات والقروبات بدون سحب بطيء
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التحديث: النظام يعمل 100% بالذكاء الاصطناعي وبسحب سريع وبدون تكرار!", flush=True)
-
-    asyncio.create_task(active_chat_scanner(userbot, bot))
+    print("🚀 تم التشغيل: استماع مباشر، تصفية 100% بالذكاء الاصطناعي، وبأقصى سرعة!", flush=True)
 
     await asyncio.Event().wait()
 
