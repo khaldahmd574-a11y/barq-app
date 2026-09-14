@@ -69,11 +69,11 @@ def analyze_with_openrouter(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    # تجربة الموديلات المجانية بالأولوية
+    # الموديلات المجانية والحديثة الشغالة في OpenRouter
     models_to_try = [
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "google/gemini-flash-1.5",
-        "mistralai/mistral-7b-instruct:free"
+        "google/gemini-2.0-flash-lite-001",
+        "deepseek/deepseek-r1-distill-llama-8b",
+        "qwen/qwen-2.5-7b-instruct"
     ]
 
     for model_name in models_to_try:
@@ -90,7 +90,7 @@ def analyze_with_openrouter(text: str) -> bool:
                 print(f"🤖 [تحليل AI عبر {model_name}]: النص: '{text[:30]}...' -> النتيجة: {answer}", flush=True)
                 return "YES" in answer
             else:
-                print(f"⚠️ [خطأ API {res.status_code}]: {res.text}", flush=True)
+                print(f"⚠️ [خطأ API {res.status_code} للموديل {model_name}]: {res.text}", flush=True)
         except Exception as e:
             print(f"⚠️ [خطأ اتصال بالذكاء الاصطناعي]: {e}", flush=True)
             continue
@@ -213,7 +213,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 النظام التشخيصي شغال الآن ويستمع لكافة الرسائل!", flush=True)
+    print("🚀 النظام الذكي شغال الآن ويستمع لكافة الرسائل عبر OpenRouter!", flush=True)
 
     await asyncio.Event().wait()
 
