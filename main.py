@@ -4,7 +4,7 @@ import re
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client, filters
+from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
@@ -41,7 +41,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_MSG_IDS = set()
 
-# الكلمات المفتاحية الفورية
+# الكلمات المفتاحية الشاملة
 EXPRESS_KEYWORDS = [
     "مشوار", "توصيل", "سائق", "سواق", "سواقة", "سواقه", 
     "مندوب", "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", 
@@ -55,7 +55,6 @@ EXPRESS_KEYWORDS = [
 def analyze_message(text: str) -> bool:
     # 1. استبعاد أرقام الجوال (عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        print(f"🚫 [استبعاد]: رقم جوال موجود", flush=True)
         return False
 
     clean = text.lower()
@@ -63,7 +62,7 @@ def analyze_message(text: str) -> bool:
     # 2. مطابقة فورية للكلمات
     for kw in EXPRESS_KEYWORDS:
         if kw in clean:
-            print(f"⚡ [اعتماد فوري]: كلمة مفتاحية '{kw}'", flush=True)
+            print(f"⚡ [مطابقة فورية]: {kw}", flush=True)
             return True
 
     # 3. فحص الذكاء الاصطناعي
@@ -87,7 +86,7 @@ def analyze_message(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 5
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
@@ -104,16 +103,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # يتجاهل الرسائل الخاصة المباشرة مع الحساب الوهمي ويستمع للقروبات فقط
-    if message.chat.type.name not in ["GROUP", "SUPERGROUP", "CHANNEL"]:
-        return
-
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MSG_IDS:
         return
     PROCESSED_MSG_IDS.add(msg_key)
 
-    # تجاهل رسائل الحساب نفسه
+    # عدم معالجة الرسائل القديمة جداً عند التشغيل الأول
+    if len(PROCESSED_MSG_IDS) > 5000:
+        PROCESSED_MSG_IDS.clear()
+
     if message.from_user and message.from_user.is_self:
         return
 
@@ -123,13 +121,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         return
 
     chat_title = getattr(message.chat, 'title', str(message.chat.id))
-    print(f"📩 [رسالة من قروب: {chat_title}]: {clean_text[:40]}", flush=True)
 
     loop = asyncio.get_event_loop()
     is_valid = await loop.run_in_executor(None, analyze_message, clean_text)
 
     if is_valid:
-        print(f"✅ [اعتماد وإرسال من: {chat_title}]...", flush=True)
+        print(f"✅ [صيد رسالة من {chat_title}]: {clean_text[:30]}", flush=True)
 
         buttons = []
         row = []
@@ -177,6 +174,29 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
+# HARDWARE SCANNER LOOP (حل مشكلة القروبات الكبيرة)
+# =========================================================
+
+async def active_chat_scanner(userbot: Client, bot: Client):
+    """حلقة مسح دورية تجبر تلغرام على إعطاء السكربت آخر الرسائل من كافة المحادثات"""
+    await asyncio.sleep(10)
+    print("🔄 [تفعيل الماسح المباشر للقروبات الكبيرة والقنوات]...", flush=True)
+    
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=100):
+                if dialog.chat.type.name in ["GROUP", "SUPERGROUP", "CHANNEL"]:
+                    try:
+                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
+                            await process_live_message(userbot, bot, msg)
+                    except Exception:
+                        continue
+        except Exception as e:
+            print(f"⚠️ خطأ في حلقة المسح: {e}", flush=True)
+            
+        await asyncio.sleep(7)  # يفحص كل القروبات كل 7 ثوانٍ مجدداً
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -205,13 +225,15 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع لجميع التحديثات والرسائل بدون أي فلاتر لتجنب تجاوز القروبات الكبيرة
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التحديث: السحب ملتقط لجميع القروبات بدون استثناء!", flush=True)
+    print("🚀 تم تشغيل البوت + حلقة السحب الدورية الشاملة!", flush=True)
+
+    # تشغيل حلقة الفحص النشط للقروبات الكبيرة في الخلفية
+    asyncio.create_task(active_chat_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
