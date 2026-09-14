@@ -7,7 +7,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from hydrogram.errors import FloodWait
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
@@ -44,10 +43,10 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MSG_IDS = set()
 PROCESSED_TEXT_HASHES = set()
 
-# الكلمات المفتاحية المحلية المباشرة (تتجاوز الذكاء الاصطناعي فوراً إذا وجدت)
+# الكلمات المفتاحية المحلية المباشرة (تتجاوز الذكاء الاصطناعي فوراً)
 EXPRESS_KEYWORDS = [
     "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", "نوصل", "توصيل", 
-    "سائق", "سواق", "سواقة", "سواقه", "مندوب", "مشوار", "ويرجعني", "يرجعني"
+    "سائق", "سواق", "سواقة", "سواقه", "مندوب", "مشوار", "ويرجعني", "يرجعني", "الشاخر", "رديس"
 ]
 
 # =========================================================
@@ -55,20 +54,20 @@ EXPRESS_KEYWORDS = [
 # =========================================================
 
 def analyze_message(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال فوراً (عروض سائقين)
+    # 1. استبعاد أرقام الجوال فوراً (إعلانات سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
         print(f"🚫 [استبعاد]: تحتوي على رقم جوال", flush=True)
         return False
 
     clean = text.lower()
 
-    # 2. فحص الكلمات السريعة التلقائية (مثل "مين فاضي")
+    # 2. فحص الكلمات السريعة التلقائية (مثل "مين فاضي" أو "الشاخر")
     for kw in EXPRESS_KEYWORDS:
         if kw in clean:
             print(f"⚡ [اعتماد فوري محلي]: احتوت على كلمة مفتاحية '{kw}'", flush=True)
             return True
 
-    # 3. التحليل عبر الذكاء الاصطناعي للعبارات المركبة
+    # 3. التحليل عبر الذكاء الاصطناعي للعبارات الأخرى
     if not OPENROUTER_API_KEY:
         return False
 
@@ -86,8 +85,8 @@ def analyze_message(text: str) -> bool:
 
     models_to_try = [
         "qwen/qwen-2.5-7b-instruct",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "mistralai/mistral-small-24b-instruct-2501:free"
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "google/gemini-flash-1.5"
     ]
 
     for model_name in models_to_try:
@@ -214,13 +213,13 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع لجميع المحادثات والقروبات والسنوات الكبيرة ومجموعات السوبر
-    @userbot.on_message(filters.group | filters.channel | filters.supergroup)
+    # الاستماع لجميع القنوات والقروبات (سواء عادية أو سوبر) بدون أخطاء
+    @userbot.on_message(filters.group | filters.channel)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المطور (AI + فحص فوري للقروبات الكبيرة)!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح وبدون أي أخطاء!", flush=True)
 
     await asyncio.Event().wait()
 
