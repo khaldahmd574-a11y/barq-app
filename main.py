@@ -44,20 +44,35 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MSG_IDS = set()
 PROCESSED_TEXT_HASHES = set()
 
+# الكلمات المفتاحية المحلية المباشرة (تتجاوز الذكاء الاصطناعي فوراً إذا وجدت)
+EXPRESS_KEYWORDS = [
+    "فاضي", "من فاضي", "مين فاضي", "أبغى", "ابغى", "نوصل", "توصيل", 
+    "سائق", "سواق", "سواقة", "سواقه", "مندوب", "مشوار", "ويرجعني", "يرجعني"
+]
+
 # =========================================================
-# DIAGNOSTIC OPENROUTER AI ENGINE
+# OPENROUTER AI ENGINE WITH LOCAL HYBRID FALLBACK
 # =========================================================
 
-def analyze_with_openrouter(text: str) -> bool:
+def analyze_message(text: str) -> bool:
+    # 1. استبعاد أرقام الجوال فوراً (عروض سائقين)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
-        print(f"🚫 [استبعاد]: تحتوي على رقم جوال (إعلان سائق)", flush=True)
+        print(f"🚫 [استبعاد]: تحتوي على رقم جوال", flush=True)
         return False
 
+    clean = text.lower()
+
+    # 2. فحص الكلمات السريعة التلقائية (مثل "مين فاضي")
+    for kw in EXPRESS_KEYWORDS:
+        if kw in clean:
+            print(f"⚡ [اعتماد فوري محلي]: احتوت على كلمة مفتاحية '{kw}'", flush=True)
+            return True
+
+    # 3. التحليل عبر الذكاء الاصطناعي للعبارات المركبة
     if not OPENROUTER_API_KEY:
-        print("❌ [خطأ قاتل]: مفتاح OPENROUTER_API_KEY غير مضاف في Render!", flush=True)
         return False
 
-    prompt = f"""هل الرسالة التالية عبارة عن طلب توصيل أو مشوار أو بحث عن سائق/باص/مندوب من قبل زبون يبحث عن خدمة؟
+    prompt = f"""هل الرسالة التالية عبارة عن طلب توصيل أو مشوار أو بحث عن سائق/باص/مندوب أو استفسار عن شخص فاضي للتوصيل؟
 أجب بكلمة واحدة فقط: YES أو NO.
 
 الرسالة: "{text}"
@@ -69,11 +84,10 @@ def analyze_with_openrouter(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    # الموديلات المجانية والحديثة الشغالة في OpenRouter
     models_to_try = [
-        "google/gemini-2.0-flash-lite-001",
-        "deepseek/deepseek-r1-distill-llama-8b",
-        "qwen/qwen-2.5-7b-instruct"
+        "qwen/qwen-2.5-7b-instruct",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "mistralai/mistral-small-24b-instruct-2501:free"
     ]
 
     for model_name in models_to_try:
@@ -84,15 +98,12 @@ def analyze_with_openrouter(text: str) -> bool:
                 "temperature": 0,
                 "max_tokens": 5
             }
-            res = requests.post(url, headers=headers, json=payload, timeout=5)
+            res = requests.post(url, headers=headers, json=payload, timeout=4)
             if res.status_code == 200:
                 answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [تحليل AI عبر {model_name}]: النص: '{text[:30]}...' -> النتيجة: {answer}", flush=True)
+                print(f"🤖 [تحليل AI عبر {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
                 return "YES" in answer
-            else:
-                print(f"⚠️ [خطأ API {res.status_code} للموديل {model_name}]: {res.text}", flush=True)
-        except Exception as e:
-            print(f"⚠️ [خطأ اتصال بالذكاء الاصطناعي]: {e}", flush=True)
+        except Exception:
             continue
 
     return False
@@ -118,15 +129,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 3:
         return
 
-    print(f"📩 [رسالة جديدة وصلت]: {clean_text[:40]}...", flush=True)
-
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
-        print("🔁 [رسالة مكررة تم تجاهلها]", flush=True)
         return
 
     loop = asyncio.get_event_loop()
-    is_valid = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
+    is_valid = await loop.run_in_executor(None, analyze_message, clean_text)
 
     if is_valid:
         print("✅ [تم الاعتماد]: جارٍ الإرسال إلى الحسابات المستهدفة...", flush=True)
@@ -163,8 +171,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         disable_web_page_preview=True
                     )
                     sent = True
-                except Exception as e:
-                    print(f"⚠️ خطأ إرسال بالبوت لـ {user}: {e}", flush=True)
+                except Exception:
+                    pass
 
             if not sent:
                 try:
@@ -174,9 +182,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                    print(f"🚀 تم الإرسال بنجاح إلى {user}", flush=True)
-                except Exception as e:
-                    print(f"❌ فشل الإرسال باليوزربوت لـ {user}: {e}", flush=True)
+                except Exception:
+                    pass
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -204,16 +211,16 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-            print("✅ البوت المساعد جاهز ومفعل", flush=True)
-        except Exception as e:
-            print(f"⚠️ لم يتم تفعيل البوت المساعد: {e}", flush=True)
+        except Exception:
+            pass
 
-    @userbot.on_message(filters.group | filters.channel)
+    # الاستماع لجميع المحادثات والقروبات والسنوات الكبيرة ومجموعات السوبر
+    @userbot.on_message(filters.group | filters.channel | filters.supergroup)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 النظام الذكي شغال الآن ويستمع لكافة الرسائل عبر OpenRouter!", flush=True)
+    print("🚀 تم تشغيل النظام المطور (AI + فحص فوري للقروبات الكبيرة)!", flush=True)
 
     await asyncio.Event().wait()
 
