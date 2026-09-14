@@ -45,15 +45,16 @@ PROCESSED_MSG_IDS = set()
 PROCESSED_TEXT_HASHES = set()
 
 # =========================================================
-# OPENROUTER FAST AI ENGINE
+# DIAGNOSTIC OPENROUTER AI ENGINE
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
-    # 1. استبعاد أرقام الجوال فوراً (عروض سواقين وليست طلبات زبائن)
     if re.search(r'(05\d{8}|\+?9665\d{8})', text):
+        print(f"🚫 [استبعاد]: تحتوي على رقم جوال (إعلان سائق)", flush=True)
         return False
 
     if not OPENROUTER_API_KEY:
+        print("❌ [خطأ قاتل]: مفتاح OPENROUTER_API_KEY غير مضاف في Render!", flush=True)
         return False
 
     prompt = f"""هل الرسالة التالية عبارة عن طلب توصيل أو مشوار أو بحث عن سائق/باص/مندوب من قبل زبون يبحث عن خدمة؟
@@ -68,9 +69,10 @@ def analyze_with_openrouter(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
+    # تجربة الموديلات المجانية بالأولوية
     models_to_try = [
-        "google/gemini-flash-1.5",
         "meta-llama/llama-3.1-8b-instruct:free",
+        "google/gemini-flash-1.5",
         "mistralai/mistral-7b-instruct:free"
     ]
 
@@ -80,13 +82,17 @@ def analyze_with_openrouter(text: str) -> bool:
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0,
-                "max_tokens": 2
+                "max_tokens": 5
             }
-            res = requests.post(url, headers=headers, json=payload, timeout=3)
+            res = requests.post(url, headers=headers, json=payload, timeout=5)
             if res.status_code == 200:
                 answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"🤖 [تحليل AI عبر {model_name}]: النص: '{text[:30]}...' -> النتيجة: {answer}", flush=True)
                 return "YES" in answer
-        except Exception:
+            else:
+                print(f"⚠️ [خطأ API {res.status_code}]: {res.text}", flush=True)
+        except Exception as e:
+            print(f"⚠️ [خطأ اتصال بالذكاء الاصطناعي]: {e}", flush=True)
             continue
 
     return False
@@ -104,9 +110,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         return
     PROCESSED_MSG_IDS.add(msg_key)
 
-    if len(PROCESSED_MSG_IDS) > 20000:
-        PROCESSED_MSG_IDS.clear()
-
     if message.from_user and message.from_user.is_self:
         return
 
@@ -115,17 +118,19 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 3:
         return
 
+    print(f"📩 [رسالة جديدة وصلت]: {clean_text[:40]}...", flush=True)
+
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     if text_hash in PROCESSED_TEXT_HASHES:
+        print("🔁 [رسالة مكررة تم تجاهلها]", flush=True)
         return
 
     loop = asyncio.get_event_loop()
     is_valid = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_valid:
+        print("✅ [تم الاعتماد]: جارٍ الإرسال إلى الحسابات المستهدفة...", flush=True)
         PROCESSED_TEXT_HASHES.add(text_hash)
-        if len(PROCESSED_TEXT_HASHES) > 10000:
-            PROCESSED_TEXT_HASHES.clear()
 
         buttons = []
         row = []
@@ -158,20 +163,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         disable_web_page_preview=True
                     )
                     sent = True
-                except FloodWait as e:
-                    await asyncio.sleep(e.value)
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                        sent = True
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ خطأ إرسال بالبوت لـ {user}: {e}", flush=True)
 
             if not sent:
                 try:
@@ -181,11 +174,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                except Exception:
-                    pass
+                    print(f"🚀 تم الإرسال بنجاح إلى {user}", flush=True)
+                except Exception as e:
+                    print(f"❌ فشل الإرسال باليوزربوت لـ {user}: {e}", flush=True)
 
 # =========================================================
-# MAIN
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
@@ -210,15 +204,16 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-        except Exception:
-            pass
+            print("✅ البوت المساعد جاهز ومفعل", flush=True)
+        except Exception as e:
+            print(f"⚠️ لم يتم تفعيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message(filters.group | filters.channel)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل الذكاء الاصطناعي بنجاح بواسطة OpenRouter!", flush=True)
+    print("🚀 النظام التشخيصي شغال الآن ويستمع لكافة الرسائل!", flush=True)
 
     await asyncio.Event().wait()
 
