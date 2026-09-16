@@ -42,35 +42,36 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (100% ذكاء اصطناعي فقط)
+# PURE AI ANALYSIS ENGINE (دقة فائقة لطلبات الزبائن)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير.
-مهمتك: تحديد هل كاتب الرسالة "زبون يطلب خدمة" أم "سائق/مندوب يعرض خدمة أو إعلاناً".
+    prompt = f"""أنت نظام ذكاء اصطناعي خبير ومتحفظ لتصنيف رسائل التوصيل والمشاوير.
+مهمتك: تحديد هل كاتب الرسالة "زبون/عميل يبحث عن خدمة" أم "سائق/مندوب يعرض خدمة أو إعلان".
 
-قواعد التصنيف الصارمة:
-1. أجب بـ YES فقط إذا كان الكاتب زبوناً/عميلاً يبحث عن توصيل، سائق، مشوار، أو مندوب.
-   - أمثلة لطلبات الزبائن (YES):
+القواعد الصارمة للتصنيف:
+1. أجب بـ YES إذا كان الكاتب زبوناً أو عميلاً يطلب توصيلاً، أو يسأل عن توفر سائق/مندوب، أو يكتب استفساراً من طرف العميل.
+   - أمثلة صريحة لـ YES:
+     * "فيه احد من صبيا؟"
+     * "ابغى مشوار" / "احتاج سواق"
      * "ابغى سواق مروح من جازان"
      * "احتاج توصيل من ضمد للمستشفى"
-     * "مين فاضي يوصلني"
-     * "مطلوب مندوب فاضي الحين"
+     * "مين فاضي يوصلني" / "مطلوب مندوب فاضي"
 
-2. أجب بـ NO إذا كان الكاتب سائقاً يعرض التوصيل، أو إعلاناً تجارياً، أو تنبيهاً، أو وضع رقم جوال للتواصل مع سائق.
-   - أمثلة لعروض السائقين والإعلانات (NO):
+2. أجب بـ NO إذا كان الكاتب سائقاً يعرض توصيلاً، أو يقدم خدمة نقل، أو إعلاناً تجارياً، أو رقم جوال للتواصل مع سائق.
+   - أمثلة صريحة لـ NO:
+     * "نوفر نقل الطالبات" / "نقل موظفات"
      * "مروح من جازان إلى المسارحة اللي يبي مشوار خاص"
-     * "نقل من ضمد وضواحيها 0592986679"
+     * "نقل من ضمد وضواحيها 0569703901"
      * "مع بوت برق جازان الطلبات هي اللي تبحث عنك"
-     * "نوفر لكم أفضل السائقين"
 
 الرسالة المراد تحليلها:
 "{text}"
 
-الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
+الجواب (أجب بكلمة YES أو NO فقط):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -111,7 +112,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 4:
         return
 
-    # منع التكرار بالـ ID وبنص الرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -124,7 +124,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # التحليل بالذكاء الاصطناعي الصافي فقط
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
@@ -177,20 +176,21 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# OPTIMIZED SCANNER (تجنب الـ FloodWait تماماً)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
+    await asyncio.sleep(5)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=35):
+            # تقليل المجموعات المفحوصة في المرة الواحدة لمنع التقييد
+            async for dialog in userbot.get_dialogs(limit=15):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
         except Exception:
             pass
             
-        await asyncio.sleep(2)
+        await asyncio.sleep(10)  # الانتظار 10 ثوانٍ لمنع تقييد تليجرام (GetDialogs Rate Limit)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -226,7 +226,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم التشغيل: الاعتماد 100% على الذكاء الاصطناعي الصافي بدون أي كلمات مفتاحية!", flush=True)
+    print("🚀 تم التحديث: معالجة الـ Waiting وضبط دقة تصنيف طلبات الزبائن!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
