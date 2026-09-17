@@ -4,8 +4,8 @@ import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client
-from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (تحليل بالذكاء الاصطناعي الصافي)
+# PURE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -222,7 +222,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
@@ -230,3 +230,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
