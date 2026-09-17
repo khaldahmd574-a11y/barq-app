@@ -1,6 +1,6 @@
 import asyncio
 
-# إعداد الـ Event Loop مبكراً لتفادي مشاكل بايثون 3.10+
+# إعداد الـ Event Loop
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -34,7 +34,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION & CLEANUP
+# CONFIGURATION
 # =========================================================
 
 RAW_SESSION = os.environ.get("SESSION_STRING", "")
@@ -45,12 +45,11 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم تحديث قائمة المستلمين وحذف fs_990
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (OPENROUTER)
+# PURE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -180,24 +179,24 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     except Exception:
                         pass
     except Exception:
-        # حماية النظام وتجاهل استثناءات Peer ID لتستمر الخدمة 24/7
         pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# ULTRA FAST DIALOG SCANNER
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+    await asyncio.sleep(2)
+    print("📡 بدء عملية السحب المستمر للرسائل بنجاح...", flush=True)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=15):
+            async for dialog in userbot.get_dialogs(limit=25):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ تنبيه الساحب: {e}", flush=True)
             
-        await asyncio.sleep(10)
+        await asyncio.sleep(3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -206,12 +205,14 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
+    # no_updates=True يمنع استقبال التحديثات التلقائية ومشاكل Peer ID نهائياً
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
-        in_memory=True
+        in_memory=True,
+        no_updates=True
     )
 
     bot = None
@@ -228,16 +229,11 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
-        await process_live_message(client, bot, message)
-
     await userbot.start()
     print("🚀 تم تشغيل النظام بنجاح بالذكاء الاصطناعي!", flush=True)
 
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
-
-    await asyncio.Event().wait()
+    # تشغيل الماسح الفعال
+    await fast_dialog_poller(userbot, bot)
 
 if __name__ == "__main__":
     loop.run_until_complete(main())
