@@ -83,8 +83,8 @@ def analyze_with_pure_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    # النماذج الحديثة المعتمدة والنشطة حالياً على منصة Groq
-    models_to_try = ["llama-3.1-8b-instant", "llama-3.2-11b-vision-preview", "llama-3.2-3b-preview"]
+    # النماذج الرسمية النشطة حالياً على منصة Groq
+    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
     for model in models_to_try:
         try:
