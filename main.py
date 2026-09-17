@@ -106,18 +106,20 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
-        if not message or not message.id:
+        if not message:
             return
 
-        if message.from_user and message.from_user.is_self:
-            return
-
+        # استخراج النص
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
-        if len(clean_text) < 4:
+        
+        # طباعة سريعة لمعرفة أن الرسالة سُحبت بالفعل
+        if len(clean_text) >= 4:
+            print(f"📥 [رسالة جديدة وصلت]: {clean_text[:25]}...", flush=True)
+        else:
             return
 
-        msg_key = f"{message.chat.id}_{message.id}"
+        msg_key = f"{message.chat.id if message.chat else 0}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
         if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
@@ -137,17 +139,23 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             buttons = []
             row = []
             
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
+            try:
+                if message.from_user:
+                    if message.from_user.username:
+                        user_url = f"https://t.me/{message.from_user.username}"
+                        user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                    else:
+                        user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                        user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                    row.append(InlineKeyboardButton(user_label, url=user_url))
+            except Exception:
+                pass
 
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            try:
+                if message.link:
+                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            except Exception:
+                pass
             
             if row:
                 buttons.append(row)
@@ -178,25 +186,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception:
                         pass
-    except Exception:
+    except Exception as e:
         pass
-
-# =========================================================
-# ULTRA FAST DIALOG SCANNER
-# =========================================================
-
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    print("📡 بدء عملية السحب المستمر للرسائل بنجاح...", flush=True)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=25):
-                if dialog.top_message:
-                    await process_live_message(userbot, bot, dialog.top_message)
-        except Exception as e:
-            print(f"⚠️ تنبيه الساحب: {e}", flush=True)
-            
-        await asyncio.sleep(3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -205,14 +196,12 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # no_updates=True يمنع استقبال التحديثات التلقائية ومشاكل Peer ID نهائياً
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
-        in_memory=True,
-        no_updates=True
+        in_memory=True
     )
 
     bot = None
@@ -229,11 +218,14 @@ async def main():
         except Exception:
             pass
 
-    await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح بالذكاء الاصطناعي!", flush=True)
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        await process_live_message(client, bot, message)
 
-    # تشغيل الماسح الفعال
-    await fast_dialog_poller(userbot, bot)
+    await userbot.start()
+    print("🚀 تم تشغيل المستمع الحي بنجاح!", flush=True)
+
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     loop.run_until_complete(main())
