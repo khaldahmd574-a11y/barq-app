@@ -4,7 +4,9 @@ import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from pyrogram import Client
+
+# استدعاء العميل المباشر لتفادي أخطاء المزامنة والـ Event Loop
+from pyrogram.client import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
