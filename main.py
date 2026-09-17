@@ -1,6 +1,6 @@
 import asyncio
 
-# إنشاء الـ Event Loop فوراً لمنع خطأ Python 3.14
+# إعداد الـ Event Loop مبكراً
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -34,10 +34,13 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION
+# CONFIGURATION & CLEANUP
 # =========================================================
 
-SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+# تنظيف كود الجلسة تلقائياً من الأسطر والمسافات المخفية
+RAW_SESSION = os.environ.get("SESSION_STRING", "")
+SESSION_STRING = RAW_SESSION.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -63,14 +66,14 @@ def analyze_with_pure_ai(text: str) -> bool:
 [قواعد وتوجيهات صارمة للتصنيف بـ YES]:
 1. أجب بـ YES إذا احتوت الرسالة على طلب توصيل، نقل، شحن، أو دباب من زبون.
 2. أجب بـ YES إذا احتوت على استفسار أو بحث عن سائق/سائقة مثل: ("ابي سواق"، "مطلوب سائقة"، "حد يراني"، "من قريب من"، "مين يوصل"، "محتاج توصيله"، "حد فاضي").
-3. أجب بـ YES إذا ذكر الزبون ميزانية أو سعراً محدد للمشوار (مثال: "المشوار بـ 10"، "معي 15"، "من الحصمة للحصمة بـ 10").
+3. أجب بـ YES إذا ذكر الزبون ميزانية أو سعراً محدد للمشوار.
 4. أجب بـ YES لطلبات العقود والدوامات الشهرية إذا كان الكاتب يبحث عن توصيل.
 
 [قواعد التصفية بـ NO]:
 1. أجب بـ NO إذا كان الكاتب سائقاً يعرض سيارته أو خدماته.
 2. أجب بـ NO للإعلانات، الروابط، والرسائل العادية.
 
-الرسالة المراد تحلیلها:
+الرسالة المراد تحليلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
@@ -199,6 +202,8 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
+    print(f"🔍 طول الجلسة المستلمة: {len(SESSION_STRING)} حرف", flush=True)
+
     userbot = Client(
         "my_userbot",
         api_id=API_ID,
@@ -234,4 +239,3 @@ async def main():
 
 if __name__ == "__main__":
     loop.run_until_complete(main())
-
