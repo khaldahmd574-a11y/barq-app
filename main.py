@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE CEREBRAS AI ENGINE (NO WORDS / CORRECT MODELS)
+# PURE CEREBRAS AI ENGINE (UPDATED ACTIVE MODELS)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -74,8 +74,8 @@ def analyze_with_pure_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    # المسميات الدقيقة والمعتمدة من Cerebras AI
-    active_models = ["llama-3.1-70b", "llama-3.1-8b"]
+    # النماذج الرسمية الشغالة حالياً والمجانية في Cerebras
+    active_models = ["gpt-oss-120b", "qwen-3.8-27b"]
 
     for model in active_models:
         try:
@@ -232,7 +232,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك الذكاء الاصطناعي الخالص (Cerebras AI) فقط!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك Cerebras AI بالنماذج الرسمية النشطة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
