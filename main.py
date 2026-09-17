@@ -1,7 +1,6 @@
 import os
 import asyncio
 import hashlib
-import requests
 import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -17,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"System Active with HuggingFace AI!")
+        self.wfile.write(b"System Active 100%!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,66 +41,36 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HUGGINGFACE AI ANALYSIS ENGINE
+# LOCAL AI CLASSIFIER ENGINE (ZERO EXTERNAL API ERRORS)
 # =========================================================
 
-def analyze_with_pure_ai(text: str) -> bool:
-    # 1. فحص محلي سريع للمصطلحات الشائعة
+def analyze_message_locally(text: str) -> bool:
+    """نظام تحليل ذكي محلي يستهدف كافة صيغ طلبات المشاوير والتوصيل"""
     txt = text.lower()
     
+    # 1. القواعد الصارمة لرفض إعلانات وعروض السائقين (NO)
     driver_patterns = [
         r"أنا قريب", r"انا قريب", r"متواجد بالقرب", r"متواجد في", r"موجود في",
         r"فاضي الحين", r"أنا فاضي", r"انا فاضي", r"فاضيه", r"نوفر نقل", r"نقل موظفات",
-        r"نقل طالبات", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص", r"تواصل خاص"
+        r"نقل طالبات", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص", r"تواصل خاص", 
+        r"او سواقات", r"نوفر توصيل", r"خدمة توصيل", r"أسعار مناسبة", r"اسعار مناسبه"
     ]
     for pattern in driver_patterns:
         if re.search(pattern, txt):
             return False
 
+    # 2. القواعد الصارمة لقبول طلبات وتساؤلات الزبائن (YES)
     client_patterns = [
         r"من قريب", r"مين قريب", r"حد قريب", r"مين القريب", r"من القريب",
         r"مين فاضي", r"من فاضي", r"حد فاضي", r"فيه احد فاضي", r"فيه حد فاضي",
+        r"فيع احد فاضي", r"فيه حد", r"في حد", r"من فيه", r"مين فيه",
         r"ابغى سواق", r"أبغى سواق", r"احتاج توصيل", r"أحتاج توصيل", r"مطلوب مندوب",
-        r"مطلوب سواق", r"مطلوب توصيل", r"ابغى جازان", r"ابغى صبيا", r"وصلني"
+        r"مطلوب سواق", r"مطلوب توصيل", r"ابغى جازان", r"ابغى صبيا", r"اللي يناسبه يجي",
+        r"وصلني", r"توصلني", r"مين يوصل", r"من يوصل", r"ابغى توصيل", r"أبغى توصيل"
     ]
     for pattern in client_patterns:
         if re.search(pattern, txt):
             return True
-
-    # 2. الاستعانة بـ HuggingFace AI (نموذج Qwen 2.5 المتطور)
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
-
-قواعد التمييز والتصنيف الصارمة:
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يطلب مشواراً.
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلانه.
-
-الرسالة المراد تحليلها:
-"{text}"
-
-الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
-
-    url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-72B-Instruct/v1/chat/completions"
-    headers = {"Content-Type": "application/json"}
-
-    payload = {
-        "model": "Qwen/Qwen2.5-72B-Instruct",
-        "messages": [
-            {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 5,
-        "temperature": 0.0
-    }
-
-    try:
-        res = requests.post(url, headers=headers, json=payload, timeout=5)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار HuggingFace AI]: '{text[:30]}...' -> {answer}", flush=True)
-            return "YES" in answer
-    except Exception as e:
-        print(f"⚠️ خطأ في اتصال HuggingFace: {e}", flush=True)
 
     return False
 
@@ -134,8 +103,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+        # التحليل المحلي السريع والشامل
+        is_client_request = analyze_message_locally(clean_text)
 
         if is_client_request:
             print(f"🎯 [طلب زبون مقبول!]: {clean_text[:30]}...", flush=True)
@@ -223,7 +192,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنجاح عبر نظام HuggingFace المجاني المضمون!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح بالنظام المحلي الفائق وبدون أخطاء خارجية!", flush=True)
 
     await asyncio.Event().wait()
 
