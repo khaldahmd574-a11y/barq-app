@@ -1,11 +1,17 @@
-import os
 import asyncio
+
+# إعداد الـ Event Loop مبكراً لتفادي مشاكل بايثون 3.10+
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+import os
 import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client
-from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+
+from pyrogram.client import Client
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
@@ -28,21 +34,22 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION
+# CONFIGURATION & CLEANUP
 # =========================================================
 
-SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+RAW_SESSION = os.environ.get("SESSION_STRING", "")
+SESSION_STRING = RAW_SESSION.strip().replace("\n", "").replace("\r", "").replace(" ", "")
+
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
-
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (تحليل بالذكاء الاصطناعي الصافي)
+# PURE AI ANALYSIS ENGINE (OPENROUTER)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -50,26 +57,20 @@ def analyze_with_pure_ai(text: str) -> bool:
         return False
 
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
+مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق" وبين "سائق يعرض خدمته أو إعلانه".
 
-قواعد التمييز والتصنيف الصارمة:
+أجب بـ YES فقط إذا كان الكاتب زبوناً يطلب توصيلة أو سائقاً.
+أجب بـ NO إذا كان الكاتب سائقاً يعرض خدماته أو إعلاناً.
 
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
-   - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
-     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
-     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
-     * "ابغى جازان اذ احد من احد المسارحة يوصل"
-     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
+[قواعد وتوجيهات صارمة للتصنيف بـ YES]:
+1. أجب بـ YES إذا احتوت الرسالة على طلب توصيل، نقل، شحن، أو دباب من زبون.
+2. أجب بـ YES إذا احتوت على استفسار أو بحث عن سائق/سائقة مثل: ("ابي سواق"، "مطلوب سائقة"، "حد يراني"، "من قريب من"، "مين يوصل"، "محتاج توصيله"، "حد فاضي").
+3. أجب بـ YES إذا ذكر الزبون ميزانية أو سعراً محدد للمشوار.
+4. أجب بـ YES لطلبات العقود والدوامات الشهرية إذا كان الكاتب يبحث عن توصيل.
 
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة صريحة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
-     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
-     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص"
-     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
-     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+[قواعد التصفية بـ NO]:
+1. أجب بـ NO إذا كان الكاتب سائقاً يعرض سيارته أو خدماته.
+2. أجب بـ NO للإعلانات، الروابط، والرسائل العادية.
 
 الرسالة المراد تحليلها:
 "{text}"
@@ -100,83 +101,86 @@ def analyze_with_pure_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# SAFE MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
-    if not message or not message.id:
-        return
+    try:
+        if not message or not message.id:
+            return
 
-    if message.from_user and message.from_user.is_self:
-        return
+        if message.from_user and message.from_user.is_self:
+            return
 
-    raw_text = message.text or message.caption or ""
-    clean_text = raw_text.strip()
-    if len(clean_text) < 4:
-        return
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        if len(clean_text) < 4:
+            return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-    
-    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-        return
+        msg_key = f"{message.chat.id}_{message.id}"
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-    PROCESSED_KEYS.add(msg_key)
-    PROCESSED_KEYS.add(text_hash)
-
-    if len(PROCESSED_KEYS) > 10000:
-        PROCESSED_KEYS.clear()
-
-    loop = asyncio.get_event_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
-
-    if is_client_request:
-        print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
-
-        buttons = []
-        row = []
-        
-        if message.from_user:
-            if message.from_user.username:
-                user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-            else:
-                user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-            row.append(InlineKeyboardButton(user_label, url=user_url))
-
-        if message.link:
-            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-        
-        if row:
-            buttons.append(row)
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+            return
             
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
 
-        for user in TARGET_USERS:
-            sent = False
-            if bot:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                    sent = True
-                except Exception:
-                    pass
+        if len(PROCESSED_KEYS) > 10000:
+            PROCESSED_KEYS.clear()
 
-            if not sent:
-                try:
-                    await userbot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception:
-                    pass
+        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+
+        if is_client_request:
+            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+
+            buttons = []
+            row = []
+            
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
+
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            for user in TARGET_USERS:
+                sent = False
+                if bot:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                        sent = True
+                    except Exception:
+                        pass
+
+                if not sent:
+                    try:
+                        await userbot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        # حماية النظام وتجاهل استثناءات Peer ID لتستمر الخدمة 24/7
+        pass
 
 # =========================================================
 # FAST MULTI-GROUP SCANNER
@@ -228,11 +232,12 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح بالذكاء الاصطناعي!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop.run_until_complete(main())
+
