@@ -37,13 +37,12 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم حذف fs_990
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (تحليل بالذكاء الاصطناعي الصافي)
+# PURE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -57,7 +56,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
    - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
+     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
      * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
      * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
      * "ابغى جازان اذ احد من احد المسارحة يوصل"
@@ -93,10 +92,10 @@ def analyze_with_pure_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=2.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -105,95 +104,105 @@ def analyze_with_pure_ai(text: str) -> bool:
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
-    if not message or not message.id:
-        return
+    try:
+        if not message or not message.id:
+            return
 
-    if message.from_user and message.from_user.is_self:
-        return
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        if len(clean_text) < 4:
+            return
 
-    raw_text = message.text or message.caption or ""
-    clean_text = raw_text.strip()
-    if len(clean_text) < 4:
-        return
-
-    msg_key = f"{message.chat.id}_{message.id}"
-    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-    
-    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-        return
+        msg_key = f"{message.chat.id}_{message.id}"
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-    PROCESSED_KEYS.add(msg_key)
-    PROCESSED_KEYS.add(text_hash)
-
-    if len(PROCESSED_KEYS) > 10000:
-        PROCESSED_KEYS.clear()
-
-    loop = asyncio.get_event_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
-
-    if is_client_request:
-        print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
-
-        buttons = []
-        row = []
-        
-        if message.from_user:
-            if message.from_user.username:
-                user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-            else:
-                user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-            row.append(InlineKeyboardButton(user_label, url=user_url))
-
-        if message.link:
-            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-        
-        if row:
-            buttons.append(row)
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+            return
             
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
 
-        for user in TARGET_USERS:
-            sent = False
-            if bot:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                    sent = True
-                except Exception:
-                    pass
+        if len(PROCESSED_KEYS) > 10000:
+            PROCESSED_KEYS.clear()
 
-            if not sent:
-                try:
-                    await userbot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception:
-                    pass
+        # طباعة تأكيدية في السجلات فور التقاط أي رسالة
+        print(f"📥 [سحب رسالة من {message.chat.title or 'خاص'}]: {clean_text[:25]}...", flush=True)
+
+        loop = asyncio.get_event_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+
+        if is_client_request:
+            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+
+            buttons = []
+            row = []
+            
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
+
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            for user in TARGET_USERS:
+                sent = False
+                if bot:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                        sent = True
+                    except Exception:
+                        pass
+
+                if not sent:
+                    try:
+                        await userbot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# GUARANTEED DIALOG & HISTORY SCANNER
 # =========================================================
 
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+async def force_history_poller(userbot: Client, bot: Client):
+    await asyncio.sleep(3)
+    print("📡 تم تشغيل المحرك القسري لسحب كل القروبات والمحادثات...", flush=True)
+    
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=15):
-                if dialog.top_message:
-                    await process_live_message(userbot, bot, dialog.top_message)
-        except Exception:
-            pass
+            # يجلب أول 30 محادثة نشطة
+            async for dialog in userbot.get_dialogs(limit=30):
+                try:
+                    # يجلب آخر 5 رسائل في كل محادثة لضمان عدم تفويت أي شيء
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=5):
+                        await process_live_message(userbot, bot, msg)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"⚠️ تنبيه الماسح: {e}", flush=True)
             
-        await asyncio.sleep(10)
+        await asyncio.sleep(4)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -206,8 +215,7 @@ async def main():
         "my_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        in_memory=True
+        session_string=SESSION_STRING
     )
 
     bot = None
@@ -217,8 +225,7 @@ async def main():
                 "helper_bot",
                 api_id=API_ID,
                 api_hash=API_HASH,
-                bot_token=BOT_TOKEN,
-                in_memory=True
+                bot_token=BOT_TOKEN
             )
             await bot.start()
         except Exception:
@@ -229,9 +236,10 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
+    print("🚀 تم تشغيل الحساب بنجاح والبدء المباشر!", flush=True)
 
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
+    # تشغيل الماسح المباشر القسري
+    asyncio.create_task(force_history_poller(userbot, bot))
 
     await asyncio.Event().wait()
 
