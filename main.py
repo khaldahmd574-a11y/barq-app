@@ -1,11 +1,15 @@
-import os
 import asyncio
+
+# إنشاء الـ Event Loop فوراً لمنع خطأ Python 3.14
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+import os
 import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
-# استدعاء العميل المباشر لتفادي أخطاء المزامنة والـ Event Loop
 from pyrogram.client import Client
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -40,7 +44,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
-
 PROCESSED_KEYS = set()
 
 # =========================================================
@@ -60,14 +63,14 @@ def analyze_with_pure_ai(text: str) -> bool:
 [قواعد وتوجيهات صارمة للتصنيف بـ YES]:
 1. أجب بـ YES إذا احتوت الرسالة على طلب توصيل، نقل، شحن، أو دباب من زبون.
 2. أجب بـ YES إذا احتوت على استفسار أو بحث عن سائق/سائقة مثل: ("ابي سواق"، "مطلوب سائقة"، "حد يراني"، "من قريب من"، "مين يوصل"، "محتاج توصيله"، "حد فاضي").
-3. أجب بـ YES إذا ذكر الزبون ميزانية أو سعراً محدد للمشوار (مثال: "المشوار بـ 10"، "معي 15"، "من الحصمة للحصمة بـ 10"). تحديد السعر من الكاتب لا يعني أنه سائق بل زبون يحدد ميزانيته.
-4. أجب بـ YES لطلبات العقود والدوامات الشهرية إذا كان الكاتب يبحث عن توصيل (مثال: "ابي سواق/ه دوامي يوميا من...").
+3. أجب بـ YES إذا ذكر الزبون ميزانية أو سعراً محدد للمشوار (مثال: "المشوار بـ 10"، "معي 15"، "من الحصمة للحصمة بـ 10").
+4. أجب بـ YES لطلبات العقود والدوامات الشهرية إذا كان الكاتب يبحث عن توصيل.
 
 [قواعد التصفية بـ NO]:
-1. أجب بـ NO إذا كان الكاتب سائقاً يعرض سيارته أو خدماته (مثال: "أنا قريب"، "متوفر توصيل"، "سائق خاص جاهز"، "فاضي الحين"، "نوفر نقل طالبات").
+1. أجب بـ NO إذا كان الكاتب سائقاً يعرض سيارته أو خدماته.
 2. أجب بـ NO للإعلانات، الروابط، والرسائل العادية.
 
-الرسالة المراد تحليلها:
+الرسالة المراد تحلیلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
@@ -123,7 +126,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
     if is_client_request:
@@ -231,7 +233,5 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     loop.run_until_complete(main())
 
