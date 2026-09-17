@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Qwen 2.5 Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -37,16 +37,17 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE
+# PURE AI ANALYSIS ENGINE (Qwen 2.5 7B Instruct)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
+        print("❌ خطأ: لم يتم ضبط OPENROUTER_API_KEY في متغيرات البيئة!", flush=True)
         return False
 
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
@@ -56,7 +57,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
    - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
+     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
      * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
      * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
      * "ابغى جازان اذ احد من احد المسارحة يوصل"
@@ -89,13 +90,15 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
+        res = requests.post(url, headers=headers, json=payload, timeout=3.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [قرار Qwen 2.5]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
+        else:
+            print(f"⚠️ استجابة OpenRouter: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -106,6 +109,9 @@ def analyze_with_pure_ai(text: str) -> bool:
 async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id:
+            return
+
+        if message.from_user and message.from_user.is_self:
             return
 
         raw_text = message.text or message.caption or ""
@@ -125,14 +131,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # طباعة تأكيدية في السجلات فور التقاط أي رسالة
-        print(f"📥 [سحب رسالة من {message.chat.title or 'خاص'}]: {clean_text[:25]}...", flush=True)
-
         loop = asyncio.get_event_loop()
         is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب مقبوض عبر Qwen!]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -165,6 +168,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                         sent = True
+                        print(f"✅ تم الإرسال إلى @{user} عبر البوت", flush=True)
                     except Exception:
                         pass
 
@@ -176,33 +180,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+                        print(f"✅ تم الإرسال إلى @{user} عبر الحساب الوهمي", flush=True)
+                    except Exception as e:
+                        print(f"❌ فشل الإرسال لـ @{user}: {e}", flush=True)
 
-# =========================================================
-# GUARANTEED DIALOG & HISTORY SCANNER
-# =========================================================
-
-async def force_history_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
-    print("📡 تم تشغيل المحرك القسري لسحب كل القروبات والمحادثات...", flush=True)
-    
-    while True:
-        try:
-            # يجلب أول 30 محادثة نشطة
-            async for dialog in userbot.get_dialogs(limit=30):
-                try:
-                    # يجلب آخر 5 رسائل في كل محادثة لضمان عدم تفويت أي شيء
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=5):
-                        await process_live_message(userbot, bot, msg)
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"⚠️ تنبيه الماسح: {e}", flush=True)
-            
-        await asyncio.sleep(4)
+    except Exception as e:
+        print(f"⚠️ خطأ عام في معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -228,18 +211,16 @@ async def main():
                 bot_token=BOT_TOKEN
             )
             await bot.start()
-        except Exception:
-            pass
+            print("🤖 تم تشغيل بوت التوجيه بنجاح!", flush=True)
+        except Exception as e:
+            print(f"⚠️ فشل تشغيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل الحساب بنجاح والبدء المباشر!", flush=True)
-
-    # تشغيل الماسح المباشر القسري
-    asyncio.create_task(force_history_poller(userbot, bot))
+    print("🚀 تم تشغيل بوت السحب بنموذج Qwen 2.5 واستماع الرسائل المباشرة بنجاح!", flush=True)
 
     await asyncio.Event().wait()
 
