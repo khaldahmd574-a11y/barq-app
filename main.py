@@ -2,7 +2,6 @@ import os
 import asyncio
 import hashlib
 import requests
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -17,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq AI System Active!")
+        self.wfile.write(b"Pure Cerebras AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -43,70 +42,60 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HYBRID ANALYSIS ENGINE (AI + LOCAL FALLBACK)
+# PURE CEREBRAS AI ENGINE (NO WORDS / NO REGEX)
 # =========================================================
 
-def analyze_with_cerebras(text: str) -> bool:
-    txt = text.lower()
+def analyze_with_pure_ai(text: str) -> bool:
+    if not CEREBRAS_API_KEY:
+        print("❌ لم يتم ضبط CEREBRAS_API_KEY!", flush=True)
+        return False
 
-    # 1. رفض صريح لإعلانات السائقين
-    driver_patterns = [
-        r"أنا قريب", r"انا قريب", r"متواجد", r"موجود في", r"فاضي الحين", r"أنا فاضي",
-        r"انا فاضي", r"فاضيه", r"نوفر نقل", r"نقل موظفات", r"نقل طالبات", r"سواق خاص",
-        r"مشوار خاص", r"للتواصل خاص", r"تواصل خاص", r"خدمة توصيل"
-    ]
-    for pattern in driver_patterns:
-        if re.search(pattern, txt):
-            return False
+    prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
+مهمتك: التحقق مما إذا كان كاتب الرسالة هو "زبون يبحث عن توصيل/سائق/مندوب" أم "سائق/شركة يعرضون خدماتهم".
 
-    # 2. قبول مباشر لطلبات المشاوير والدوامات المعروفة
-    client_patterns = [
-        r"من قريب", r"مين قريب", r"حد قريب", r"مين القريب", r"من القريب",
-        r"مين فاضي", r"من فاضي", r"حد فاضي", r"فيه احد", r"في احد", r"فيع احد",
-        r"ابغى سواق", r"أبغى سواق", r"احتاج توصيل", r"أحتاج توصيل", r"مطلوب مندوب",
-        r"مطلوب سواق", r"مطلوب توصيل", r"ابغى جازان", r"ابغى صبيا", r"صامطة", r"أبو حجر",
-        r"وصلني", r"توصلني", r"مين يوصل", r"من يوصل", r"ابي احد", r"ياخذ لي",
-        r"ماك", r"مطعم", r"دوامي", r"الدوام", r"نتفق ع السعر", r"نتفق على السعر"
-    ]
-    for pattern in client_patterns:
-        if re.search(pattern, txt):
-            print(f"🎯 [قبول بقواعد الكلمات]: '{text[:30]}...'", flush=True)
-            return True
+شروط القبول (أجب بـ YES):
+- زبون يطلب مشواراً أو توصيل أغراض/مطاعم/أطردة.
+- شخص يسأل إن كان هناك سائق متاح أو قريب.
+- موظف/طالب يشرح دوامه ويريد سائقاً للاتفاق معه.
 
-    # 3. التحليل عبر Cerebras AI للرسائل المركبة
-    if CEREBRAS_API_KEY:
-        prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير في السعودية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يشرح دوامه" وبين "سائق يعرض خدمته".
+شروط الرفض (أجب بـ NO):
+- سائق يعرض سيارته، توفره، أو يكتب "أنا فاضي/قريب/متواجد".
+- إعلانات نقل الموظفات، الطالبات، الباصات، أو السطحات.
+- إعلانات الخدمات التجارية العامة.
 
-الرسالة: "{text}"
-الجواب بكلمة واحدة فقط (YES أو NO):"""
+الرسالة:
+"{text}"
 
-        url = "https://api.cerebras.ai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {CEREBRAS_API_KEY}",
-            "Content-Type": "application/json"
-        }
+الجواب (أجب بكلمة YES أو NO فقط):"""
 
-        active_models = ["llama3.1-70b", "llama3.1-8b"]
+    url = "https://api.cerebras.ai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-        for model in active_models:
-            try:
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": "You are a classifier. Respond ONLY with YES or NO."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 5
-                }
-                res = requests.post(url, headers=headers, json=payload, timeout=2.5)
-                if res.status_code == 200:
-                    answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Cerebras AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
-                    return "YES" in answer
-            except Exception:
-                pass
+    active_models = ["llama3.1-70b", "llama3.1-8b"]
+
+    for model in active_models:
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a strict binary classifier. Respond ONLY with YES or NO."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 5
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=3.0)
+            if res.status_code == 200:
+                answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"⚡ [Cerebras AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+            else:
+                print(f"⚠️ خطأ Cerebras: {res.status_code} - {res.text}", flush=True)
+        except Exception as e:
+            print(f"⚠️ خطأ الاتصال بـ Cerebras: {e}", flush=True)
 
     return False
 
@@ -140,10 +129,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_cerebras, clean_text)
+        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [تم التقاط طلب زبون]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مؤكد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -193,7 +182,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
-# DEEP MULTI-GROUP SCANNER (توسيع المسح لـ 80 جروب)
+# FAST MULTI-GROUP SCANNER (80 DIALOGS)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
@@ -242,7 +231,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام السحب الهجين (ذكاء اصطناعي + قواعد صريحة) بنجاح!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك الذكاء الاصطناعي الخالص (Cerebras AI) فقط!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
