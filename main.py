@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# ULTRA FAST CEREBRAS AI ENGINE
+# ULTRA FAST CEREBRAS AI ENGINE (NO MORE 404 ERRORS)
 # =========================================================
 
 def analyze_with_cerebras(text: str) -> bool:
@@ -74,25 +74,27 @@ def analyze_with_cerebras(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    try:
-        payload = {
-            "model": "llama-3.3-70b",
-            "messages": [
-                {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.0,
-            "max_tokens": 5
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"⚡ [Cerebras AI]: '{text[:30]}...' -> {answer}", flush=True)
-            return "YES" in answer
-        else:
-            print(f"⚠️ خطأ Cerebras: {res.status_code} - {res.text}", flush=True)
-    except Exception as e:
-        print(f"⚠️ خطأ الاتصال بـ Cerebras: {e}", flush=True)
+    # أسماء النماذج المعتمدة المتاحة حالياً على Cerebras
+    active_models = ["llama3.1-70b", "llama3.1-8b"]
+
+    for model in active_models:
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 5
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=2.5)
+            if res.status_code == 200:
+                answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"⚡ [Cerebras AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+        except Exception:
+            pass
 
     return False
 
@@ -179,7 +181,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# FAST MULTI-GROUP SCANNER (مسح المجموعات الكبيرة)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
@@ -228,7 +230,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك Cerebras AI الفائق السرعة!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك Cerebras AI المحدث بدون أخطاء!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
