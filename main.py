@@ -85,7 +85,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama3-70b-8192",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
