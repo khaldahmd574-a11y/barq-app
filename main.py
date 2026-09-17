@@ -83,22 +83,29 @@ def analyze_with_pure_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    try:
-        payload = {
-            "model": "llama3-70b-8192",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 3
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار Groq AI]: '{text[:30]}...' -> {answer}", flush=True)
-            return "YES" in answer
-        else:
-            print(f"⚠️ استجابة Groq: {res.status_code}", flush=True)
-    except Exception as e:
-        print(f"⚠️ خطأ الاتصال بـ Groq: {e}", flush=True)
+    # المحاولة مع النموذج الأساسي ثم النموذج الاحتياطي الخفيف
+    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
+    for model in models_to_try:
+        try:
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.0,
+                "max_tokens": 5
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=4)
+            if res.status_code == 200:
+                answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"🤖 [قرار Groq AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+            else:
+                print(f"⚠️ استجابة Groq ({model}): {res.status_code} - {res.text}", flush=True)
+        except Exception as e:
+            print(f"⚠️ خطأ الاتصال بـ Groq ({model}): {e}", flush=True)
 
     return False
 
