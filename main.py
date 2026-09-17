@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Qwen 2.5 Pure AI System Active!")
+        self.wfile.write(b"Groq AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,19 +35,19 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (Qwen 2.5 7B Instruct)
+# GROQ PURE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
-    if not OPENROUTER_API_KEY:
-        print("❌ خطأ: لم يتم ضبط OPENROUTER_API_KEY في متغيرات البيئة!", flush=True)
+    if not GROQ_API_KEY:
+        print("❌ خطأ: لم يتم ضبط GROQ_API_KEY في متغيرات البيئة!", flush=True)
         return False
 
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
@@ -57,7 +57,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
    - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
+     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
      * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
      * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
      * "ابغى جازان اذ احد من احد المسارحة يوصل"
@@ -72,33 +72,33 @@ def analyze_with_pure_ai(text: str) -> bool:
      * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
      * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
 
-الرسالة المراد تحليلها:
+الرسالة المراد تحلیلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
     try:
         payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=3.5)
+        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار Qwen 2.5]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [قرار Groq AI]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         else:
-            print(f"⚠️ استجابة OpenRouter: {res.status_code}", flush=True)
+            print(f"⚠️ استجابة Groq: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الاتصال بـ Groq: {e}", flush=True)
 
     return False
 
@@ -135,7 +135,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب مقبوض عبر Qwen!]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب مقبوض عبر Groq!]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -220,7 +220,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل بوت السحب بنموذج Qwen 2.5 واستماع الرسائل المباشرة بنجاح!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح واعتماد Groq AI معالجة مجانية 100%!", flush=True)
 
     await asyncio.Event().wait()
 
