@@ -1,6 +1,6 @@
 import asyncio
 
-# إعداد الـ Event Loop مبكراً
+# إعداد الـ Event Loop مبكراً لتفادي مشاكل بايثون 3.10+
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -37,7 +37,6 @@ def run_dummy_server():
 # CONFIGURATION & CLEANUP
 # =========================================================
 
-# تنظيف كود الجلسة تلقائياً من الأسطر والمسافات المخفية
 RAW_SESSION = os.environ.get("SESSION_STRING", "")
 SESSION_STRING = RAW_SESSION.strip().replace("\n", "").replace("\r", "").replace(" ", "")
 
@@ -102,82 +101,86 @@ def analyze_with_pure_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# SAFE MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
-    if not message or not message.id:
-        return
+    try:
+        if not message or not message.id:
+            return
 
-    if message.from_user and message.from_user.is_self:
-        return
+        if message.from_user and message.from_user.is_self:
+            return
 
-    raw_text = message.text or message.caption or ""
-    clean_text = raw_text.strip()
-    if len(clean_text) < 4:
-        return
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        if len(clean_text) < 4:
+            return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-    
-    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-        return
+        msg_key = f"{message.chat.id}_{message.id}"
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-    PROCESSED_KEYS.add(msg_key)
-    PROCESSED_KEYS.add(text_hash)
-
-    if len(PROCESSED_KEYS) > 10000:
-        PROCESSED_KEYS.clear()
-
-    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
-
-    if is_client_request:
-        print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
-
-        buttons = []
-        row = []
-        
-        if message.from_user:
-            if message.from_user.username:
-                user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-            else:
-                user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-            row.append(InlineKeyboardButton(user_label, url=user_url))
-
-        if message.link:
-            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-        
-        if row:
-            buttons.append(row)
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+            return
             
-        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
 
-        for user in TARGET_USERS:
-            sent = False
-            if bot:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                    sent = True
-                except Exception:
-                    pass
+        if len(PROCESSED_KEYS) > 10000:
+            PROCESSED_KEYS.clear()
 
-            if not sent:
-                try:
-                    await userbot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                except Exception:
-                    pass
+        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+
+        if is_client_request:
+            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+
+            buttons = []
+            row = []
+            
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
+
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
+            if row:
+                buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+            for user in TARGET_USERS:
+                sent = False
+                if bot:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                        sent = True
+                    except Exception:
+                        pass
+
+                if not sent:
+                    try:
+                        await userbot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        # حماية النظام من أخطاء Peer ID وإلغاء الاستثناءات لتستمر الخدمة بالعمل
+        pass
 
 # =========================================================
 # FAST MULTI-GROUP SCANNER
@@ -201,8 +204,6 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    print(f"🔍 طول الجلسة المستلمة: {len(SESSION_STRING)} حرف", flush=True)
 
     userbot = Client(
         "my_userbot",
@@ -239,3 +240,4 @@ async def main():
 
 if __name__ == "__main__":
     loop.run_until_complete(main())
+
