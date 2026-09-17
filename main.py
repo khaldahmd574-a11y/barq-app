@@ -2,7 +2,6 @@ import os
 import asyncio
 import hashlib
 import requests
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -17,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Hybrid AI System Active!")
+        self.wfile.write(b"Barq Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,70 +35,70 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HYBRID AI ENGINE (GROQ AI + SMART FALLBACK)
+# PURE AI ANALYSIS ENGINE (OpenRouter Qwen AI)
 # =========================================================
 
-def analyze_with_ai_smart(text: str) -> bool:
-    # 1. محاولة التحليل عبر الذكاء الاصطناعي الفعلي (Groq)
-    if GROQ_API_KEY:
-        prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير في السعودية بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً/أغراضاً/سائقاً" وبين "سائق يعرض خدمته أو إعلانه".
+def analyze_with_pure_ai(text: str) -> bool:
+    if not OPENROUTER_API_KEY:
+        print("❌ خطأ: لم يتم ضبط OPENROUTER_API_KEY!", flush=True)
+        return False
 
-قواعد التمييز:
-1. أجب بـ YES إذا كان الكاتب زبوناً (يطلب توصيل من مطعم مثل ماك، يطلب أغراض، يسأل عن شخص قريب في منطقة/قرية مثل ابو حجر أو صامطة، يحتاج مندوب أو سواق).
-2. أجب بـ NO إذا كان الكاتب سائقاً (يعرض سيارته، يكتب أنه متواجد أو فاضي للتوصيل، يضع رقماً للإعلان).
+    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
+مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
 
-الرسالة:
+قواعد التمييز والتصنيف الصارمة:
+
+1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه، أو يطلب أغراضاً/مطاعم:
+   - أمثلة صريحة لطلب الزبون (YES):
+     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
+     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟" / "فيه أحد ب ابو حجر"
+     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
+     * "ابي احد ياخذ لي من ماك موقع صامطه" / "مندوب يوصل من اصل البرقر"
+     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
+
+2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
+   - أمثلة صريحة لعرض السائق (NO):
+     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
+     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
+     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
+     * "موجود في جازان اي مشوار خاص"
+     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
+     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+
+الرسالة المراد تحليلها:
 "{text}"
 
-الجواب (أجب بكلمة YES أو NO فقط):"""
+الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        payload = {
+            "model": "qwen/qwen-2.5-7b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 3
         }
-
-        # النماذج الرسمية النشطة حالياً على Groq
-        active_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-
-        for model in active_models:
-            try:
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": "Respond strictly with YES or NO."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.0,
-                    "max_tokens": 5
-                }
-                res = requests.post(url, headers=headers, json=payload, timeout=3)
-                if res.status_code == 200:
-                    answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                    print(f"🤖 [قرار الذكاء الاصطناعي Groq ({model})]: '{text[:30]}...' -> {answer}", flush=True)
-                    return "YES" in answer
-            except Exception:
-                pass
-
-    # 2. نظام حماية احتياطي واسع الكلمات في حال تعثر API
-    txt = text.lower()
-    driver_patterns = [r"أنا قريب", r"متواجد", r"فاضي الحين", r"نوفر نقل", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص"]
-    for p in driver_patterns:
-        if re.search(p, txt):
-            return False
-
-    client_patterns = [r"من قريب", r"مين قريب", r"حد قريب", r"فيه احد", r"في احد", r"ابي احد", r"ابغى", r"أبغى", r"احتاج", r"مندوب", r"ياخذ لي", r"يوصل"]
-    for p in client_patterns:
-        if re.search(p, txt):
-            return True
+        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [قرار OpenRouter AI]: '{text[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
+        else:
+            print(f"⚠️ استجابة OpenRouter: {res.status_code} - {res.text}", flush=True)
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -133,10 +132,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_ai_smart, clean_text)
+        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مقبول عبر الذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -169,7 +168,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                         sent = True
-                        print(f"✅ تم الإرسال إلى @{user} عبر البوت", flush=True)
                     except Exception:
                         pass
 
@@ -181,12 +179,26 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                        print(f"✅ تم الإرسال إلى @{user} عبر الحساب", flush=True)
-                    except Exception as e:
-                        print(f"❌ فشل الإرسال لـ @{user}: {e}", flush=True)
-
+                    except Exception:
+                        pass
     except Exception as e:
-        print(f"⚠️ خطأ عام في معالجة الرسالة: {e}", flush=True)
+        print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
+
+# =========================================================
+# FAST MULTI-GROUP SCANNER (مسح المجموعات الكبيرة)
+# =========================================================
+
+async def fast_dialog_poller(userbot: Client, bot: Client):
+    await asyncio.sleep(5)
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=30):
+                if dialog.top_message:
+                    await process_live_message(userbot, bot, dialog.top_message)
+        except Exception:
+            pass
+            
+        await asyncio.sleep(8)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -199,7 +211,8 @@ async def main():
         "my_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
-        session_string=SESSION_STRING
+        session_string=SESSION_STRING,
+        in_memory=True
     )
 
     bot = None
@@ -209,19 +222,21 @@ async def main():
                 "helper_bot",
                 api_id=API_ID,
                 api_hash=API_HASH,
-                bot_token=BOT_TOKEN
+                bot_token=BOT_TOKEN,
+                in_memory=True
             )
             await bot.start()
-            print("🤖 تم تشغيل بوت التوجيه بنجاح!", flush=True)
-        except Exception as e:
-            print(f"⚠️ فشل تشغيل البوت المساعد: {e}", flush=True)
+        except Exception:
+            pass
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنجاح بالذكاء الاصطناعي الفعلي المحدث!", flush=True)
+    print("🚀 تم تشغيل النظام بكفاءة الكود القديم عبر OpenRouter وفحص المجموعات الكبيرة!", flush=True)
+
+    asyncio.create_task(fast_dialog_poller(userbot, bot))
 
     await asyncio.Event().wait()
 
