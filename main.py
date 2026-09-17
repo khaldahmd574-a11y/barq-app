@@ -83,8 +83,8 @@ def analyze_with_pure_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    # المحاولة مع النموذج الأساسي ثم النموذج الاحتياطي الخفيف
-    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    # النماذج الرسمية النشطة المضمونة على منصة Groq
+    models_to_try = ["llama3-8b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"]
 
     for model in models_to_try:
         try:
