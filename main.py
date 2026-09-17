@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE CEREBRAS AI ENGINE (NO WORDS / NO REGEX)
+# PURE CEREBRAS AI ENGINE (NO WORDS / CORRECT MODELS)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -74,7 +74,8 @@ def analyze_with_pure_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    active_models = ["llama3.1-70b", "llama3.1-8b"]
+    # المسميات الدقيقة والمعتمدة من Cerebras AI
+    active_models = ["llama-3.1-70b", "llama-3.1-8b"]
 
     for model in active_models:
         try:
@@ -93,7 +94,7 @@ def analyze_with_pure_ai(text: str) -> bool:
                 print(f"⚡ [Cerebras AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
                 return "YES" in answer
             else:
-                print(f"⚠️ خطأ Cerebras: {res.status_code} - {res.text}", flush=True)
+                print(f"⚠️ Cerebras ({model}) Error {res.status_code}: {res.text}", flush=True)
         except Exception as e:
             print(f"⚠️ خطأ الاتصال بـ Cerebras: {e}", flush=True)
 
