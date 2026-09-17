@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import requests
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Groq AI System Active!")
+        self.wfile.write(b"System Active with HuggingFace AI!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,77 +36,72 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# GROQ PURE AI ANALYSIS ENGINE
+# HUGGINGFACE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
-    if not GROQ_API_KEY:
-        print("❌ خطأ: لم يتم ضبط GROQ_API_KEY في متغيرات البيئة!", flush=True)
-        return False
+    # 1. فحص محلي سريع للمصطلحات الشائعة
+    txt = text.lower()
+    
+    driver_patterns = [
+        r"أنا قريب", r"انا قريب", r"متواجد بالقرب", r"متواجد في", r"موجود في",
+        r"فاضي الحين", r"أنا فاضي", r"انا فاضي", r"فاضيه", r"نوفر نقل", r"نقل موظفات",
+        r"نقل طالبات", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص", r"تواصل خاص"
+    ]
+    for pattern in driver_patterns:
+        if re.search(pattern, txt):
+            return False
 
+    client_patterns = [
+        r"من قريب", r"مين قريب", r"حد قريب", r"مين القريب", r"من القريب",
+        r"مين فاضي", r"من فاضي", r"حد فاضي", r"فيه احد فاضي", r"فيه حد فاضي",
+        r"ابغى سواق", r"أبغى سواق", r"احتاج توصيل", r"أحتاج توصيل", r"مطلوب مندوب",
+        r"مطلوب سواق", r"مطلوب توصيل", r"ابغى جازان", r"ابغى صبيا", r"وصلني"
+    ]
+    for pattern in client_patterns:
+        if re.search(pattern, txt):
+            return True
+
+    # 2. الاستعانة بـ HuggingFace AI (نموذج Qwen 2.5 المتطور)
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
 مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
 
 قواعد التمييز والتصنيف الصارمة:
-
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
-   - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
-     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
-     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
-     * "ابغى جازان اذ احد من احد المسارحة يوصل"
-     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
-
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة صريحة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
-     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
-     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص"
-     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
-     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يطلب مشواراً.
+2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلانه.
 
 الرسالة المراد تحليلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
+    url = "https://api-inference.huggingface.co/models/Qwen/Qwen2.5-72B-Instruct/v1/chat/completions"
+    headers = {"Content-Type": "application/json"}
+
+    payload = {
+        "model": "Qwen/Qwen2.5-72B-Instruct",
+        "messages": [
+            {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 5,
+        "temperature": 0.0
     }
 
-    # النماذج الرسمية النشطة حالياً على منصة Groq
-    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-
-    for model in models_to_try:
-        try:
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.0,
-                "max_tokens": 5
-            }
-            res = requests.post(url, headers=headers, json=payload, timeout=4)
-            if res.status_code == 200:
-                answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [قرار Groq AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
-                return "YES" in answer
-            else:
-                print(f"⚠️ استجابة Groq ({model}): {res.status_code} - {res.text}", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ الاتصال بـ Groq ({model}): {e}", flush=True)
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=5)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [قرار HuggingFace AI]: '{text[:30]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في اتصال HuggingFace: {e}", flush=True)
 
     return False
 
@@ -142,7 +138,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب مقبوض عبر Groq!]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مقبول!]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -187,7 +183,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                        print(f"✅ تم الإرسال إلى @{user} عبر الحساب الوهمي", flush=True)
+                        print(f"✅ تم الإرسال إلى @{user} عبر الحساب", flush=True)
                     except Exception as e:
                         print(f"❌ فشل الإرسال لـ @{user}: {e}", flush=True)
 
@@ -227,7 +223,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنجاح واعتماد Groq AI معالجة مجانية 100%!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح عبر نظام HuggingFace المجاني المضمون!", flush=True)
 
     await asyncio.Event().wait()
 
