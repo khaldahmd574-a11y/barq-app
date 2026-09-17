@@ -1,6 +1,7 @@
 import os
 import asyncio
 import hashlib
+import requests
 import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"System Active 100%!")
+        self.wfile.write(b"Hybrid AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,41 +36,69 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# LOCAL AI CLASSIFIER ENGINE (ZERO EXTERNAL API ERRORS)
+# HYBRID AI ENGINE (GROQ AI + SMART FALLBACK)
 # =========================================================
 
-def analyze_message_locally(text: str) -> bool:
-    """نظام تحليل ذكي محلي يستهدف كافة صيغ طلبات المشاوير والتوصيل"""
+def analyze_with_ai_smart(text: str) -> bool:
+    # 1. محاولة التحليل عبر الذكاء الاصطناعي الفعلي (Groq)
+    if GROQ_API_KEY:
+        prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير في السعودية بدقة متناهية.
+مهمتك: التمييز بين "زبون يطلب توصيلاً/أغراضاً/سائقاً" وبين "سائق يعرض خدمته أو إعلانه".
+
+قواعد التمييز:
+1. أجب بـ YES إذا كان الكاتب زبوناً (يطلب توصيل من مطعم مثل ماك، يطلب أغراض، يسأل عن شخص قريب في منطقة/قرية مثل ابو حجر أو صامطة، يحتاج مندوب أو سواق).
+2. أجب بـ NO إذا كان الكاتب سائقاً (يعرض سيارته، يكتب أنه متواجد أو فاضي للتوصيل، يضع رقماً للإعلان).
+
+الرسالة:
+"{text}"
+
+الجواب (أجب بكلمة YES أو NO فقط):"""
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        # النماذج الرسمية النشطة حالياً على Groq
+        active_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
+        for model in active_models:
+            try:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "Respond strictly with YES or NO."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.0,
+                    "max_tokens": 5
+                }
+                res = requests.post(url, headers=headers, json=payload, timeout=3)
+                if res.status_code == 200:
+                    answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                    print(f"🤖 [قرار الذكاء الاصطناعي Groq ({model})]: '{text[:30]}...' -> {answer}", flush=True)
+                    return "YES" in answer
+            except Exception:
+                pass
+
+    # 2. نظام حماية احتياطي واسع الكلمات في حال تعثر API
     txt = text.lower()
-    
-    # 1. القواعد الصارمة لرفض إعلانات وعروض السائقين (NO)
-    driver_patterns = [
-        r"أنا قريب", r"انا قريب", r"متواجد بالقرب", r"متواجد في", r"موجود في",
-        r"فاضي الحين", r"أنا فاضي", r"انا فاضي", r"فاضيه", r"نوفر نقل", r"نقل موظفات",
-        r"نقل طالبات", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص", r"تواصل خاص", 
-        r"او سواقات", r"نوفر توصيل", r"خدمة توصيل", r"أسعار مناسبة", r"اسعار مناسبه"
-    ]
-    for pattern in driver_patterns:
-        if re.search(pattern, txt):
+    driver_patterns = [r"أنا قريب", r"متواجد", r"فاضي الحين", r"نوفر نقل", r"سواق خاص", r"مشوار خاص", r"للتواصل خاص"]
+    for p in driver_patterns:
+        if re.search(p, txt):
             return False
 
-    # 2. القواعد الصارمة لقبول طلبات وتساؤلات الزبائن (YES)
-    client_patterns = [
-        r"من قريب", r"مين قريب", r"حد قريب", r"مين القريب", r"من القريب",
-        r"مين فاضي", r"من فاضي", r"حد فاضي", r"فيه احد فاضي", r"فيه حد فاضي",
-        r"فيع احد فاضي", r"فيه حد", r"في حد", r"من فيه", r"مين فيه",
-        r"ابغى سواق", r"أبغى سواق", r"احتاج توصيل", r"أحتاج توصيل", r"مطلوب مندوب",
-        r"مطلوب سواق", r"مطلوب توصيل", r"ابغى جازان", r"ابغى صبيا", r"اللي يناسبه يجي",
-        r"وصلني", r"توصلني", r"مين يوصل", r"من يوصل", r"ابغى توصيل", r"أبغى توصيل"
-    ]
-    for pattern in client_patterns:
-        if re.search(pattern, txt):
+    client_patterns = [r"من قريب", r"مين قريب", r"حد قريب", r"فيه احد", r"في احد", r"ابي احد", r"ابغى", r"أبغى", r"احتاج", r"مندوب", r"ياخذ لي", r"يوصل"]
+    for p in client_patterns:
+        if re.search(p, txt):
             return True
 
     return False
@@ -103,11 +132,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # التحليل المحلي السريع والشامل
-        is_client_request = analyze_message_locally(clean_text)
+        loop = asyncio.get_event_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_with_ai_smart, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مقبول!]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مقبول عبر الذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -192,7 +221,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنجاح بالنظام المحلي الفائق وبدون أخطاء خارجية!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح بالذكاء الاصطناعي الفعلي المحدث!", flush=True)
 
     await asyncio.Event().wait()
 
