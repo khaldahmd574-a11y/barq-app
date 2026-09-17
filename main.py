@@ -4,8 +4,8 @@ import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from pyrogram import Client
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram import Client
+from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
@@ -222,7 +222,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
