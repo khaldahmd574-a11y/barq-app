@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Cerebras AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,70 +35,64 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (OpenRouter Qwen AI)
+# ULTRA FAST CEREBRAS AI ENGINE
 # =========================================================
 
-def analyze_with_pure_ai(text: str) -> bool:
-    if not OPENROUTER_API_KEY:
-        print("❌ خطأ: لم يتم ضبط OPENROUTER_API_KEY!", flush=True)
+def analyze_with_cerebras(text: str) -> bool:
+    if not CEREBRAS_API_KEY:
+        print("❌ لم يتم ضبط CEREBRAS_API_KEY!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
+    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير في السعودية بدقة متناهية.
+مهمتك: التمييز بين "زبون يطلب توصيلاً/أغراضاً/سائقاً أو يشرح دوامه" وبين "سائق يعرض خدمته أو إعلانه".
 
-قواعد التمييز والتصنيف الصارمة:
+قواعد التصنيف:
+1. أجب بـ YES إذا كان الكاتب زبوناً:
+   - يطلب توصيلاً أو مندوباً (مثل: ماك، مطعم، أغراض، صامطة، أبو حجر).
+   - يشرح دوامه ويريد اتفاقاً (مثل: دوامي من الجهو والشقيري للجازان نتفق ع السعر).
+   - يسأل عن سائق قريب أو فاضي (مثل: من قريب، مين فاضي، فيه أحد).
 
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه، أو يطلب أغراضاً/مطاعم:
-   - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
-     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟" / "فيه أحد ب ابو حجر"
-     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
-     * "ابي احد ياخذ لي من ماك موقع صامطه" / "مندوب يوصل من اصل البرقر"
-     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
-
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة صريحة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
-     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
-     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص"
-     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
-     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+2. أجب بـ NO إذا كان الكاتب سائقاً:
+   - يعرض سيارته أو يذكر أنه متواجد/فاضي للخدمة.
+   - يضع رقماً أو إعلان نقل طالبات/موظفات.
 
 الرسالة المراد تحليلها:
 "{text}"
 
-الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
+الجواب (أجب بكلمة YES أو NO فقط):"""
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
+    url = "https://api.cerebras.ai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {CEREBRAS_API_KEY}",
         "Content-Type": "application/json"
     }
 
     try:
         payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 3
+            "model": "llama-3.3-70b",
+            "messages": [
+                {"role": "system", "content": "You are a precise classifier that responds only with YES or NO."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.0,
+            "max_tokens": 5
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار OpenRouter AI]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"⚡ [Cerebras AI]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         else:
-            print(f"⚠️ استجابة OpenRouter: {res.status_code} - {res.text}", flush=True)
+            print(f"⚠️ خطأ Cerebras: {res.status_code} - {res.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الاتصال بـ Cerebras: {e}", flush=True)
 
     return False
 
@@ -132,10 +126,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+        is_client_request = await loop.run_in_executor(None, analyze_with_cerebras, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مقبول بالذكاء الخارق]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -185,14 +179,14 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER (مسح المجموعات الكبيرة)
+# FAST MULTI-GROUP SCANNER
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(5)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=30):
+            async for dialog in userbot.get_dialogs(limit=35):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
         except Exception:
@@ -234,7 +228,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بكفاءة الكود القديم عبر OpenRouter وفحص المجموعات الكبيرة!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك Cerebras AI الفائق السرعة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
