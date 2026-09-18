@@ -50,16 +50,8 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_KEYS = set()
 
-# الكلمات المفتاحية الأولية لتصفية الشوائب
-RIDE_KEYWORDS = [
-    "توصيل", "مشوار", "سواق", "سائقه", "سائقة", "مندوب", "نقل", 
-    "فاضي", "فاضيه", "قريب", "قريبه", "يروح", "اروح", "يوصل", 
-    "تودي", "يجيب", "دوام", "دوامات", "خاص", "خاصه", "جازان", 
-    "جيزان", "صبيا", "ابوعريش", "المسارحة", "الصامطة", "بيش"
-]
-
 # =========================================================
-# SMART AI ROTATION ENGINE (FLEXIBLE YES/NO CHECK)
+# DIRECT AI ANALYZER (ALL MESSAGES PASS HERE)
 # =========================================================
 
 def analyze_with_groq(text: str) -> bool:
@@ -69,18 +61,19 @@ def analyze_with_groq(text: str) -> bool:
         print("❌ لا توجد مفاتيح Groq مضافة في Render!", flush=True)
         return False
 
-    prompt = f"""حلل الرسالة التالية وحدد هل هي طلب توصيل أو استفسار من زبون يبحث عن سائق/مشوار أم لا.
+    prompt = f"""أنت مساعد ذكي لتصنيف طلبات المشاوير والتوصيل.
+الهدف: معرفة هل الرسالة من زبون يبحث عن سائق أو توصيلة أم لا.
 
-أجب بـ YES إذا كانت الرسالة:
-- زبون يسأل عن سائق أو شخص يوصله (مثال: "من فاضي؟", "حد قريب؟", "ابغى سواق", "مين يوصل؟", "احتاج مشوار").
-- زبون يطلب توصيل بضاعة، طلبات، أو شرح جدول دوام ونقل.
+أجب بـ YES فقط إذا كانت الرسالة:
+- زبون يسأل عن سائق/توصيل (مثال: "من فاضي؟"، "حد قريب؟"، "ابغى سواق"، "هل يوجد سواق؟"، "احصل مندوب؟").
+- زبون يطلب توصيل مشوار، دوام، أغراض، أو طرد.
 
-أجب بـ NO إذا كانت الرسالة:
-- سائق يعرض خدماته وركمه (مثال: "أنا فاضي للتوصيل", "متواجد حالياً", "نوفر نقل طالبات", "توصيل مشاوير خاصة").
-- إعلان تجاري، تسويق، أو رسالة لا علاقة لها بالتوصيل.
+أجب بـ NO فقط إذا كانت الرسالة:
+- سائق يعرض سيارته أو خدماته (مثال: "أنا فاضي"، "متواجد للتوصيل"، "توصيل خاص").
+- إعلان، سلام، تعارف، أو كلام عام لا يطلب توصيلة.
 
 الرسالة: "{text}"
-الإجابة (YES أو NO فقط):"""
+الجواب (YES أو NO فقط):"""
 
     for _ in range(len(GROQ_KEYS)):
         active_key = GROQ_KEYS[CURRENT_KEY_INDEX]
@@ -93,10 +86,10 @@ def analyze_with_groq(text: str) -> bool:
                 max_tokens=5,
             )
             answer = response.choices[0].message.content.strip().upper()
-            print(f"⚡ [Groq المفتاح #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"⚡ [Groq #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         except Exception as e:
-            print(f"⚠️ المفتاح رقم {CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل...", flush=True)
+            print(f"⚠️ المفتاح #{CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل...", flush=True)
             CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(GROQ_KEYS)
 
     return False
@@ -115,11 +108,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
-        if len(clean_text) < 4:
-            return
-
-        # تصفية سريعة بالكلمات المفتاحية لحفظ حد الاستهلاك
-        if not any(kw in clean_text.lower() for kw in RIDE_KEYWORDS):
+        if len(clean_text) < 3:
             return
 
         msg_key = f"{message.chat.id}_{message.id}"
@@ -134,11 +123,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
+        # تحليل كافة الرسائل بالذكاء الاصطناعي مباشرة
         loop = asyncio.get_event_loop()
         is_client_request = await loop.run_in_executor(None, analyze_with_groq, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [تم القبول والإرسال للمشتركين]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -171,8 +161,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                         sent = True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"❌ تعذر الإرسال عبر البوت لـ {user}: {e}", flush=True)
 
                 if not sent:
                     try:
@@ -182,8 +172,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                    except Exception:
-                        pass
+                        print(f"✅ تم الإرسال عبر اليوزر بوت لـ {user}", flush=True)
+                    except Exception as e:
+                        print(f"❌ تعذر الإرسال عبر اليوزر بوت لـ {user}: {e}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
 
