@@ -1,5 +1,5 @@
 import os
-import requests
+import re
 import asyncio
 import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"OpenRouter Free Unlimited AI Engine Active!")
+        self.wfile.write(b"Local High-Precision Engine Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,67 +36,46 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
-
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# UNLIMITED FREE AI ENGINE (OPENROUTER - QWEN / LLAMA)
+# ADVANCED LOCAL CONTEXT FILTERING ENGINE (NO API - 100% STABLE)
 # =========================================================
 
-def analyze_with_ai(text: str) -> bool:
-    if not OPENROUTER_API_KEY:
-        print("❌ OPENROUTER_API_KEY غير مضاف في Render!", flush=True)
-        return False
+# أنماط إعلانات السائقين والشركات (استبعاد فوري)
+DRIVER_EXCLUSIONS = [
+    r"متوفر", r"متواجد", r"أنا فاضي", r"جاهز للتوصيل", r"نوصل", r"نوفر لكم", 
+    r"خدمة توصيل", r"مشاوير خاصة", r"نقل طالبات", r"نقل موظفات", r"سطحة", 
+    r"باص", r"دينا", r"تواصل واتس", r"للتواصل", r"05\d{8}", r"سائق خاص", 
+    r"سيارة حديثة", r"إعلان", r"توصيل طلبات", r"عروض", r"خصم"
+]
 
-    prompt = f"""أنت ذكاء اصطناعي خبير جداً في فهم اللهجة السعودية وتصفية قروبات التوصيل.
-مهمتك الوحيدة: تمييز إذا كان كاتب الرسالة هو "زبون يبحث عن سائق/توصيل" أم "سائق يروج لنفسه".
+# أنماط طلبات الزبائن الصريحة (قبول)
+PASSENGER_PATTERNS = [
+    r"أبغى", r"ابغى", r"محتاج", r"محتاجة", r"أبي", r"ابي", r"فيه أحد", r"فيه احد",
+    r"مين يوصل", r"من يوصل", r"من يوديني", r"مين يوديني", r"اريد", r"أريد",
+    r"يقدر يوصل", r"تقدر توصل", r"توصلون", r"تطلعون", r"يبحث عن توصيل",
+    r"مطلوب سائق", r"سائق للضرورة", r"من\s+.*\s+إلى", r"من\s+.*\s+الي"
+]
 
-شروط القبول (YES):
-- زبون يطلب مشوار أو توصيل أغراض/مطاعم/طرد (مثال: محتاج يوصلني، ابي يودي، من يوصل، فيه احد فاضي يوديني).
-- طالب أو موظف يريد اتفاق شهري أو يومي مع سائق.
+def analyze_message_context(text: str) -> bool:
+    clean_text = text.lower()
 
-شروط الرفض (NO):
-- سائق يعرض سيارته، توفره، خدماته أو كاتب (أنا جاهز، متواجد، توصيل مشاوير، نقل طالبات، سيارة للآجار، سطحة).
-- حتى لو السائق كتب "الذي يبحث عن توصيل يراسلني" فهذا إعلان سائق ويرفض فوراً (NO).
+    # 1. إذا كان النص يحتوي على أي نمط إعلان كابتن/شركة -> استبعاد فوري
+    for pattern in DRIVER_EXCLUSIONS:
+        if re.search(pattern, clean_text):
+            return False
 
-الرسالة:
-"{text}"
+    # 2. إذا كان النص يحتوي على صيغة طلب زبون مؤكدة -> قبول
+    for pattern in PASSENGER_PATTERNS:
+        if re.search(pattern, clean_text):
+            return True
 
-أجب بكلمة واحدة فقط: YES أو NO."""
-
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "qwen/qwen-2.5-72b-instruct:free",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.0,
-        "max_tokens": 5
-    }
-
-    try:
-        response = requests.post(url, headers=headers, json=data, timeout=7)
-        if response.status_code == 200:
-            result = response.json()
-            answer = result['choices'][0]['message']['content'].strip().upper()
-            print(f"⚡ [OpenRouter AI]: '{text[:30]}...' -> {answer}", flush=True)
-            return "YES" in answer
-        else:
-            # تجربة نموذج مجاني بديل
-            data["model"] = "meta-llama/llama-3.3-70b-instruct:free"
-            res2 = requests.post(url, headers=headers, json=data, timeout=7)
-            if res2.status_code == 200:
-                answer = res2.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"⚡ [OpenRouter Backup AI]: '{text[:30]}...' -> {answer}", flush=True)
-                return "YES" in answer
-            print(f"⚠️ OpenRouter Error: Status {response.status_code}", flush=True)
-    except Exception as e:
-        print(f"⚠️ AI Connection Error: {e}", flush=True)
+    # 3. إذا كانت الرسالة قصيرة وتستفسر بعلامة استفهام بدون إعلانات -> قبول
+    if ("?" in clean_text or "؟" in clean_text) and len(clean_text) < 100:
+        return True
 
     return False
 
@@ -129,11 +108,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_ai, clean_text)
+        # الفلترة المحلية الفائقة
+        is_client_request = analyze_message_context(clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون حقيقي مؤكد بـ AI]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مؤكد محلياً]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -232,7 +211,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك OpenRouter AI المجاني واللامحدود!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك الفلترة المحلي الدائم 100%!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
