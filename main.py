@@ -3,21 +3,13 @@ import re
 import asyncio
 from hydrogram import Client, filters
 from hydrogram.types import Message
-from groq import Groq
 
-# --- 1. إعدادات البيئة ---
+# --- 1. إعدادات الحساب من Railway ---
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 0))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 
-GROQ_KEYS = [
-    os.environ.get("GROQ_API_KEY_1"),
-    os.environ.get("GROQ_API_KEY_2"),
-    os.environ.get("GROQ_API_KEY_3")
-]
-GROQ_KEYS = [k for k in GROQ_KEYS if k]
-
-# قائمة المشتركين (يمكن وضع المعرفات أو معرف القناة/المجموعة)
+# قائمة المشتركين المستقبلين
 SUBSCRIBERS = [
     "abood1317",
 ]
@@ -33,34 +25,30 @@ app = Client(
     session_string=SESSION_STRING
 )
 
-def analyze_with_groq(text):
-    prompt = f"""
-أنت مساعد ذكي لفلترة طلبات التوصيل.
-حدد ما إذا كانت الرسالة التالية عبارة عن "طلب توصيل من زبون/عميل" يبحث عن مندوب.
-إذا كانت طلب توصيل حقيقي، أرجع كلمة: YES
-إذا كانت إعلان مندوب أو غير ذلك، أرجع كلمة: NO
+# كلمات تعبر عن وجود طلب توصيل زبون
+REQUEST_KEYWORDS = [
+    "ابغى", "أبغى", "مطلوب", "احتاج", "أحتاج", "وصل", "توصيل", 
+    "مين يوصل", "من يوصل", "ابي", "أبي", "مشوار", "طلب", "مندوب"
+]
 
-الرسالة:
-"{text}"
-    """
+# كلمات تعبر عن إعلانات المناديب (لتجاهلها)
+EXCLUDE_KEYWORDS = [
+    "متواجد", "متواجدين", "جاهز", "نوصل", "نخدمكم", "خدمة توصيل", "حسابي", "تابعوني"
+]
+
+def is_order_request(text):
+    """فلترة فورية وسريعة جداً للطلبات"""
+    text_lower = text.lower()
     
-    for idx, key in enumerate(GROQ_KEYS):
-        try:
-            client = Groq(api_key=key)
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=10
-            )
-            result = response.choices[0].message.content.strip().upper()
-            print(f"[AI] Key {idx + 1} Raw Result: '{result}'")
-            return result
-        except Exception as e:
-            print(f"[AI] Key {idx + 1} Error: {e}")
-            continue
-            
-    return "NO"
+    # إذا كان إعلان مندوب اتجاهله
+    if any(ex in text_lower for ex in EXCLUDE_KEYWORDS):
+        return False
+        
+    # إذا يحتوي على كلمات الطلب اعتبره طلب حقيقي
+    if any(kw in text_lower for kw in REQUEST_KEYWORDS):
+        return True
+        
+    return False
 
 @app.on_message(filters.group & ~filters.me)
 async def handle_incoming_messages(client: Client, message: Message):
@@ -70,10 +58,10 @@ async def handle_incoming_messages(client: Client, message: Message):
     chat_title = message.chat.title or "قروب"
     print(f"[NEW MESSAGE] [SOURCE: {chat_title}] -> {message.text[:50]}...")
 
-    ai_decision = analyze_with_groq(message.text)
-
-    # مرونة الفحص للتأكد من وجود كلمة YES
-    if "YES" in ai_decision:
+    # فحص الطلب فورياً
+    if is_order_request(message.text):
+        print(f"[MATCHED] Order detected! Sending to subscribers...")
+        
         sender_username = message.from_user.username if message.from_user and message.from_user.username else ""
         sender_info = f"@{sender_username}" if sender_username else (message.from_user.mention if message.from_user else "خاص")
         
@@ -94,9 +82,8 @@ async def handle_incoming_messages(client: Client, message: Message):
             except Exception as e:
                 print(f"[ERROR] Could not send to {target}: {e}")
     else:
-        print(f"[SKIPPED] Rejected by AI. Decision was: {ai_decision}")
+        print(f"[SKIPPED] Not a delivery request.")
 
 if __name__ == "__main__":
-    print("[SYSTEM] Starting Hydrogram Engine...")
+    print("[SYSTEM] Starting Fast Engine...")
     app.run()
-
