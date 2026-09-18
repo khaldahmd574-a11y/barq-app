@@ -62,7 +62,6 @@ def analyze_with_groq(text: str) -> bool:
         print("❌ لا توجد مفاتيح Groq مضافة!", flush=True)
         return False
 
-    # استبعاد أرقام الهواتف المباشرة لتوفير الذكاء الاصطناعي
     if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
         return False
 
@@ -131,7 +130,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_with_groq, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم قبول الرسالة وإرسالها للمشتركين]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -164,8 +163,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                         sent = True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"❌ خطأ إرسال البوت لـ {user}: {e}", flush=True)
 
                 if not sent:
                     try:
@@ -175,29 +174,14 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                    except Exception:
-                        pass
+                        print(f"✅ تم الإرسال عبر اليوزر بوت لـ {user}", flush=True)
+                    except Exception as e:
+                        print(f"❌ خطأ إرسال اليوزر بوت لـ {user}: {e}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ معالجة: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
-# =========================================================
-
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=35):
-                if dialog.top_message:
-                    await process_live_message(userbot, bot, dialog.top_message)
-        except Exception:
-            pass
-            
-        await asyncio.sleep(2)
-
-# =========================================================
-# MAIN ENTRYPOINT
+# MAIN ENTRYPOINT (LIVE LISTENER ONLY)
 # =========================================================
 
 async def main():
@@ -230,9 +214,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح وبنموذج openai/gpt-oss-120b!", flush=True)
-
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
+    print("🚀 تم التشغيل عبر الاستماع اللحظي الفوري المباشر بطلب خفيف دون حظر!", flush=True)
 
     await asyncio.Event().wait()
 
