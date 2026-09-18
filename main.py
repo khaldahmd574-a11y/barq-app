@@ -36,24 +36,22 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# قراءة المفتاح بأمان من متغيرات البيئة في Render
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
-# إعداد مكتبة Gemini
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 # =========================================================
-# GEMINI AI ENGINE (100% FREE & ACCURATE)
+# GEMINI AI ENGINE (FIXED MODEL ROSTER)
 # =========================================================
 
 def analyze_with_gemini(text: str) -> bool:
     if not GEMINI_API_KEY:
-        print("❌ لم يتم العثور على GEMINI_API_KEY في متغيرات البيئة!", flush=True)
+        print("❌ GEMINI_API_KEY غير موجود في متغيرات البيئة!", flush=True)
         return False
 
     prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
@@ -74,7 +72,8 @@ def analyze_with_gemini(text: str) -> bool:
 
 الجواب (أجب بكلمة YES أو NO فقط):"""
 
-    models_to_try = ["gemini-1.5-flash", "gemini-pro"]
+    # أسماء النماذج المعتمدة والرسمية
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
     for model_name in models_to_try:
         try:
@@ -87,8 +86,10 @@ def analyze_with_gemini(text: str) -> bool:
             print(f"⚡ [Gemini AI ({model_name})]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         except Exception as e:
-            print(f"⚠️ Gemini ({model_name}) Error: {e}", flush=True)
+            # تجربة النموذج التالي عند وجود خطأ مسار
+            continue
 
+    print(f"⚠️ فشلت جميع نماذج Gemini في تحليل: {text[:20]}...", flush=True)
     return False
 
 # =========================================================
@@ -231,3 +232,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
