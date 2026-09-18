@@ -47,7 +47,8 @@ GROQ_KEYS = [
 GROQ_KEYS = [k for k in GROQ_KEYS if k]
 CURRENT_KEY_INDEX = 0
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
+# القائمة المعدلة بدون @fs_990
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_KEYS = set()
 
