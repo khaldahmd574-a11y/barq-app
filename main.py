@@ -1,7 +1,7 @@
 import os
 import asyncio
 import hashlib
-import requests
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Pure Groq AI Engine Active!")
+        self.wfile.write(b"Rule-Based Pure Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,67 +35,45 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE GROQ AI ENGINE (100% FREE & FAST)
+# LOCAL SMART FILTERING ENGINE (NO API KEYS NEEDED)
 # =========================================================
 
-def analyze_with_pure_ai(text: str) -> bool:
-    if not GROQ_API_KEY:
-        print("❌ لم يتم ضبط GROQ_API_KEY!", flush=True)
-        return False
+# كلمات وحالات الرفض (إعلانات السائقين، الشركات، والخدمات العامة)
+REJECT_PATTERNS = [
+    r"أنا\s+فاضي", r"متواجد", r"سائق\s+خاص", r"توصيل\s+مشاوير",
+    r"نقل\s+عفش", r"سطحة", r"باص", r"نقل\s+طالبات", r"نقل\s+موظفات",
+    r"عرض\s+خاص", r"تأسيس", r"للتواصل\s+واتس", r"شركة", r"مؤسسة",
+    r"نوفر\text{ لكم}", r"خدماتنا", r"سيارة\s+حديثة", r"مستعد\s+لتوصيل"
+]
 
-    prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
-مهمتك: التحقق مما إذا كان كاتب الرسالة هو "زبون يبحث عن توصيل/سائق/مندوب" أم "سائق/شركة يعرضون خدماتهم".
+# كلمات وتراكيب القبول (طلبات الزبائن والمستحقين فقط)
+ACCEPT_PATTERNS = [
+    r"أبحت\s+عن", r"مطلوب\s+سائق", r"من\s+يعرف\s+سائق", r"فيه\s+سائق",
+    r"أحتاج\s+توصيل", r"أحتاج\s+سائق", r"مين\s+يوصل", r"من\s+يوصل",
+    r"يوصلني", r"يوصل\s+أغراض", r"يوصل\s+طلب", r"فيه\s+أحد\s+قريب",
+    r"متاح\s+توصيل", r"سائق\s+ضروري", r"مشوار\s+من", r"توصيل\s+من"
+]
 
-شروط القبول (أجب بـ YES):
-- زبون يطلب مشواراً أو توصيل أغراض/مطاعم/أطردة.
-- شخص يسأل إن كان هناك سائق متاح أو قريب.
-- موظف/طالب يشرح دوامه ويريد سائقاً للاتفاق معه.
+def analyze_with_local_engine(text: str) -> bool:
+    clean_text = text.lower()
 
-شروط الرفض (أجب بـ NO):
-- سائق يعرض سيارته، توفره، أو يكتب "أنا فاضي/قريب/متواجد".
-- إعلانات نقل الموظفات، الطالبات، الباصات، أو السطحات.
-- إعلانات الخدمات التجارية العامة.
+    # 1. فحص كلمات الرفض أولاً (استبعاد الإعلانات مباشرة)
+    for pattern in REJECT_PATTERNS:
+        if re.search(pattern, clean_text):
+            print(f"🚫 [استبعاد - إعلان سائق/شركة]: '{text[:30]}...'", flush=True)
+            return False
 
-الرسالة:
-"{text}"
-
-الجواب (أجب بكلمة YES أو NO فقط):"""
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    active_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-
-    for model in active_models:
-        try:
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": "You are a strict binary classifier. Respond ONLY with YES or NO."},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.0,
-                "max_tokens": 5
-            }
-            res = requests.post(url, headers=headers, json=payload, timeout=3.0)
-            if res.status_code == 200:
-                answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"⚡ [Groq AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
-                return "YES" in answer
-            else:
-                print(f"⚠️ Groq ({model}) Error {res.status_code}: {res.text}", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ الاتصال بـ Groq: {e}", flush=True)
+    # 2. فحص كلمات القبول (تأكيد طلب الزبون)
+    for pattern in ACCEPT_PATTERNS:
+        if re.search(pattern, clean_text):
+            print(f"🎯 [قبول - طلب زبون مؤكد]: '{text[:30]}...'", flush=True)
+            return True
 
     return False
 
@@ -128,12 +106,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+        # الفلترة المحلية السريعة
+        is_client_request = analyze_with_local_engine(clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مؤكد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
-
             buttons = []
             row = []
             
@@ -231,7 +207,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك Groq AI الخالص مجاناً بالكامل!", flush=True)
+    print("🚀 تم تشغيل البوت بنظام الفلترة البرمجية الذكي الدائم بدون مفاتيح خارجية!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
