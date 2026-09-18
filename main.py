@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Groq Multi-Key Rotation Engine Active!")
+        self.wfile.write(b"Groq Multi-Key Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,6 +36,7 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
+# جلب المفاتيح الثلاثة والتأكد من وجودها
 GROQ_KEYS = [
     os.environ.get("GROQ_API_KEY_1", "").strip(),
     os.environ.get("GROQ_API_KEY_2", "").strip(),
@@ -51,7 +52,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# SMART AI ROTATION ENGINE
+# SMART AI ROTATION ENGINE (3-KEYS SAFETY)
 # =========================================================
 
 def analyze_with_groq(text: str) -> bool:
@@ -88,23 +89,23 @@ def analyze_with_groq(text: str) -> bool:
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
+    # محاولة استخدام المفاتيح بالتوالي
     for _ in range(len(GROQ_KEYS)):
         active_key = GROQ_KEYS[CURRENT_KEY_INDEX]
         try:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-120b",
                 temperature=0.0,
                 max_tokens=5,
             )
             answer = response.choices[0].message.content.strip().upper()
-            print(f"⚡ [Groq Key #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"⚡ [Groq المفتاح #{CURRENT_KEY_INDEX + 1} يعمل بنجاح]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         except Exception as e:
-            print(f"⚠️ المفتاح رقم {CURRENT_KEY_INDEX + 1} وصل للحد أو حدث خطأ: {e}", flush=True)
+            print(f"⚠️ المفتاح رقم {CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل للمفتاح التالي...", flush=True)
             CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(GROQ_KEYS)
-            print(f"🔄 التبديل الفوري للمفتاح رقم {CURRENT_KEY_INDEX + 1}...", flush=True)
 
     return False
 
@@ -141,7 +142,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_with_groq, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مؤكد بـ Groq]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -240,7 +241,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنظام Groq السريع والمحدث!", flush=True)
+    print(f"🚀 تم تشغيل البوت بنجاح لـ {len(GROQ_KEYS)} مفاتيح مقترنة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
