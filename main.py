@@ -36,7 +36,6 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# جلب المفاتيح الثلاثة والتأكد من وجودها
 GROQ_KEYS = [
     os.environ.get("GROQ_API_KEY_1", "").strip(),
     os.environ.get("GROQ_API_KEY_2", "").strip(),
@@ -47,13 +46,20 @@ GROQ_KEYS = [
 GROQ_KEYS = [k for k in GROQ_KEYS if k]
 CURRENT_KEY_INDEX = 0
 
-# القائمة المعدلة بدون @fs_990
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_KEYS = set()
 
+# الكلمات المفتاحية الأولية لتصفية الشوائب
+RIDE_KEYWORDS = [
+    "توصيل", "مشوار", "سواق", "سائقه", "سائقة", "مندوب", "نقل", 
+    "فاضي", "فاضيه", "قريب", "قريبه", "يروح", "اروح", "يوصل", 
+    "تودي", "يجيب", "دوام", "دوامات", "خاص", "خاصه", "جازان", 
+    "جيزان", "صبيا", "ابوعريش", "المسارحة", "الصامطة", "بيش"
+]
+
 # =========================================================
-# SMART AI ROTATION ENGINE (3-KEYS SAFETY)
+# SMART AI ROTATION ENGINE (FLEXIBLE YES/NO CHECK)
 # =========================================================
 
 def analyze_with_groq(text: str) -> bool:
@@ -63,34 +69,19 @@ def analyze_with_groq(text: str) -> bool:
         print("❌ لا توجد مفاتيح Groq مضافة في Render!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
+    prompt = f"""حلل الرسالة التالية وحدد هل هي طلب توصيل أو استفسار من زبون يبحث عن سائق/مشوار أم لا.
 
-قواعد التمييز والتصنيف الصارمة:
+أجب بـ YES إذا كانت الرسالة:
+- زبون يسأل عن سائق أو شخص يوصله (مثال: "من فاضي؟", "حد قريب؟", "ابغى سواق", "مين يوصل؟", "احتاج مشوار").
+- زبون يطلب توصيل بضاعة، طلبات، أو شرح جدول دوام ونقل.
 
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
-   - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟"
-     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
-     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
-     * "ابغى جازان اذ احد من احد المسارحة يوصل"
-     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
+أجب بـ NO إذا كانت الرسالة:
+- سائق يعرض خدماته وركمه (مثال: "أنا فاضي للتوصيل", "متواجد حالياً", "نوفر نقل طالبات", "توصيل مشاوير خاصة").
+- إعلان تجاري، تسويق، أو رسالة لا علاقة لها بالتوصيل.
 
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة صريحة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
-     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
-     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص"
-     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
-     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+الرسالة: "{text}"
+الإجابة (YES أو NO فقط):"""
 
-الرسالة المراد تحليلها:
-"{text}"
-
-الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
-
-    # محاولة استخدام المفاتيح بالتوالي
     for _ in range(len(GROQ_KEYS)):
         active_key = GROQ_KEYS[CURRENT_KEY_INDEX]
         try:
@@ -102,10 +93,10 @@ def analyze_with_groq(text: str) -> bool:
                 max_tokens=5,
             )
             answer = response.choices[0].message.content.strip().upper()
-            print(f"⚡ [Groq المفتاح #{CURRENT_KEY_INDEX + 1} يعمل بنجاح]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"⚡ [Groq المفتاح #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         except Exception as e:
-            print(f"⚠️ المفتاح رقم {CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل للمفتاح التالي...", flush=True)
+            print(f"⚠️ المفتاح رقم {CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل...", flush=True)
             CURRENT_KEY_INDEX = (CURRENT_KEY_INDEX + 1) % len(GROQ_KEYS)
 
     return False
@@ -125,6 +116,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
         if len(clean_text) < 4:
+            return
+
+        # تصفية سريعة بالكلمات المفتاحية لحفظ حد الاستهلاك
+        if not any(kw in clean_text.lower() for kw in RIDE_KEYWORDS):
             return
 
         msg_key = f"{message.chat.id}_{message.id}"
