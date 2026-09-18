@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Pure Cerebras AI Engine Active!")
+        self.wfile.write(b"Pure Groq AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,19 +35,19 @@ SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-CEREBRAS_API_KEY = os.environ.get("CEREBRAS_API_KEY", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE CEREBRAS AI ENGINE (UPDATED ACTIVE MODELS)
+# PURE GROQ AI ENGINE (100% FREE & FAST)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
-    if not CEREBRAS_API_KEY:
-        print("❌ لم يتم ضبط CEREBRAS_API_KEY!", flush=True)
+    if not GROQ_API_KEY:
+        print("❌ لم يتم ضبط GROQ_API_KEY!", flush=True)
         return False
 
     prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
@@ -68,14 +68,13 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 الجواب (أجب بكلمة YES أو NO فقط):"""
 
-    url = "https://api.cerebras.ai/v1/chat/completions"
+    url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {CEREBRAS_API_KEY}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # النماذج الرسمية الشغالة حالياً والمجانية في Cerebras
-    active_models = ["gpt-oss-120b", "qwen-3.8-27b"]
+    active_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
 
     for model in active_models:
         try:
@@ -91,12 +90,12 @@ def analyze_with_pure_ai(text: str) -> bool:
             res = requests.post(url, headers=headers, json=payload, timeout=3.0)
             if res.status_code == 200:
                 answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"⚡ [Cerebras AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
+                print(f"⚡ [Groq AI ({model})]: '{text[:30]}...' -> {answer}", flush=True)
                 return "YES" in answer
             else:
-                print(f"⚠️ Cerebras ({model}) Error {res.status_code}: {res.text}", flush=True)
+                print(f"⚠️ Groq ({model}) Error {res.status_code}: {res.text}", flush=True)
         except Exception as e:
-            print(f"⚠️ خطأ الاتصال بـ Cerebras: {e}", flush=True)
+            print(f"⚠️ خطأ الاتصال بـ Groq: {e}", flush=True)
 
     return False
 
@@ -232,7 +231,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك Cerebras AI بالنماذج الرسمية النشطة!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك Groq AI الخالص مجاناً بالكامل!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
