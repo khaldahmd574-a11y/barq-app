@@ -1,9 +1,9 @@
 import os
 import asyncio
 import hashlib
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import google.generativeai as genai
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Rule-Based Pure Engine Active!")
+        self.wfile.write(b"Gemini AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,44 +36,58 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
+# تم وضع مفتاح Gemini الخاص بك هنا مباشرة
+GEMINI_API_KEY = "AQ.Ab8RN6IAoE7ndH5xwXXtCraDDn8xyxsuNmW8SQ94doY9acYLgQ"
+
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
+# إعداد مكتبة Gemini
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY.strip())
+
 # =========================================================
-# LOCAL SMART FILTERING ENGINE (NO API KEYS NEEDED)
+# GEMINI AI ENGINE (100% FREE & ACCURATE)
 # =========================================================
 
-# كلمات وحالات الرفض (إعلانات السائقين، الشركات، والخدمات العامة)
-REJECT_PATTERNS = [
-    r"أنا\s+فاضي", r"متواجد", r"سائق\s+خاص", r"توصيل\s+مشاوير",
-    r"نقل\s+عفش", r"سطحة", r"باص", r"نقل\s+طالبات", r"نقل\s+موظفات",
-    r"عرض\s+خاص", r"تأسيس", r"للتواصل\s+واتس", r"شركة", r"مؤسسة",
-    r"نوفر\text{ لكم}", r"خدماتنا", r"سيارة\s+حديثة", r"مستعد\s+لتوصيل"
-]
+def analyze_with_gemini(text: str) -> bool:
+    if not GEMINI_API_KEY:
+        print("❌ لم يتم ضبط GEMINI_API_KEY!", flush=True)
+        return False
 
-# كلمات وتراكيب القبول (طلبات الزبائن والمستحقين فقط)
-ACCEPT_PATTERNS = [
-    r"أبحت\s+عن", r"مطلوب\s+سائق", r"من\s+يعرف\s+سائق", r"فيه\s+سائق",
-    r"أحتاج\s+توصيل", r"أحتاج\s+سائق", r"مين\s+يوصل", r"من\s+يوصل",
-    r"يوصلني", r"يوصل\s+أغراض", r"يوصل\s+طلب", r"فيه\s+أحد\s+قريب",
-    r"متاح\s+توصيل", r"سائق\s+ضروري", r"مشوار\s+من", r"توصيل\s+من"
-]
+    prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
+مهمتك: التحقق مما إذا كان كاتب الرسالة هو "زبون يبحث عن توصيل/سائق/مندوب" أم "سائق/شركة يعرضون خدماتهم".
 
-def analyze_with_local_engine(text: str) -> bool:
-    clean_text = text.lower()
+شروط القبول (أجب بـ YES):
+- زبون يطلب مشواراً أو توصيل أغراض/مطاعم/أطردة.
+- شخص يسأل إن كان هناك سائق متاح أو قريب.
+- موظف/طالب يشرح دوامه ويريد سائقاً للاتفاق معه.
 
-    # 1. فحص كلمات الرفض أولاً (استبعاد الإعلانات مباشرة)
-    for pattern in REJECT_PATTERNS:
-        if re.search(pattern, clean_text):
-            print(f"🚫 [استبعاد - إعلان سائق/شركة]: '{text[:30]}...'", flush=True)
-            return False
+شروط الرفض (أجب بـ NO):
+- سائق يعرض سيارته، توفره، أو يكتب "أنا فاضي/قريب/متواجد".
+- إعلانات نقل الموظفات، الطالبات، الباصات، أو السطحات.
+- إعلانات الخدمات التجارية العامة.
 
-    # 2. فحص كلمات القبول (تأكيد طلب الزبون)
-    for pattern in ACCEPT_PATTERNS:
-        if re.search(pattern, clean_text):
-            print(f"🎯 [قبول - طلب زبون مؤكد]: '{text[:30]}...'", flush=True)
-            return True
+الرسالة:
+"{text}"
+
+الجواب (أجب بكلمة YES أو NO فقط):"""
+
+    models_to_try = ["gemini-1.5-flash", "gemini-pro"]
+
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.0, "max_output_tokens": 5}
+            )
+            answer = response.text.strip().upper()
+            print(f"⚡ [Gemini AI ({model_name})]: '{text[:30]}...' -> {answer}", flush=True)
+            return "YES" in answer
+        except Exception as e:
+            print(f"⚠️ Gemini ({model_name}) Error: {e}", flush=True)
 
     return False
 
@@ -106,10 +120,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # الفلترة المحلية السريعة
-        is_client_request = analyze_with_local_engine(clean_text)
+        loop = asyncio.get_event_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_with_gemini, clean_text)
 
         if is_client_request:
+            print(f"🎯 [طلب زبون مؤكد بـ Gemini]: {clean_text[:30]}...", flush=True)
+
             buttons = []
             row = []
             
@@ -207,7 +223,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بنظام الفلترة البرمجية الذكي الدائم بدون مفاتيح خارجية!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك Google Gemini AI المجاني!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
