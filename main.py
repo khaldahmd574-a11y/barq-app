@@ -62,7 +62,7 @@ def analyze_with_groq(text: str) -> bool:
         print("❌ لا توجد مفاتيح Groq مضافة!", flush=True)
         return False
 
-    # استبعاد أرقام الهواتف المباشرة
+    # استبعاد أرقام الهواتف المباشرة لتوفير الذكاء الاصطناعي
     if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
         return False
 
@@ -85,7 +85,7 @@ def analyze_with_groq(text: str) -> bool:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-120b",
                 temperature=0.0,
                 max_tokens=5,
             )
@@ -230,7 +230,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح وبنموذج Groq المستقر!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح وبنموذج openai/gpt-oss-120b!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
