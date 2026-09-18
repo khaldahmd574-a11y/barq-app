@@ -62,23 +62,22 @@ def analyze_with_groq(text: str) -> bool:
         print("❌ لا توجد مفاتيح Groq مضافة!", flush=True)
         return False
 
-    # 1. استبعاد أرقام الهواتف مباشرة للحفاظ على رصيد الذكاء الاصطناعي
+    # استبعاد أرقام الهواتف المباشرة
     if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
         return False
 
-    prompt = f"""أنت نظام تصنيف لطلبات التوصيل.
-المطلوب: حدد هل الرسالة صادرة من زبون/عميل يطلب توصيلة أم من سائق يعرض خدمة.
+    prompt = f"""أنت نظام تصنيف لطلبات التوصيل والمشاوير.
+حدد هل النص هو "طلب توصيل من زبون يبحث عن سائق" أم "إعلان/عرض خدمة من سائق".
 
 أجب بـ YES فقط إذا كانت الرسالة:
-- زبون يسأل عن سائق أو توصيل (مثال: "من فاضي؟"، "حد قريب؟"، "ابغى سواق"، "هل يوجد سواق؟"، "احصل مندوب؟"، "مين يوصل؟").
-- زبون يطلب مشوار، توصيل طرد، دوام، أو أغراض.
+- زبون يطلب توصيل أو يسأل عن سواق (مثل: "من فاضي؟"، "حد قريب؟"، "ابغى سواق"، "هل يوجد سواق؟"، "مين يوصل؟"، "احتاج توصيل").
 
 أجب بـ NO فقط إذا كانت الرسالة:
-- سائق يعرض سيارته أو خدماته (مثال: "أنا فاضي"، "متواجد للتوصيل"، "توصيل خاص"، "سيارة لنقل").
-- إعلان، سلام، أو رسالة لا علاقة لها بطلب توصيل.
+- سائق يعرض خدمته (مثل: "أنا فاضي"، "متواجد للتوصيل"، "سيارة لنقل"، "توصيل خاص").
+- إعلان أو كلام غير متعلق بطلب مشوار.
 
 الرسالة: "{text}"
-الإجابة (YES أو NO فقط):"""
+الجواب (YES أو NO فقط):"""
 
     for _ in range(len(GROQ_KEYS)):
         active_key = GROQ_KEYS[CURRENT_KEY_INDEX]
@@ -86,7 +85,7 @@ def analyze_with_groq(text: str) -> bool:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
+                model="llama3-8b-8192",
                 temperature=0.0,
                 max_tokens=5,
             )
@@ -182,7 +181,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"⚠️ خطأ معالجة: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER (نفس آلية الكود القديم بالضبط)
+# FAST MULTI-GROUP SCANNER
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
@@ -231,7 +230,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام الموحد بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح وبنموذج Groq المستقر!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
