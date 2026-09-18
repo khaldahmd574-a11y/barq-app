@@ -1,3 +1,2 @@
 hydrogram
 tgcrypto
-requests
