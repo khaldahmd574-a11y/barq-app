@@ -1,5 +1,10 @@
 import os
 import asyncio
+
+# إنشاء وتحديد الـ loop أولاً لتفادي مشكلة Python 3.14
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 from hydrogram import Client, filters
 from hydrogram.types import Message
 import google.generativeai as genai
@@ -125,12 +130,5 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # حل مشكلة asyncio في بايثون الحديث
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
     loop.run_until_complete(main())
 
