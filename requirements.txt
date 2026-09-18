@@ -1,3 +1,4 @@
-hydrogram==0.2.0
-tgcrypto==1.2.5
-requests==2.31.0
+hydrogram
+tgcrypto
+requests
+google-generativeai
