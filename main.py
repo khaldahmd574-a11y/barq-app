@@ -1,9 +1,9 @@
 import os
+import requests
 import asyncio
 import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-import google.generativeai as genai
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Gemini AI Engine Active!")
+        self.wfile.write(b"OpenRouter Free Unlimited AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,60 +36,68 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-
 # =========================================================
-# GEMINI AI ENGINE (FIXED MODEL ROSTER)
+# UNLIMITED FREE AI ENGINE (OPENROUTER - QWEN / LLAMA)
 # =========================================================
 
-def analyze_with_gemini(text: str) -> bool:
-    if not GEMINI_API_KEY:
-        print("❌ GEMINI_API_KEY غير موجود في متغيرات البيئة!", flush=True)
+def analyze_with_ai(text: str) -> bool:
+    if not OPENROUTER_API_KEY:
+        print("❌ OPENROUTER_API_KEY غير مضاف في Render!", flush=True)
         return False
 
-    prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
-مهمتك: التحقق مما إذا كان كاتب الرسالة هو "زبون يبحث عن توصيل/سائق/مندوب" أم "سائق/شركة يعرضون خدماتهم".
+    prompt = f"""أنت ذكاء اصطناعي خبير جداً في فهم اللهجة السعودية وتصفية قروبات التوصيل.
+مهمتك الوحيدة: تمييز إذا كان كاتب الرسالة هو "زبون يبحث عن سائق/توصيل" أم "سائق يروج لنفسه".
 
-شروط القبول (أجب بـ YES):
-- زبون يطلب مشواراً أو توصيل أغراض/مطاعم/أطردة.
-- شخص يسأل إن كان هناك سائق متاح أو قريب.
-- موظف/طالب يشرح دوامه ويريد سائقاً للاتفاق معه.
+شروط القبول (YES):
+- زبون يطلب مشوار أو توصيل أغراض/مطاعم/طرد (مثال: محتاج يوصلني، ابي يودي، من يوصل، فيه احد فاضي يوديني).
+- طالب أو موظف يريد اتفاق شهري أو يومي مع سائق.
 
-شروط الرفض (أجب بـ NO):
-- سائق يعرض سيارته، توفره، أو يكتب "أنا فاضي/قريب/متواجد".
-- إعلانات نقل الموظفات، الطالبات، الباصات، أو السطحات.
-- إعلانات الخدمات التجارية العامة.
+شروط الرفض (NO):
+- سائق يعرض سيارته، توفره، خدماته أو كاتب (أنا جاهز، متواجد، توصيل مشاوير، نقل طالبات، سيارة للآجار، سطحة).
+- حتى لو السائق كتب "الذي يبحث عن توصيل يراسلني" فهذا إعلان سائق ويرفض فوراً (NO).
 
 الرسالة:
 "{text}"
 
-الجواب (أجب بكلمة YES أو NO فقط):"""
+أجب بكلمة واحدة فقط: YES أو NO."""
 
-    # أسماء النماذج المعتمدة والرسمية
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "qwen/qwen-2.5-72b-instruct:free",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.0,
+        "max_tokens": 5
+    }
 
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                prompt,
-                generation_config={"temperature": 0.0, "max_output_tokens": 5}
-            )
-            answer = response.text.strip().upper()
-            print(f"⚡ [Gemini AI ({model_name})]: '{text[:30]}...' -> {answer}", flush=True)
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=7)
+        if response.status_code == 200:
+            result = response.json()
+            answer = result['choices'][0]['message']['content'].strip().upper()
+            print(f"⚡ [OpenRouter AI]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
-        except Exception as e:
-            # تجربة النموذج التالي عند وجود خطأ مسار
-            continue
+        else:
+            # تجربة نموذج مجاني بديل
+            data["model"] = "meta-llama/llama-3.3-70b-instruct:free"
+            res2 = requests.post(url, headers=headers, json=data, timeout=7)
+            if res2.status_code == 200:
+                answer = res2.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"⚡ [OpenRouter Backup AI]: '{text[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+            print(f"⚠️ OpenRouter Error: Status {response.status_code}", flush=True)
+    except Exception as e:
+        print(f"⚠️ AI Connection Error: {e}", flush=True)
 
-    print(f"⚠️ فشلت جميع نماذج Gemini في تحليل: {text[:20]}...", flush=True)
     return False
 
 # =========================================================
@@ -122,10 +130,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_gemini, clean_text)
+        is_client_request = await loop.run_in_executor(None, analyze_with_ai, clean_text)
 
         if is_client_request:
-            print(f"🎯 [طلب زبون مؤكد بـ Gemini]: {clean_text[:30]}...", flush=True)
+            print(f"🎯 [طلب زبون حقيقي مؤكد بـ AI]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -224,7 +232,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بمحرك Google Gemini AI المجاني!", flush=True)
+    print("🚀 تم تشغيل البوت بمحرك OpenRouter AI المجاني واللامحدود!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
