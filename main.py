@@ -69,7 +69,7 @@ def analyze_with_groq(text: str) -> bool:
 - شخص يسأل عن سائق متاح أو يطلب مشوار فوري أو يومي.
 
 شروط الرفض (أجب بـ NO):
-- سائق يعرض سيارته أو خدماته (مثال: أنا فاضي، متوفر سيارة، توصيل مشاوير، نقل طالبات، للتواصل واتس).
+- سائق يعرض سيارته أو خدماته (مثال: أنافاضي، متوفر سيارة، توصيل مشاوير، نقل طالبات، للتواصل واتس).
 
 الرسالة:
 "{text}"
@@ -82,7 +82,7 @@ def analyze_with_groq(text: str) -> bool:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.1-8b-instant",
+                model="llama3-8b-8192",
                 temperature=0.0,
                 max_tokens=5,
             )
