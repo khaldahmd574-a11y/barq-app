@@ -36,8 +36,8 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# تم وضع مفتاح Gemini الخاص بك هنا مباشرة
-GEMINI_API_KEY = "AQ.Ab8RN6IAoE7ndH5xwXXtCraDDn8xyxsuNmW8SQ94doY9acYLgQ"
+# قراءة المفتاح بأمان من متغيرات البيئة في Render
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
@@ -45,7 +45,7 @@ PROCESSED_KEYS = set()
 
 # إعداد مكتبة Gemini
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY.strip())
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # =========================================================
 # GEMINI AI ENGINE (100% FREE & ACCURATE)
@@ -53,7 +53,7 @@ if GEMINI_API_KEY:
 
 def analyze_with_gemini(text: str) -> bool:
     if not GEMINI_API_KEY:
-        print("❌ لم يتم ضبط GEMINI_API_KEY!", flush=True)
+        print("❌ لم يتم العثور على GEMINI_API_KEY في متغيرات البيئة!", flush=True)
         return False
 
     prompt = f"""أنت ذكاء اصطناعي متخصص في تصفية رسائل مجموعات التوصيل في السعودية.
@@ -231,4 +231,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
