@@ -36,7 +36,6 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# جلب المفاتيح الثلاثة
 GROQ_KEYS = [
     os.environ.get("GROQ_API_KEY_1", "").strip(),
     os.environ.get("GROQ_API_KEY_2", "").strip(),
@@ -47,7 +46,6 @@ GROQ_KEYS = [
 GROQ_KEYS = [k for k in GROQ_KEYS if k]
 CURRENT_KEY_INDEX = 0
 
-# القائمة بعد حذف @fs_990
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 
 PROCESSED_KEYS = set()
@@ -84,7 +82,7 @@ def analyze_with_groq(text: str) -> bool:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 temperature=0.0,
                 max_tokens=5,
             )
@@ -238,3 +236,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
