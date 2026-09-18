@@ -1,6 +1,7 @@
 import os
 import asyncio
 import hashlib
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from groq import Groq
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Groq Multi-Key Engine Active!")
+        self.wfile.write(b"Barq Multi-Key Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -46,34 +47,38 @@ GROQ_KEYS = [
 GROQ_KEYS = [k for k in GROQ_KEYS if k]
 CURRENT_KEY_INDEX = 0
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
 
 PROCESSED_KEYS = set()
 
 # =========================================================
-# DIRECT AI ANALYZER (ALL MESSAGES PASS HERE)
+# GROQ AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_groq(text: str) -> bool:
     global CURRENT_KEY_INDEX
 
     if not GROQ_KEYS:
-        print("❌ لا توجد مفاتيح Groq مضافة في Render!", flush=True)
+        print("❌ لا توجد مفاتيح Groq مضافة!", flush=True)
         return False
 
-    prompt = f"""أنت مساعد ذكي لتصنيف طلبات المشاوير والتوصيل.
-الهدف: معرفة هل الرسالة من زبون يبحث عن سائق أو توصيلة أم لا.
+    # 1. استبعاد أرقام الهواتف مباشرة للحفاظ على رصيد الذكاء الاصطناعي
+    if re.search(r'(05\d{8}|\+?9665\d{8}|05\d\s?\d{3}\s?\d{4})', text):
+        return False
+
+    prompt = f"""أنت نظام تصنيف لطلبات التوصيل.
+المطلوب: حدد هل الرسالة صادرة من زبون/عميل يطلب توصيلة أم من سائق يعرض خدمة.
 
 أجب بـ YES فقط إذا كانت الرسالة:
-- زبون يسأل عن سائق/توصيل (مثال: "من فاضي؟"، "حد قريب؟"، "ابغى سواق"، "هل يوجد سواق؟"، "احصل مندوب؟").
-- زبون يطلب توصيل مشوار، دوام، أغراض، أو طرد.
+- زبون يسأل عن سائق أو توصيل (مثال: "من فاضي؟"، "حد قريب؟"، "ابغى سواق"، "هل يوجد سواق؟"، "احصل مندوب؟"، "مين يوصل؟").
+- زبون يطلب مشوار، توصيل طرد، دوام، أو أغراض.
 
 أجب بـ NO فقط إذا كانت الرسالة:
-- سائق يعرض سيارته أو خدماته (مثال: "أنا فاضي"، "متواجد للتوصيل"، "توصيل خاص").
-- إعلان، سلام، تعارف، أو كلام عام لا يطلب توصيلة.
+- سائق يعرض سيارته أو خدماته (مثال: "أنا فاضي"، "متواجد للتوصيل"، "توصيل خاص"، "سيارة لنقل").
+- إعلان، سلام، أو رسالة لا علاقة لها بطلب توصيل.
 
 الرسالة: "{text}"
-الجواب (YES أو NO فقط):"""
+الإجابة (YES أو NO فقط):"""
 
     for _ in range(len(GROQ_KEYS)):
         active_key = GROQ_KEYS[CURRENT_KEY_INDEX]
@@ -81,12 +86,12 @@ def analyze_with_groq(text: str) -> bool:
             client = Groq(api_key=active_key)
             response = client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="openai/gpt-oss-120b",
+                model="llama-3.3-70b-versatile",
                 temperature=0.0,
                 max_tokens=5,
             )
             answer = response.choices[0].message.content.strip().upper()
-            print(f"⚡ [Groq #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [Groq المفتاح #{CURRENT_KEY_INDEX + 1}]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         except Exception as e:
             print(f"⚠️ المفتاح #{CURRENT_KEY_INDEX + 1} واجه مشكلة ({e})، جاري التبديل...", flush=True)
@@ -108,7 +113,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
-        if len(clean_text) < 3:
+        if len(clean_text) < 4:
             return
 
         msg_key = f"{message.chat.id}_{message.id}"
@@ -123,12 +128,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # تحليل كافة الرسائل بالذكاء الاصطناعي مباشرة
         loop = asyncio.get_event_loop()
         is_client_request = await loop.run_in_executor(None, analyze_with_groq, clean_text)
 
         if is_client_request:
-            print(f"🎯 [تم القبول والإرسال للمشتركين]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -161,8 +165,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                         sent = True
-                    except Exception as e:
-                        print(f"❌ تعذر الإرسال عبر البوت لـ {user}: {e}", flush=True)
+                    except Exception:
+                        pass
 
                 if not sent:
                     try:
@@ -172,27 +176,26 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
-                        print(f"✅ تم الإرسال عبر اليوزر بوت لـ {user}", flush=True)
-                    except Exception as e:
-                        print(f"❌ تعذر الإرسال عبر اليوزر بوت لـ {user}: {e}", flush=True)
+                    except Exception:
+                        pass
     except Exception as e:
-        print(f"⚠️ خطأ أثناء معالجة الرسالة: {e}", flush=True)
+        print(f"⚠️ خطأ معالجة: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# FAST MULTI-GROUP SCANNER (نفس آلية الكود القديم بالضبط)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(3)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=50):
+            async for dialog in userbot.get_dialogs(limit=35):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
         except Exception:
             pass
             
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -228,7 +231,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print(f"🚀 تم تشغيل البوت بنجاح لـ {len(GROQ_KEYS)} مفاتيح مقترنة!", flush=True)
+    print("🚀 تم تشغيل النظام الموحد بنجاح!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
