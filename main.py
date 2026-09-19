@@ -2,7 +2,7 @@ import os
 import asyncio
 from aiohttp import web
 
-# 1. إنشاء وتحديد الـ loop لتفادي أخطاء بايثون الحديثة
+# 1. تهيئة الـ Event Loop لمنع أي تعارض في Render
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -10,22 +10,17 @@ from hydrogram import Client, filters
 from hydrogram.types import Message
 import google.generativeai as genai
 
-# --- إعدادات البيئة والمفاتيح ---
+# --- جلب المفاتيح الأساسية من متغيرات البيئة ---
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 0))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-SUBSCRIBERS = [
-    "abood1317",
-]
+# 🎯 معرف الحساب المستهدف بإضافة @ مباشرة
+TARGET_USER = "@abood1317"
 
-env_dest = os.environ.get("DESTINATION_CHAT_ID")
-if env_dest and env_dest not in SUBSCRIBERS:
-    SUBSCRIBERS.append(env_dest)
-
-# الحساب الوهمي (Userbot) لسحب الرسائل من القروبات
+# 2. إعداد الحساب الوهمي (Userbot) لسحب الرسائل
 app = Client(
     "barq_userbot",
     api_id=API_ID,
@@ -33,7 +28,7 @@ app = Client(
     session_string=SESSION_STRING
 )
 
-# البوت الرسمي لإعادة الإرسال للمشتركين
+# 3. إعداد البوت الرسمي لإعادة الإرسال
 official_bot = Client(
     "barq_official_bot",
     api_id=API_ID,
@@ -41,23 +36,23 @@ official_bot = Client(
     bot_token=BOT_TOKEN
 ) if BOT_TOKEN else None
 
-# إعداد ذكاء Gemini المجاني
+# 4. إعداد ذكاء Gemini الاصطناعي
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 else:
     ai_model = None
 
-def analyze_with_ai(text):
+def analyze_with_ai(text: str) -> str:
+    """تحليل نص الرسالة بواسطة Gemini AI"""
     if not ai_model:
-        print("[AI ERROR] GEMINI_API_KEY is missing!")
+        print("⚠️ [AI WARNING] GEMINI_API_KEY is not configured!")
         return "NO"
 
     prompt = f"""
-أنت نظام ذكي لفلترة طلبات التوصيل.
-حدد ما إذا كانت الرسالة التالية عبارة عن "طلب توصيل من زبون/عميل" يبحث عن مندوب لتوصيل شحنة أو مشوار أو أغراض.
-إذا كانت طلب توصيل حقيقي من زبون، أرجع كلمة: YES
-إذا كانت إعلان من مندوب، أو عرض خدمة، أو استفسار، أو غير متعلقة بطلب توصيل، أرجع كلمة: NO
+أنت نظام ذكي متخصص في فلترة طلبات التوصيل.
+حلل الرسالة التالية وأجب بـ YES فقط إذا كانت عبارة عن "طلب توصيل من زبون/عميل" يبحث عن مندوب لتوصيل شحنة أو أغراض أو مشوار.
+أجب بـ NO إذا كانت إعلان من مندوب، أو عرض خدمة، أو استفسار عام، أو غير متعلقة بطلب توصيل.
 
 الرسالة:
 "{text}"
@@ -65,23 +60,26 @@ def analyze_with_ai(text):
     try:
         response = ai_model.generate_content(prompt)
         result = response.text.strip().upper()
-        print(f"[AI RESULT] -> '{result}'")
+        print(f"🤖 [AI DECISION] -> {result}")
         return result
     except Exception as e:
-        print(f"[AI EXCEPTION] -> {e}")
+        print(f"❌ [AI ERROR] {e}")
         return "NO"
 
-@app.on_message(filters.group & ~filters.me)
-async def handle_incoming_messages(client: Client, message: Message):
-    if not message.text:
+@app.on_message(filters.group)
+async def handle_group_messages(client: Client, message: Message):
+    """الاستماع لكافة الرسائل الجديدة الواردة في القروبات"""
+    text = message.text or message.caption
+    if not text:
         return
 
     chat_title = message.chat.title or "قروب"
-    print(f"[FETCHED] [{chat_title}] -> {message.text[:40]}...")
+    print(f"📥 [NEW MESSAGE] [{chat_title}] -> {text[:50]}...")
 
-    ai_decision = analyze_with_ai(message.text)
+    # التحليل الذكي
+    decision = analyze_with_ai(text)
 
-    if "YES" in ai_decision:
+    if "YES" in decision:
         user = message.from_user
         if user:
             if user.username:
@@ -91,35 +89,34 @@ async def handle_incoming_messages(client: Client, message: Message):
                 contact_link = f"tg://user?id={user.id}"
                 sender_display = f"[{user.first_name or 'صاحب الطلب'}]({contact_link})"
         else:
-            contact_link = message.link or "خاص"
+            contact_link = message.link or "رابط غير متوفر"
             sender_display = f"[فتح المحادثة]({contact_link})"
 
         formatted_text = (
             f"🚨 **طلب توصيل جديد**\n\n"
-            f"📝 **الرسالة:**\n{message.text}\n\n"
+            f"📝 **الرسالة:**\n{text}\n\n"
             f"💬 **تواصل مع العميل:** {sender_display}\n"
-            f"🔗 **رابط مباشر:** {contact_link}"
+            f"🔗 **الرابط:** {contact_link}"
         )
 
         if official_bot:
-            for target in SUBSCRIBERS:
-                try:
-                    await official_bot.send_message(
-                        chat_id=target,
-                        text=formatted_text,
-                        disable_web_page_preview=True
-                    )
-                    print(f"[BOT SUCCESS] Sent via official bot to {target}")
-                except Exception as e:
-                    print(f"[BOT ERROR] Could not send to {target}: {e}")
+            try:
+                await official_bot.send_message(
+                    chat_id=TARGET_USER,
+                    text=formatted_text,
+                    disable_web_page_preview=True
+                )
+                print(f"✅ [SUCCESS] Sent directly to {TARGET_USER}")
+            except Exception as e:
+                print(f"❌ [SEND ERROR] Could not send to {TARGET_USER}: {e}")
         else:
-            print("[BOT ERROR] official_bot is not configured!")
+            print("⚠️ [CONFIG ERROR] official_bot is missing!")
     else:
-        print(f"[SKIPPED] Rejected by AI.")
+        print("⏭️ [SKIPPED] Not a delivery request.")
 
-# --- سيرفر ويب وهمي لإرضاء منصة Render ومنع إغلاق الخدمة ---
+# --- سيرفر ويب لمنع إيقاف Render ---
 async def handle_ping(request):
-    return web.Response(text="Bot is Alive & Running 24/7!")
+    return web.Response(text="Bot is running perfectly 24/7!")
 
 async def start_web_server():
     server = web.Application()
@@ -129,14 +126,15 @@ async def start_web_server():
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"[WEB SERVER] Listening on port {port}")
+    print(f"🌐 [WEB SERVER] Active on port {port}")
 
 async def main():
-    print("[SYSTEM] Starting Official Bot & Userbot with Gemini AI...")
+    print(f"🚀 [SYSTEM] Starting Userbot & Official Bot (Target: {TARGET_USER})...")
     await start_web_server()
     if official_bot:
         await official_bot.start()
     await app.start()
+    print("✨ [SYSTEM] All services active and listening to messages...")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
