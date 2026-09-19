@@ -9,7 +9,9 @@ from aiohttp import web
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 SESSION_STRING = os.environ.get("SESSION_STRING")
-FORWARD_CHAT_ID = int(os.environ.get("FORWARD_CHAT_ID")) # آيدي قناتك أو بوتك أو حسابك
+
+# المعرف المستهدف للتوجيه
+FORWARD_TO = "@abood1317"
 
 # قائمة مفاتيح Groq الثلاثة
 GROQ_KEYS = [
@@ -83,15 +85,15 @@ async def process_group_messages(client: Client, message: Message):
     if not message.text:
         return
     
-    # تشغيل تحليل الذكاء الاصطناعي بدون تعليق الاتصال الأساسي
+    # تحليل النص بذكاء بواسطة Groq
     is_customer_request = await asyncio.to_thread(analyze_with_groq, message.text)
     
     if is_customer_request:
         try:
-            await message.forward(FORWARD_CHAT_ID)
-            print(f"✅ تم توجيه طلب زبون بنجاح من: {message.chat.title or message.chat.id}")
+            await message.forward(FORWARD_TO)
+            print(f"✅ تم توجيه طلب زبون بنجاح إلى {FORWARD_TO} من: {message.chat.title or message.chat.id}")
         except Exception as e:
-            print(f"❌ خطأ أثناء إعادة التوجيه: {e}")
+            print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
 
 async def main():
     await start_web_server()
