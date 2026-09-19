@@ -1,4 +1,4 @@
 hydrogram
 tgcrypto
-google-generativeai
+groq
 aiohttp
