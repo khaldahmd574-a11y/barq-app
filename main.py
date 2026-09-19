@@ -1,7 +1,8 @@
 import os
 import asyncio
+from aiohttp import web
 
-# إنشاء وتحديد الـ loop أولاً لتفادي مشكلة Python 3.14
+# 1. إنشاء وتحديد الـ loop لتفادي أخطاء بايثون الحديثة
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
@@ -9,14 +10,13 @@ from hydrogram import Client, filters
 from hydrogram.types import Message
 import google.generativeai as genai
 
-# --- 1. إعدادات البيئة والمفاتيح ---
+# --- إعدادات البيئة والمفاتيح ---
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 0))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "")
 SESSION_STRING = os.environ.get("SESSION_STRING", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-# قائمة المشتركين المستهدفين للإرسال بواسطة البوت الرسمي
 SUBSCRIBERS = [
     "abood1317",
 ]
@@ -41,7 +41,7 @@ official_bot = Client(
     bot_token=BOT_TOKEN
 ) if BOT_TOKEN else None
 
-# إعداد ذكاء Google Gemini المجاني
+# إعداد ذكاء Gemini المجاني
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
@@ -49,7 +49,6 @@ else:
     ai_model = None
 
 def analyze_with_ai(text):
-    """تحليل الرسالة بواسطة ذكاء Gemini المجاني والسريع"""
     if not ai_model:
         print("[AI ERROR] GEMINI_API_KEY is missing!")
         return "NO"
@@ -80,13 +79,10 @@ async def handle_incoming_messages(client: Client, message: Message):
     chat_title = message.chat.title or "قروب"
     print(f"[FETCHED] [{chat_title}] -> {message.text[:40]}...")
 
-    # 1. تحليل الرسالة بالذكاء الاصطناعي (Gemini)
     ai_decision = analyze_with_ai(message.text)
 
-    # 2. التوجيه عبر البوت الرسمي في حال كانت طلب توصيل
     if "YES" in ai_decision:
         user = message.from_user
-        
         if user:
             if user.username:
                 contact_link = f"https://t.me/{user.username}"
@@ -105,7 +101,6 @@ async def handle_incoming_messages(client: Client, message: Message):
             f"🔗 **رابط مباشر:** {contact_link}"
         )
 
-        # الإرسال عبر البوت الرسمي
         if official_bot:
             for target in SUBSCRIBERS:
                 try:
@@ -118,12 +113,27 @@ async def handle_incoming_messages(client: Client, message: Message):
                 except Exception as e:
                     print(f"[BOT ERROR] Could not send to {target}: {e}")
         else:
-            print("[BOT ERROR] official_bot is not configured! Check BOT_TOKEN.")
+            print("[BOT ERROR] official_bot is not configured!")
     else:
         print(f"[SKIPPED] Rejected by AI.")
 
+# --- سيرفر ويب وهمي لإرضاء منصة Render ومنع إغلاق الخدمة ---
+async def handle_ping(request):
+    return web.Response(text="Bot is Alive & Running 24/7!")
+
+async def start_web_server():
+    server = web.Application()
+    server.router.add_get("/", handle_ping)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"[WEB SERVER] Listening on port {port}")
+
 async def main():
     print("[SYSTEM] Starting Official Bot & Userbot with Gemini AI...")
+    await start_web_server()
     if official_bot:
         await official_bot.start()
     await app.start()
