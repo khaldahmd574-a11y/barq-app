@@ -22,6 +22,14 @@ GROQ_KEYS = [
 ]
 current_key_index = 0
 
+# قائمة نماذج الذكاء الاصطناعي المتاحة مجاناً للتجربة بالتتابع
+GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768"
+]
+
 # ----------------- سيرفر خفيف لإبقاء Render شغالاً 24/7 -----------------
 web_app = Flask('')
 
@@ -58,25 +66,35 @@ def analyze_with_groq(text):
 \"\"\"
 """
 
+    # تجربة المفاتيح والنماذج المتاحة للذكاء الاصطناعي
     for _ in range(len(GROQ_KEYS)):
         key = GROQ_KEYS[current_key_index]
         if not key:
             current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
             continue
-        try:
-            client = Groq(api_key=key)
-            completion = client.chat.completions.create(
-                model="llama-3.1-8b-instant",  # نموذج شغال ومتاح مجاناً
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=10
-            )
-            response = completion.choices[0].message.content.strip().upper()
-            return "YES" in response
-        except Exception as e:
-            print(f"⚠️ فشل استخدام المفتاح رقم {current_key_index + 1}: {e}")
-            current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+        
+        client = Groq(api_key=key)
+        
+        # تجربة النماذج المتاحة في Groq بالتتابع
+        for model_name in GROQ_MODELS:
+            try:
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=10
+                )
+                response = completion.choices[0].message.content.strip().upper()
+                print(f"🤖 تحليل الذكاء الاصطناعي ({model_name}): {response}")
+                return "YES" in response
+            except Exception as e:
+                # إذا لم ينجح النموذج يستمر في تجربة النموذج التالي
+                continue
+        
+        # التبديل للمفتاح التالي عند استنفاد الرصيد أو حدوث خطأ بالمفتاح الحالي
+        current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
 
+    print("⚠️ تعذر الاتصال بجميع مفاتيح/نماذج Groq.")
     return False
 
 # ----------------- تشغيل الحساب -----------------
@@ -89,9 +107,9 @@ async def process_group_messages(client: Client, message: Message):
     if not text:
         return
     
-    print(f"📩 تم استقبال رسالة في الجروب: {text}")
+    print(f"📩 تم استقبال رسالة جديدة: {text}")
 
-    # تحليل النص بذكاء بواسطة Groq
+    # تحليل النص بنسبة 100% بواسطة الذكاء الاصطناعي
     is_customer_request = await asyncio.to_thread(analyze_with_groq, text)
     
     if is_customer_request:
@@ -101,9 +119,9 @@ async def process_group_messages(client: Client, message: Message):
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ تم فحص الرسالة عبر Groq وهي ليست طلب زبون.")
+        print("ℹ️ تم فحص الرسالة عبر الذكاء الاصطناعي وهي ليست طلب زبون.")
 
 if __name__ == "__main__":
     keep_alive()
-    print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq...")
+    print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq AI...")
     app.run()
