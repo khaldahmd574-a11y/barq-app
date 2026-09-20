@@ -66,7 +66,7 @@ def analyze_with_groq(text):
         try:
             client = Groq(api_key=key)
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",  # تم تغيير النموذج ليعمل بدون أخطاء 404
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=10
@@ -85,12 +85,11 @@ app = Client("userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION
 # الاستماع للرسائل في الجروبات واستثناء رسائل الحساب الوهمي نفسه
 @app.on_message(filters.group & ~filters.me)
 async def process_group_messages(client: Client, message: Message):
-    # قراءة النص سواء كان رسالة نصية أو شرحاً على صورة/فيديو
     text = message.text or message.caption
     if not text:
         return
     
-    print(f"📩 تم استقبال رسالة جديدة من عضو في الجروب ({message.chat.title or message.chat.id}): {text}")
+    print(f"📩 تم استقبال رسالة في الجروب: {text}")
 
     # تحليل النص بذكاء بواسطة Groq
     is_customer_request = await asyncio.to_thread(analyze_with_groq, text)
@@ -102,10 +101,9 @@ async def process_group_messages(client: Client, message: Message):
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ تم فحص الرسالة عبر Groq وهي ليست طلب زبون.")
+        print("ℹ️ ليست رسالة طلب زبون، تم التغاضي عنها.")
 
 if __name__ == "__main__":
     keep_alive()
     print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq...")
     app.run()
-
