@@ -1,10 +1,9 @@
 import os
 import asyncio
 import hashlib
-import json
-import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import requests
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -17,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq OpenRouter AI System Active!")
+        self.wfile.write(b"Barq System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -37,10 +36,9 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728
 API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# مفتاح OpenRouter الجديد
+# مفتاح OpenRouter
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# قائمة المستخدمين المستهدفين (بدون fs_990)
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
@@ -50,7 +48,7 @@ PROCESSED_KEYS = set()
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ خطأ: لم يتم إضافة متغير البيئة OPENROUTER_API_KEY في Render!", flush=True)
+        print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY!", flush=True)
         return False
 
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
@@ -76,37 +74,36 @@ def analyze_with_pure_ai(text: str) -> bool:
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-    # نماذج مجانية وسريعة جداً في OpenRouter
+    # أسماء النماذج الدقيقة المعتمدة في OpenRouter
     models = [
-        "google/gemini-2.5-flash:free",
-        "qwen/qwen-2.5-7b-instruct:free",
-        "meta-llama/llama-3.3-70b-instruct:free"
+        "google/gemini-flash-1.5-8b",
+        "meta-llama/llama-3.1-8b-instruct",
+        "qwen/qwen-2.5-7b-instruct"
     ]
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_KEY}",
+        "Content-Type": "application/json"
+    }
 
     for model_name in models:
         try:
-            url = "https://openrouter.ai/api/v1/chat/completions"
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://render.com",
-                "X-Title": "BarqBot"
-            }
             payload = {
                 "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
                 "max_tokens": 10
             }
-            req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
-            with urllib.request.urlopen(req, timeout=6) as response:
-                if response.status == 200:
-                    res_data = json.loads(response.read().decode('utf-8'))
-                    answer = res_data['choices'][0]['message']['content'].strip().upper()
-                    print(f"🤖 [تحليل OpenRouter - {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
-                    return "YES" in answer
+            response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
+            if response.status_code == 200:
+                res_data = response.json()
+                answer = res_data['choices'][0]['message']['content'].strip().upper()
+                print(f"🤖 [تحليل OpenRouter - {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+            else:
+                print(f"⚠️ فشل النموذج ({model_name}) كود الحالة: {response.status_code} - {response.text}", flush=True)
         except Exception as e:
-            print(f"⚠️ فشل الاتصال بالنموذج ({model_name}): {e}", flush=True)
+            print(f"⚠️ خطأ أثناء الاتصال بـ ({model_name}): {e}", flush=True)
 
     return False
 
