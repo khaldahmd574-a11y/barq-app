@@ -1,6 +1,7 @@
 import os
 import asyncio
 import hashlib
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import requests
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq AI System Active!")
+        self.wfile.write(b"Barq System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,6 +43,34 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
+# DRIVER EXCLUSION FILTER (فلتر حظر السائقين الصارم)
+# =========================================================
+
+def is_driver_advertisement(text: str) -> bool:
+    """يفحص الكلمات الدلالية الصريحة للسائقين والإعلانات لتصفيتها فوراً قبل الذكاء الاصطناعي"""
+    driver_keywords = [
+        "تفضل خاص", "تفضلي خاص", "تواصل خاص", "المشوار خاص", "مشوار خاص",
+        "جاهز للمشاوير", "جاهزة للمشاوير", "متواجد الان", "متواجد حاليا",
+        "نوفر نقل", "نوفر توصيل", "يوجد لدينا سيارة", "سيارة مع سائق",
+        "توصيل معلمات", "توصيل طالبات", "توصيل موظفات"
+    ]
+    
+    # حظر الرسائل التي تبدأ بكلمات عروض السائقين أو تحتوي أرقام جوال وسيارات
+    text_lower = text.lower()
+    
+    for kw in driver_keywords:
+        if kw in text_lower:
+            return True
+
+    # حظر الإعلانات التي تحتوي أرقام جوال (غالباً إعلانات سواقين)
+    if re.search(r'(05\d{8}|\+9665\d{8})', text):
+        # إذا كان المعنى يحتوي عرض مثل "فاضي" ومعها رقم
+        if "فاضي" in text_lower or "خاص" in text_lower or "تفضل" in text_lower:
+            return True
+
+    return False
+
+# =========================================================
 # OPENROUTER AI ANALYSIS ENGINE
 # =========================================================
 
@@ -50,26 +79,19 @@ def analyze_with_pure_ai(text: str) -> bool:
         print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY!", flush=True)
         return False
 
-    prompt = f"""أنت خبير ذكاء اصطناعي محترف لمراقبة وتصنيف طلبات التوصيل والمشاوير.
-وظيفتك: تحليل النص وإرجاع YES فقط إذا كان الكاتب زبوناً يبحث عن توصيل، وإرجاع NO إذا كان الكاتب سائقاً يعرض إعلاناً.
+    prompt = f"""أنت نظام ذكاء اصطناعي صارم جداً لمراقبة وتصفية طلبات التوصيل والمشاوير.
+وظيفتك: قراءة النص واعطاء قرار دقيق بدون خطأ:
 
-قواعد تصنيف صارمة جداً:
+أولاً: أجب بـ YES فقط إذا كان النص صريحاً لـ (زبون/عميل) يبحث عن سائق أو توصيل أو نقل أغراض أو طرد:
+- أمثلة الزبائن (YES): "ابغى توصيل"، "ابي سواق"، "احتاج مندوب"، "من يوديني"، "مين فاضي بصلبوخ/جيزان/صبيا"، "احد في صامطه"، "دوامي من الجهو".
 
-أولاً: أجب بـ YES فوراً وبدون تردد إذا كان النص يحتوي على صيغة طلب أو استفسار من زبون مثل:
-- "ابغى سواق" / "اي سواق فاضي" / "من قريب من..." / "مين فاضي"
-- "احتاج توصيل" / "محتاجه مندوب" / "اريد مشوار"
-- "مين يوديني" / "مين يرجعني" / "مين ياخذ طرد"
-- أي سؤال عن وجود سائق في منطقة معينة مثل "أي سواق فاضي في جيزان؟" أو "مين بصبيا؟"
+ثانياً: أجب بـ NO فوراً وبدون تردد إذا كان النص لسائق يعرض خدماته، أو يقول أنه فاضي/متواجد، أو يطلب التواصل خاص، أو يضع رقمه:
+- أمثلة السائقين (NO): "- فاضي بجيزان أي طلب تفضل خاص"، "متواجد للمشاوير"، "جاهز الآن"، "نقدم خدمات النقل".
 
-ثانياً: أجب بـ NO فقط إذا كان النص عرضاً واضحاً من سائق يقدم خدمته مثل:
-- "متواجد حاليا للمشاوير" / "أنا سواق جاهز"
-- "نوفر نقل طالبات والموظفات" / "توصيل معلمات"
-- "عندي سيارة كامري للمشاوير" / إعلان يحتوي على قائمة أسعار وأرقام تواصل لخدمة نقل.
-
-الرسالة المكتوبة:
+الرسالة المراد تحليلها:
 "{text}"
 
-الجواب (اكتب YES أو NO فقط):"""
+الجواب (أجب فقط بكلمة YES أو NO):"""
 
     model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
@@ -105,13 +127,17 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل الرسائل الصادرة من نفس الحساب الوهمي
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
     if len(clean_text) < 4:
+        return
+
+    # الفلترة السريعة: استبعاد إعلانات السائقين والأرقام فوراً
+    if is_driver_advertisement(clean_text):
+        print(f"🛑 [تم حظر إعلان سائق تلقائياً]: {clean_text[:30]}...", flush=True)
         return
 
     msg_key = f"{message.chat.id}_{message.id}"
@@ -178,8 +204,25 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# MAIN ENTRYPOINT
+# MAIN ENTRYPOINT & SUPERGROUP BACKGROUND POLLER
 # =========================================================
+
+async def fetch_supergroups_periodically(userbot: Client, bot: Client):
+    """حلقة حية تضمن قراءة المحادثات الكبيرة والسوبر قنوات بشكل لحظي مستمر"""
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=100):
+                # قراءة آخر 3 رسائل في كل قروب كبير لضمان عدم تفويت التحديثات الحية
+                if dialog.chat.type.name in ["SUPERGROUP", "CHANNEL", "GROUP"]:
+                    try:
+                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
+                            await process_live_message(userbot, bot, msg)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"⚠️ خطأ محرك الجلب الدوري: {e}", flush=True)
+        
+        await asyncio.sleep(10)  # فحص جميع القروبات الكبيرة كل 10 ثوانٍ
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -206,32 +249,17 @@ async def main():
         except Exception:
             pass
 
-    # استقبال الرسائل المنشورة في المجموعات والمجموعات الخارقة والقنوات دون أي قيود
-    @userbot.on_message(filters.group | filters.channel | filters.private)
+    @userbot.on_message(~filters.me)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام المطور بنجاح!", flush=True)
 
-    # تنشيط كاش المجموعات الخارقة والقنوات الكبيرة
-    try:
-        print("🔄 جاري مزامنة وتنسيق المجموعات والقنوات الكبيرة...", flush=True)
-        dialogs_count = 0
-        async for dialog in userbot.get_dialogs():
-            dialogs_count += 1
-            # جلب تفاصيل القنوات والقروبات الكبيرة لتحديث جلسة تليجرام
-            if dialog.chat.type.name in ["SUPERGROUP", "CHANNEL", "GROUP"]:
-                try:
-                    await userbot.get_chat(dialog.chat.id)
-                except Exception:
-                    pass
-        print(f"✅ تم ربط وتنشيط {dialogs_count} محادثة ومجموعة وقناة كبرى بنجاح!", flush=True)
-    except Exception as e:
-        print(f"⚠️ تنبيه أثناء عملية المزامنة: {e}", flush=True)
+    # تشغيل محرك المراقبة الدوري المستمر للقروبات والقنوات الكبيرة
+    asyncio.create_task(fetch_supergroups_periodically(userbot, bot))
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
