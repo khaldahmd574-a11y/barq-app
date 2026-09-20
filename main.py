@@ -41,9 +41,7 @@ OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
-# كلمات دالة صريحة للزبائن للالتقاط السريع الفوري
 CLIENT_KEYWORDS = ["احتاج مشوار", "أحتاج مشوار", "ابغى توصيل", "أبغى توصيل", "ابي سواق", "أبي سواق", "من يوديني", "توصيل طرد", "توصيل اغراض"]
-# كلمات استبعاد فورية لسائق يعرض خدمته
 DRIVER_KEYWORDS = ["فاضي", "متواجد", "تفضل خاص", "تواصل خاص", "جاهز للطلبات", "توصيل معلمات"]
 
 # =========================================================
@@ -116,18 +114,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # 1. الفحص الفوري المباشر عبر الكلمات المفتاحية
-    is_client_request = False
-    
-    # إذا كانت الرسالة تحتوي كلمة سائق واضحة نلغيها فوراً
+    # استبعاد سائق فوراً
     if any(dk in clean_text for dk in DRIVER_KEYWORDS):
         return
 
-    # إذا كانت الرسالة تحتوي كلمة زبون صريحة تقبل فوراً بدون استهلاك الذكاء الاصطناعي
+    # قبول زبون فوراً بالكلمات المباشرة أو عبر الذكاء الاصطناعي
+    is_client_request = False
     if any(ck in clean_text for ck in CLIENT_KEYWORDS):
         is_client_request = True
     else:
-        # 2. الاستعانة بالذكاء الاصطناعي للرسائل المزدوجة أو المترددة
         loop = asyncio.get_event_loop()
         is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
@@ -208,13 +203,13 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع اللحظي الفوري لجميع الرسائل الواردة من كافة القروبات والقنوات الكبيرة
-    @userbot.on_message(~filters.me & (filters.group | filters.channel | filters.supergroup))
+    # تم إصلاح الفلتر هنا بتنظيف السنتكس المعتمد
+    @userbot.on_message(~filters.me & (filters.group | filters.channel))
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت المحسّن للمراقبة اللحظية الشاملة!", flush=True)
+    print("🚀 تم تشغيل البوت المطور بنجاح بدون أخطاء!", flush=True)
 
     await asyncio.Event().wait()
 
