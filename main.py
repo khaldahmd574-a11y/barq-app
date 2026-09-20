@@ -1,11 +1,13 @@
 import os
 import asyncio
 import hashlib
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import requests
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.errors import FloodWait
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7 FOR RENDER
@@ -16,7 +18,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Pure AI Engine Active!")
+        self.wfile.write(b"Merged AI & Deep Scanner Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -34,36 +36,35 @@ def run_dummy_server():
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728)))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8782796916:AAEe9YRkzbfm3F5e9rj49iHfDS0wRTnVmmo").strip()
 
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
-PROCESSED_KEYS = set()
+PROCESSED_MESSAGES = set()
 
 # =========================================================
-# PURE AI ENGINE (NO KEYWORDS, NO EXAMPLES)
+# PURE AI CLASSIFIER (NO KEYWORDS)
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ ERROR: Missing OpenRouter API Key!", flush=True)
+        print("❌ خطأ: لا يوجد مفتاح OpenRouter API Key!", flush=True)
         return False
 
-    prompt = f"""You are a smart AI classifier analyzing raw chat messages from Telegram delivery/ride groups.
+    prompt = f"""You are an expert AI classifier analyzing raw Telegram chat messages from delivery/transportation groups.
 
-Determine whether the message author is a CLIENT requesting/seeking a service, OR a DRIVER/PROVIDER offering a service.
+Determine if the author is a CLIENT/CUSTOMER seeking a service, or a DRIVER/COURIER offering a service.
 
 Rules:
-- Output "YES" if the text is written by a client looking for transportation, food/item delivery, or asking if a driver/courier is available.
-- Output "NO" if the text is written by a driver/courier offering their availability, services, or contact details.
+- Respond YES if the message is written by a client looking for a ride, food delivery, package transfer, driver, courier, or asking if someone is available.
+- Respond NO if the message is written by a driver/courier offering their availability, services, or posting contact details.
 
 Message:
 "{text}"
 
-Response (Reply ONLY with YES or NO):"""
+Output ONLY "YES" or "NO":"""
 
-    model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
@@ -71,7 +72,7 @@ Response (Reply ONLY with YES or NO):"""
 
     try:
         payload = {
-            "model": model_name,
+            "model": "meta-llama/llama-3.1-8b-instruct",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
             "max_tokens": 5
@@ -82,46 +83,42 @@ Response (Reply ONLY with YES or NO):"""
             answer = res_data['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
         else:
-            print(f"⚠️ AI Error Status ({response.status_code}): {response.text}", flush=True)
+            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ AI Request Failure: {e}", flush=True)
+        print(f"⚠️ خطأ اتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# CORE MESSAGE PROCESSOR
 # =========================================================
 
-async def process_live_message(userbot: Client, bot: Client, message: Message):
+async def process_message(bot, message: Message):
     if not message or not message.id:
         return
+
+    msg_key = f"{message.chat.id}_{message.id}"
+    if msg_key in PROCESSED_MESSAGES:
+        return
+    
+    PROCESSED_MESSAGES.add(msg_key)
+    if len(PROCESSED_MESSAGES) > 10000:
+        PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    
     if len(clean_text) < 2:
         return
 
-    msg_key = f"{message.chat.id}_{message.id}"
-    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-    
-    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-        return
-        
-    PROCESSED_KEYS.add(msg_key)
-    PROCESSED_KEYS.add(text_hash)
-
-    if len(PROCESSED_KEYS) > 10000:
-        PROCESSED_KEYS.clear()
-
+    # الفحص بالذكاء الاصطناعي الخالص
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_client_request:
-        print(f"✅ [ACCEPTED BY PURE AI]: {clean_text[:40]}...", flush=True)
+        print(f"✅ [تمت الموافقة بالذكاء الاصطناعي]: {clean_text[:40]}...", flush=True)
 
         buttons = []
         row = []
@@ -144,29 +141,45 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
         for user in TARGET_USERS:
-            sent = False
-            if bot:
-                try:
-                    await bot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
-                    sent = True
-                except Exception:
-                    pass
+            try:
+                await bot.send_message(
+                    chat_id=user,
+                    text=clean_text,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True
+                )
+            except FloodWait as e:
+                await asyncio.sleep(e.value)
+                await bot.send_message(
+                    chat_id=user,
+                    text=clean_text,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True
+                )
+            except Exception as e:
+                print(f"❌ خطأ توجيه: {e}", flush=True)
 
-            if not sent:
+# =========================================================
+# REAL-TIME DEEP SCANNER (من كودك القديم لجلب كل القروبات)
+# =========================================================
+
+async def real_time_channel_and_group_scanner(userbot, bot):
+    while True:
+        try:
+            # جلب آخر 100 محادثة ونشاط بانتظام لضمان تغطية كامل القروبات الكبيرة
+            async for dialog in userbot.get_dialogs(limit=100):
                 try:
-                    await userbot.send_message(
-                        chat_id=user,
-                        text=clean_text,
-                        reply_markup=reply_markup,
-                        disable_web_page_preview=True
-                    )
+                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
+                        await process_message(bot, msg)
                 except Exception:
                     pass
+                await asyncio.sleep(0.05)
+
+        except Exception as e:
+            print(f"⚠️ خطأ أثناء الفحص العميق: {e}", flush=True)
+            
+        # إعادة الفحص الشامل والسريع كل 5 ثوانٍ
+        await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -183,37 +196,25 @@ async def main():
         in_memory=True
     )
 
-    bot = None
-    if BOT_TOKEN:
-        try:
-            bot = Client(
-                "helper_bot",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                bot_token=BOT_TOKEN,
-                in_memory=True
-            )
-            await bot.start()
-        except Exception:
-            pass
+    bot = Client(
+        "helper_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
 
-    # استخدام filters.group و filters.channel الصحيحين بدون خطأ
-    @userbot.on_message(filters.group | filters.channel)
-    async def global_live_listener(client: Client, message: Message):
-        await process_live_message(client, bot, message)
+    # الاستماع الحي الفوري
+    @userbot.on_message(~filters.me & ~filters.private)
+    async def global_listener(client: Client, message: Message):
+        await process_message(bot, message)
 
     await userbot.start()
+    await bot.start()
+    print("🚀 تم تشغيل النظام المدمج (فحص عميق للقروبات الكبيرة + ذكاء اصطناعي خالص)!", flush=True)
 
-    # مزامنة المحادثات والقروبات الكبيرة بجميع أنواعها
-    print("🔄 جاري مزامنة المحادثات والقروبات الكبيرة...", flush=True)
-    try:
-        async for dialog in userbot.get_dialogs(limit=200):
-            pass
-        print("✅ تم ربط وحفظ القروبات الكبيرة بنجاح!", flush=True)
-    except Exception as e:
-        print(f"⚠️ تنبيه أثناء جلب المحادثات: {e}", flush=True)
-
-    print("🚀 تم تشغيل البوت الذكي بالكامل الخالي من الأخطاء!", flush=True)
+    # تشغيل الفاحص المباشر في الخلفية
+    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
