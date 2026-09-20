@@ -1,7 +1,8 @@
 import os
 import asyncio
 import hashlib
-import requests
+import json
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -32,71 +33,95 @@ def run_dummy_server():
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
-API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
+API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728)))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+# قراءة مفاتيح الـ API المتوفرة
+GROQ_KEY = os.environ.get("GROQ_API_KEY_1") or os.environ.get("GROQ_API_KEY")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "fs_990"]
-
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ANALYSIS ENGINE (تحليل بالذكاء الاصطناعي الصافي)
+# PURE AI ANALYSIS ENGINE (Groq / OpenRouter)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
-    if not OPENROUTER_API_KEY:
-        return False
-
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
+مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق/مندوب" وبين "سائق يعرض خدمته أو إعلانه".
 
 قواعد التمييز والتصنيف الصارمة:
 
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
-   - أمثلة صريحة لطلب الزبون (YES):
-     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
-     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
-     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
-     * "ابغى جازان اذ احد من احد المسارحة يوصل"
+1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، استلام طرد، توصيل أغراض، أو يستفسر عن شخص قريب منه للتوصيل:
+   - أمثلة لطلب الزبون (YES):
+     * "احتاج مندوب يستلم لي طرد من ارامكس"
+     * "مين فاضي في جيزان؟" / "من قريب من الشواجرة؟"
+     * "ابغى مشوار من جازان الى جامعة الطب"
+     * "محتاجه مندوب داخل جازان"
      * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
 
 2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة صريحة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
-     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
-     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص"
-     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
-     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+   - أمثلة لعرض السائق (NO):
+     * "أنا قريب من الشواجرة" / "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
+     * "موجود في جازان اي مشوار خاص" / "نوفر نقل الطالبات"
 
 الرسالة المراد تحليلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    # 1. التجربة عبر Groq إذا كان المفتاح موجوداً
+    if GROQ_KEY:
+        for model_name in ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]:
+            try:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {GROQ_KEY}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 10
+                }
+                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    if response.status == 200:
+                        res_data = json.loads(response.read().decode('utf-8'))
+                        answer = res_data['choices'][0]['message']['content'].strip().upper()
+                        print(f"🤖 [تحليل Groq ({model_name})]: '{text[:30]}...' -> {answer}", flush=True)
+                        return "YES" in answer
+            except Exception as e:
+                print(f"⚠️ فشل نموذج Groq ({model_name}): {e}", flush=True)
 
-    try:
-        payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 3
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=2.5)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:35]}...' -> {answer}", flush=True)
-            return "YES" in answer
-    except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+    # 2. التجربة عبر OpenRouter إذا لم ينجح Groq
+    if OPENROUTER_KEY:
+        try:
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "qwen/qwen-2.5-7b-instruct",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 5
+            }
+            req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status == 200:
+                    res_data = json.loads(response.read().decode('utf-8'))
+                    answer = res_data['choices'][0]['message']['content'].strip().upper()
+                    print(f"🤖 [تحليل OpenRouter]: '{text[:30]}...' -> {answer}", flush=True)
+                    return "YES" in answer
+        except Exception as e:
+            print(f"⚠️ فشل OpenRouter: {e}", flush=True)
 
+    print("❌ لم يتم العثور على أي مفتاح API صالح (Groq أو OpenRouter) في متغيرات البيئة!", flush=True)
     return False
 
 # =========================================================
@@ -179,22 +204,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
-# =========================================================
-
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=15):
-                if dialog.top_message:
-                    await process_live_message(userbot, bot, dialog.top_message)
-        except Exception:
-            pass
-            
-        await asyncio.sleep(10)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -228,11 +237,10 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
-
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
+    print("🚀 تم تشغيل النظام بنجاح!", flush=True)
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
