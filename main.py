@@ -26,13 +26,14 @@ async def handle(request):
     return web.Response(text="Userbot with Groq AI is Active")
 
 async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/', handle)
-    runner = web.AppRunner(app)
+    server = web.Application()
+    server.router.add_get('/', handle)
+    runner = web.AppRunner(server)
     await runner.setup()
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))  # استخدام البورت 10000 الخاص بـ Render
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+    print(f"🌐 تم تشغيل سيرفر الويب على البورت: {port}")
 
 # ----------------- دالة الذكاء الاصطناعي Groq -----------------
 def analyze_with_groq(text):
@@ -54,7 +55,6 @@ def analyze_with_groq(text):
 \"\"\"
 """
 
-    # تجربة المفاتيح بالترتيب في حال استنفاد أحدها
     for _ in range(len(GROQ_KEYS)):
         key = GROQ_KEYS[current_key_index]
         if not key:
@@ -72,7 +72,6 @@ def analyze_with_groq(text):
             return "YES" in response
         except Exception as e:
             print(f"⚠️ فشل استخدام المفتاح رقم {current_key_index + 1}: {e}")
-            # التبديل للمفتاح التالي عند حدوث خطأ أو انتهاء الرصيد
             current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
 
     return False
@@ -85,23 +84,28 @@ async def process_group_messages(client: Client, message: Message):
     if not message.text:
         return
     
+    # طباعة للاختبار وتأكيد وصول الرسالة لـ Render Logs
+    print(f"📩 وصلت رسالة جديدة من: {message.chat.title or message.chat.id}")
+
     # تحليل النص بذكاء بواسطة Groq
     is_customer_request = await asyncio.to_thread(analyze_with_groq, message.text)
     
     if is_customer_request:
         try:
             await message.forward(FORWARD_TO)
-            print(f"✅ تم توجيه طلب زبون بنجاح إلى {FORWARD_TO} من: {message.chat.title or message.chat.id}")
+            print(f"✅ [طلب زبون] تم التوجيه بنجاح إلى {FORWARD_TO}")
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
+    else:
+        print("ℹ️ تم تجاهل الرسالة (ليست طلب زبون).")
 
+# ----------------- نقطة البدء الصحيحة -----------------
 async def main():
     await start_web_server()
     await app.start()
-    print("🚀 تم تشغيل الحساب الوهمي ونظام Groq بنجاح!")
+    print("🚀 تم تشغيل الحساب الوهمي ونظام Groq بنجاح وربطهم برندر!")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())  # التعديل الهام لمنع تعليق الكود
 
