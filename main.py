@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI ENGINE (NO KEYWORDS, NO EXAMPLES, ZERO-SHOT)
+# PURE AI ENGINE (NO KEYWORDS, NO EXAMPLES)
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
@@ -169,7 +169,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# MAIN ENTRYPOINT (SUPERGROUP FIX INCLUDED)
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
@@ -197,14 +197,14 @@ async def main():
         except Exception:
             pass
 
-    # استماع لكافة الرسائل بجميع أنواع المجموعات والقنوات بدون أي فلاتر
-    @userbot.on_message(filters.group | filters.channel | filters.supergroup)
+    # استخدام filters.group و filters.channel الصحيحين بدون خطأ
+    @userbot.on_message(filters.group | filters.channel)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
 
-    # حل مشكلة القروبات الكبيرة: تحميل المحادثات لتفعيل التحديثات المباشرة
+    # مزامنة المحادثات والقروبات الكبيرة بجميع أنواعها
     print("🔄 جاري مزامنة المحادثات والقروبات الكبيرة...", flush=True)
     try:
         async for dialog in userbot.get_dialogs(limit=200):
@@ -213,7 +213,7 @@ async def main():
     except Exception as e:
         print(f"⚠️ تنبيه أثناء جلب المحادثات: {e}", flush=True)
 
-    print("🚀 تم تشغيل البوت الذكي بالكامل بدون أي كلمات وبدعم المجموعات الكبيرة!", flush=True)
+    print("🚀 تم تشغيل البوت الذكي بالكامل الخالي من الأخطاء!", flush=True)
 
     await asyncio.Event().wait()
 
