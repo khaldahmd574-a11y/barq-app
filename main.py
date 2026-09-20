@@ -10,18 +10,17 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 
 import aiohttp
-
 from hydrogram import Client, filters
 from hydrogram.types import Message
 from hydrogram.errors import FloodWait
 
 
 # ============================================================
-#                    إعدادات Environment
+#                    إعدادات Environment (مطابقة لـ Render)
 # ============================================================
 
-API_ID = os.getenv("TELEGRAM_API_ID")
-API_HASH = os.getenv("TELEGRAM_API_HASH")
+API_ID = os.getenv("API_ID") or os.getenv("TELEGRAM_API_ID")
+API_HASH = os.getenv("API_HASH") or os.getenv("TELEGRAM_API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -34,8 +33,11 @@ OPENROUTER_MODEL = os.getenv(
     "qwen/qwen-2.5-7b-instruct"
 )
 
+# مفتاح تفعيل الفلترة (مفعل تلقائياً)
+FILTER_INTENT_ACTIVE = True
+
 # ============================================================
-#                  المستهدفون بالطلبات
+#                  المستهدفون بالطلبات (المشتركون)
 # ============================================================
 
 env_targets = os.getenv("TARGET_USERS", "")
@@ -54,11 +56,8 @@ else:
 
 AI_RETRIES = 2
 AI_TIMEOUT = 12
-
 DEDUP_TTL = 60 * 60 * 24
-
 MAX_MESSAGE_LENGTH = 6000
-
 MAX_CONCURRENT_AI = 8
 
 
@@ -70,8 +69,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
-
-logger = logging.getLogger("BARQ")
+logger = logging.getLogger("BARQ_AI")
 
 
 # ============================================================
@@ -79,32 +77,23 @@ logger = logging.getLogger("BARQ")
 # ============================================================
 
 required_env = {
-    "TELEGRAM_API_ID": API_ID,
-    "TELEGRAM_API_HASH": API_HASH,
+    "API_ID / TELEGRAM_API_ID": API_ID,
+    "API_HASH / TELEGRAM_API_HASH": API_HASH,
     "SESSION_STRING": SESSION_STRING,
     "BOT_TOKEN": BOT_TOKEN,
     "OPENROUTER_API_KEY": OPENROUTER_API_KEY,
 }
 
-missing = [
-    name
-    for name, value in required_env.items()
-    if not value
-]
-
+missing = [name for name, value in required_env.items() if not value]
 if missing:
-    raise RuntimeError(
-        "Environment Variables ناقصة: "
-        + ", ".join(missing)
-    )
+    raise RuntimeError("Environment Variables ناقصة: " + ", ".join(missing))
 
 
 # ============================================================
-#                     Keep Alive
+#                     Keep Alive Server
 # ============================================================
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
-
     def do_GET(self):
         try:
             self.send_response(200)
@@ -127,14 +116,11 @@ def run_keep_alive():
         logger.exception(f"Keep Alive Error: {e}")
 
 
-threading.Thread(
-    target=run_keep_alive,
-    daemon=True
-).start()
+threading.Thread(target=run_keep_alive, daemon=True).start()
 
 
 # ============================================================
-#                    Hydrogram Userbot
+#                    Hydrogram Userbot & Bot
 # ============================================================
 
 app = Client(
@@ -145,18 +131,7 @@ app = Client(
     in_memory=True,
 )
 
-
-# ============================================================
-#                  Telegram Bot API
-# ============================================================
-
 BOT_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-
-# ============================================================
-#                    OpenRouter API
-# ============================================================
-
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -187,10 +162,7 @@ async def cleanup_processed_messages():
 async def is_duplicate(message: Message, text: str) -> bool:
     try:
         chat_id = getattr(message.chat, "id", 0)
-        sender_id = 0
-        if message.from_user:
-            sender_id = getattr(message.from_user, "id", 0)
-
+        sender_id = getattr(message.from_user, "id", 0) if message.from_user else 0
         normalized = text.strip().lower()
         raw = f"{chat_id}|{sender_id}|{normalized}"
         fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -207,95 +179,33 @@ async def is_duplicate(message: Message, text: str) -> bool:
 
 
 # ============================================================
-#                  فلتر أرقام الجوال والعبارات الإعلانية
+#             AI SYSTEM PROMPT (فحص نية الزبون vs السائق)
 # ============================================================
 
-PHONE_PATTERNS = [
-    r"(?<!\d)05\d{8}(?!\d)",
-    r"(?<!\d)5\d{8}(?!\d)",
-    r"(?<!\d)\+9665\d{8}(?!\d)",
-    r"(?<!\d)009665\d{8}(?!\d)",
-    r"(?<!\d)9665\d{8}(?!\d)",
-    r"(?<!\d)05\d[\s\-]?\d{3}[\s\-]?\d{4}(?!\d)",
-]
+AI_SYSTEM_PROMPT = """أنت نظام ذكاء اصطناعي مخصص لفلترة طلبات التوصيل في أسرع وقت.
 
-PHONE_REGEX = re.compile("|".join(PHONE_PATTERNS))
+مهمتك: تحديد نية الكاتب بدقة عالية جداً.
 
-# عبارات صريحة خاصة بالسائقين يتم استبعادها فوراً قبل الذكاء الاصطناعي
-DRIVER_EXCLUDE_TRIGGERS = [
-    "متواجد في", "متواجدين", "فاضي في", "موجود في", "نوفر نقل", 
-    "توصيل طلبات", "سائق للمشاوير", "تواصل خاص", "سواق مشاوير", "سيارة لنقل"
-]
-
-
-def normalize_arabic_digits(text: str) -> str:
-    translation = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
-    return text.translate(translation)
-
-
-def is_driver_advertisement(text: str) -> bool:
-    try:
-        normalized = normalize_arabic_digits(text)
-        
-        # 1. فحص رقم الجوال
-        if PHONE_REGEX.search(normalized):
-            return True
-
-        # 2. فحص عبارات السائقين المباشرة (ما لم تكن تحتوي على لفظ طلب صريح مثل: أبغى/أحتاج)
-        clean = text.lower()
-        if not any(req in clean for req in ["ابغى", "أبغى", "احتاج", "أحتاج", "ابي", "مطلوب", "مين يوصل"]):
-            for trigger in DRIVER_EXCLUDE_TRIGGERS:
-                if trigger in clean:
-                    return True
-
-        return False
-    except Exception as e:
-        logger.exception(f"Filter check error: {e}")
-        return False
-
-
-# ============================================================
-#                       تنظيف النص
-# ============================================================
-
-def clean_text(text: str) -> str:
-    if not text:
-        return ""
-    text = text.strip()
-    if len(text) > MAX_MESSAGE_LENGTH:
-        text = text[:MAX_MESSAGE_LENGTH]
-    return text
-
-
-# ============================================================
-#             AI SYSTEM PROMPT (تحليل نية الطلب حصراً)
-# ============================================================
-
-AI_SYSTEM_PROMPT = """أنت فلتر ذكاء اصطناعي محترف متخصص في تحليل "نية الرسالة" (Message Intent Analysis).
-
-مهمتك الوحيدة: تحديد هل كاتب الرسالة "زبون يطلب توصيل/مشوار" أم "سائق يعرض خدمته/يتواجد في مكان".
-
-المخرجات المطلوبة:
-أخرج كائن JSON حصراً:
+أخرج كائن JSON فقط بالصيغة التالية:
 {"allow": true}
 أو
 {"allow": false}
 
-قواعد التصنيف الصارمة:
+القواعد الصارمة للتصنيف:
 
-1. اجعل allow تساوي true فقط إذا كان الكاتب زبوناً/عميلاً يمتلك "نية طلب" واضحة مثل:
-- يبحث عن سائق أو توصيل ("أبغى سواق من جيزان لبيش"، "احتاج توصيل"، "مين فاضي يوصلني").
-- يطلب إحضار غرض أو استلام طلب ("أحد يقدر يجيب لي طلب من المطعم").
+1. اجعل {"allow": true} فقط إذا كان الكاتب (زبون / عميل) يحتاج توصيل أو لديه طلب حقيقي مثل:
+   - "أبغى سواق من صبيا لبيش"
+   - "احتاج توصيل طلب من مطعم"
+   - "مين فاضي يوصلني"
+   - "مطلوب سيارة لنقل أغراض"
 
-2. اجعل allow تساوي false في الحالات التالية:
-- إذا كان الكاتب سائقاً يعرض خدمته أو يعلن عن توفره ("متواجد في أبو عريش للمشاوير"، "فاضي صامطة"، "أنا سواق"، "نقل طالبات").
-- الرسالة إعلانات، أرقام هواتف، روابط، تحيات، أو رسائل غير واضحة.
+2. اجعل {"allow": false} بشكل قاطع إذا كان الكاتب (سائق / مندوب / معلن) يعرض خدمته أو يتواجد في مكان مثل:
+   - "متواجد في أبو عريش للمشاوير"
+   - "فاضي للطلب"
+   - "سائق خاص تحت الخدمة"
+   - "نقل طرود وبضائع التواصل خاص"
+   - وجود أرقام جوال (مثل 05xxxxxxxx) أو روابط وإعلانات أو تحيات ومحادثات جانبية.
 """
-
-
-# ============================================================
-#                  OpenRouter AI
-# ============================================================
 
 ai_semaphore = asyncio.Semaphore(MAX_CONCURRENT_AI)
 
@@ -306,14 +216,14 @@ async def ask_openrouter(text: str) -> bool:
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://render.com/",
-            "X-Title": "Barq Jazan AI Filter",
+            "X-Title": "Barq Intent AI Filter",
         }
 
         payload = {
             "model": OPENROUTER_MODEL,
             "messages": [
                 {"role": "system", "content": AI_SYSTEM_PROMPT},
-                {"role": "user", "content": f"حلل نية هذه الرسالة: \"{text}\""}
+                {"role": "user", "content": f"حلل نية الرسالة التالية: \"{text}\""}
             ],
             "temperature": 0.0,
             "max_tokens": 20
@@ -326,11 +236,9 @@ async def ask_openrouter(text: str) -> bool:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with session.post(OPENROUTER_URL, headers=headers, json=payload) as response:
                         raw = await response.text()
-
                         if response.status != 200:
-                            logger.warning(f"OpenRouter HTTP {response.status}: {raw[:300]}")
                             if attempt < AI_RETRIES:
-                                await asyncio.sleep(1.0 * (attempt + 1))
+                                await asyncio.sleep(1.0)
                                 continue
                             return False
 
@@ -340,323 +248,160 @@ async def ask_openrouter(text: str) -> bool:
                             return False
 
                         content = choices[0].get("message", {}).get("content", "").strip()
-                        if not content:
-                            return False
-
                         content_clean = re.sub(r"```json|```", "", content).strip()
                         
                         try:
                             result = json.loads(content_clean)
                             return bool(result.get("allow", False))
                         except json.JSONDecodeError:
-                            if "true" in content_clean.lower():
-                                return True
-                            return False
+                            return "true" in content_clean.lower()
 
-            except asyncio.TimeoutError:
-                logger.warning("OpenRouter timeout")
-            except Exception as e:
-                logger.exception(f"OpenRouter error: {e}")
+            except Exception:
+                pass
 
             if attempt < AI_RETRIES:
-                await asyncio.sleep(1.0 * (attempt + 1))
+                await asyncio.sleep(1.0)
 
         return False
 
 
 # ============================================================
-#                  روابط المعاينة والمعلومات
+#                  أدوات بناء الرسالة وتوجيهها
 # ============================================================
 
 def get_user_link(message: Message) -> Optional[str]:
-    try:
-        user = message.from_user
-        if not user:
-            return None
-
-        username = getattr(user, "username", None)
-        if username:
-            return f"https://t.me/{username}"
-
-        user_id = getattr(user, "id", None)
-        if user_id:
-            return f"tg://user?id={user_id}"
-    except Exception as e:
-        logger.exception(f"User link error: {e}")
+    user = message.from_user
+    if not user:
+        return None
+    if user.username:
+        return f"https://t.me/{user.username}"
+    if user.id:
+        return f"tg://user?id={user.id}"
     return None
 
 
 def get_message_link(message: Message) -> Optional[str]:
-    try:
-        chat = message.chat
-        username = getattr(chat, "username", None)
-        message_id = getattr(message, "id", None)
-
-        if not message_id:
-            return None
-
-        if username:
-            return f"https://t.me/{username}/{message_id}"
-
-        chat_id = getattr(chat, "id", None)
-        if chat_id and str(chat_id).startswith("-100"):
-            internal_id = str(chat_id)[4:]
-            return f"https://t.me/c/{internal_id}/{message_id}"
-    except Exception as e:
-        logger.exception(f"Message link error: {e}")
+    chat = message.chat
+    if not message.id:
+        return None
+    if chat.username:
+        return f"https://t.me/{chat.username}/{message.id}"
+    if chat.id and str(chat.id).startswith("-100"):
+        return f"https://t.me/c/{str(chat.id)[4:]}/{message.id}"
     return None
 
 
-def get_chat_name(message: Message) -> str:
-    try:
-        chat = message.chat
-        title = getattr(chat, "title", None)
-        if title:
-            return title
-
-        first_name = getattr(chat, "first_name", None)
-        if first_name:
-            return first_name
-
-        username = getattr(chat, "username", None)
-        if username:
-            return "@" + username
-    except Exception:
-        pass
-    return "غير معروف"
-
-
-def get_sender_name(message: Message) -> str:
-    try:
-        user = message.from_user
-        if not user:
-            return "غير معروف"
-
-        first = getattr(user, "first_name", "") or ""
-        last = getattr(user, "last_name", "") or ""
-        name = f"{first} {last}".strip()
-
-        if name:
-            return name
-
-        username = getattr(user, "username", None)
-        if username:
-            return "@" + username
-    except Exception:
-        pass
-    return "غير معروف"
-
-
 def build_output_message(message: Message, text: str) -> str:
-    chat_name = get_chat_name(message)
-    sender_name = get_sender_name(message)
-
+    chat_name = message.chat.title or message.chat.first_name or "مجموعة"
+    sender_name = message.from_user.first_name if message.from_user else "عميل"
+    
     return (
-        "📦 <b>طلب عميل جديد</b>\n\n"
+        "📦 <b>طلب عميل جديد (نية طلب مؤكدة)</b>\n\n"
         f"👤 <b>العميل:</b> {sender_name}\n"
         f"📍 <b>المصدر:</b> {chat_name}\n\n"
-        "💬 <b>الطلب:</b>\n"
+        "💬 <b>تفاصيل الطلب:</b>\n"
         f"{text}"
     )
 
 
-# ============================================================
-#                    Telegram Bot API Request
-# ============================================================
-
 async def bot_api_request(method: str, payload: dict):
     url = f"{BOT_API}/{method}"
     timeout = aiohttp.ClientTimeout(total=20)
-
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=payload) as response:
-            raw = await response.text()
-            try:
-                data = json.loads(raw)
-            except Exception:
-                data = {"ok": False, "description": raw}
-
-            if not data.get("ok"):
-                raise RuntimeError(data.get("description", f"HTTP {response.status}"))
-
-            return data
+            return await response.json()
 
 
-# ============================================================
-#                 إرسال للمستهدفين
-# ============================================================
+async def send_to_targets(message: Message, text: str):
+    user_link = get_user_link(message)
+    message_link = get_message_link(message)
 
-async def send_to_one_target(target, text, keyboard):
-    try:
+    buttons = []
+    if user_link:
+        buttons.append({"text": "👤 محادثة العميل", "url": user_link})
+    if message_link:
+        buttons.append({"text": "🔗 الرسالة الأصلية", "url": message_link})
+
+    keyboard = {"inline_keyboard": [buttons]} if buttons else None
+    output = build_output_message(message, text)
+
+    for target in TARGET_USERS:
         payload = {
             "chat_id": target,
-            "text": text,
+            "text": output,
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
-
         if keyboard:
             payload["reply_markup"] = keyboard
-
-        await bot_api_request("sendMessage", payload)
-        logger.info(f"SUCCESS -> {target}")
-        return True
-    except Exception as e:
-        logger.error(f"FAILED -> {target} | {e}")
-        return False
-
-
-async def send_to_all_targets(message: Message, text: str):
-    try:
-        user_link = get_user_link(message)
-        message_link = get_message_link(message)
-
-        buttons = []
-        if user_link:
-            buttons.append({"text": "👤 محادثة العميل", "url": user_link})
-        if message_link:
-            buttons.append({"text": "🔗 الرسالة الأصلية", "url": message_link})
-
-        keyboard = {"inline_keyboard": [buttons]} if buttons else None
-        output = build_output_message(message, text)
-
-        tasks = [send_to_one_target(target, output, keyboard) for target in TARGET_USERS]
-
-        if not tasks:
-            logger.warning("TARGET_USERS فارغة")
-            return
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        success = sum(1 for r in results if r is True)
-        failed = len(results) - success
-
-        logger.info(f"Distribution finished | Success={success} | Failed={failed}")
-
-    except Exception as e:
-        logger.exception(f"Distribution error: {e}")
-
-
-# ============================================================
-#                  معالجة الرسائل
-# ============================================================
-
-processing_semaphore = asyncio.Semaphore(20)
-
-
-async def process_message(message: Message):
-    async with processing_semaphore:
         try:
-            text = getattr(message, "text", None) or getattr(message, "caption", None)
-            if not text:
-                return
-
-            text = clean_text(text)
-            if not text:
-                return
-
-            # تجاهل رسائل الحساب نفسه
-            try:
-                me = await app.get_me()
-                if message.from_user and message.from_user.id == me.id:
-                    return
-            except Exception:
-                pass
-
-            # منع التكرار
-            if await is_duplicate(message, text):
-                logger.info("DUPLICATE -> SKIP")
-                return
-
-            # فلتر أرقام الجوال وعروض السائقين
-            if is_driver_advertisement(text):
-                logger.info("DRIVER OFFER / PHONE NUMBER -> SKIP")
-                return
-
-            # تحليل نية الطلب بالذكاء الاصطناعي
-            logger.info(f"AI CHECK INTENT -> {text[:60]}")
-            allowed = await ask_openrouter(text)
-
-            if not allowed:
-                logger.info("AI REJECTED (Not a customer request)")
-                return
-
-            logger.info("AI ACCEPTED (Customer request matched)")
-            await send_to_all_targets(message, text)
-
-        except FloodWait as e:
-            wait_seconds = getattr(e, "value", 5)
-            logger.warning(f"FloodWait -> {wait_seconds}s")
-            await asyncio.sleep(wait_seconds)
+            await bot_api_request("sendMessage", payload)
+            logger.info(f"إرسال ناجح للمشترك -> {target}")
         except Exception as e:
-            logger.exception(f"PROCESS ERROR: {e}")
+            logger.error(f"فشل الإرسال إلى {target}: {e}")
 
 
 # ============================================================
-#               استقبال جميع الرسائل الجديدة
+#                  معالجة الرسائل والأوامر
 # ============================================================
 
 @app.on_message(filters.incoming)
-async def new_message_handler(client, message):
+async def process_incoming(client: Client, message: Message):
+    global FILTER_INTENT_ACTIVE
     try:
-        if not (getattr(message, "text", None) or getattr(message, "caption", None)):
+        text = message.text or message.caption or ""
+        if not text:
             return
 
-        asyncio.create_task(process_message(message))
+        # 1. الاستجابة لأمر تثبيت الفلترة /نية_طلب
+        if text.startswith("/نية_طلب") or text.startswith("/نية طلب"):
+            FILTER_INTENT_ACTIVE = True
+            await message.reply_text(
+                "✅ **تم تثبيت وتفعيل الفلترة بالذكاء الاصطناعي (نية الطلب)!**\n"
+                "سيقوم البوت الآن بسحب طلبات العملاء فقط وتجاهل كافة إعلانات المندوبين والسائقين."
+            )
+            return
+
+        # 2. تجاهل رسائل الحساب نفسه
+        me = await client.get_me()
+        if message.from_user and message.from_user.id == me.id:
+            return
+
+        # 3. التأكد من تفعيل نظام الفلترة ووضع منع التكرار
+        if not FILTER_INTENT_ACTIVE or await is_duplicate(message, text):
+            return
+
+        # 4. تحليل النية عبر الذكاء الاصطناعي
+        logger.info(f"فحص نية الطلب بالذكاء الاصطناعي: {text[:50]}")
+        is_customer_request = await ask_openrouter(text)
+
+        if is_customer_request:
+            logger.info("✅ نية طلب زبون مؤكدة -> جاري الإرسال للمشتركين")
+            await send_to_targets(message, text)
+        else:
+            logger.info("❌ تم استبعاد الرسالة (إعلان سائق/مندوب أو ليست طلب توصيل)")
+
+    except FloodWait as e:
+        await asyncio.sleep(e.value)
     except Exception as e:
-        logger.exception(f"HANDLER ERROR: {e}")
+        logger.exception(f"خطأ أثناء معالجة الرسالة: {e}")
 
 
 # ============================================================
-#                 فحص Telegram Bot
-# ============================================================
-
-async def check_bot():
-    try:
-        data = await bot_api_request("getMe", {})
-        bot = data.get("result", {})
-        username = bot.get("username", "unknown")
-        logger.info(f"BOT CONNECTED -> @{username}")
-    except Exception as e:
-        raise RuntimeError(f"BOT_TOKEN غير صحيح أو البوت غير متاح: {e}")
-
-
-# ============================================================
-#                       التشغيل
+#                       التشغيل الرئيسي
 # ============================================================
 
 async def main():
-    logger.info("======================================")
-    logger.info("BARQ AI USERBOT STARTING...")
-    logger.info("======================================")
-
-    await check_bot()
+    logger.info("🚀 جاري تشغيل البوت ونظام فلترة النية بالذكاء الاصطناعي...")
     asyncio.create_task(cleanup_processed_messages())
     await app.start()
-
-    try:
-        me = await app.get_me()
-        logger.info("USERBOT CONNECTED")
-        logger.info(f"ACCOUNT ID -> {me.id}")
-        if me.username:
-            logger.info(f"ACCOUNT -> @{me.username}")
-
-        logger.info("LISTENING TO ALL AVAILABLE INCOMING CHATS...")
-        for i, target in enumerate(TARGET_USERS, 1):
-            logger.info(f"TARGET {i} -> {target}")
-
-        await asyncio.Event().wait()
-    finally:
-        try:
-            await app.stop()
-        except Exception:
-            pass
+    logger.info("✅ الحساب متصل بنجاح وجاهز لاستقبال طلبات الزبائن.")
+    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("STOPPED")
-    except Exception as e:
-        logger.exception(f"FATAL ERROR -> {e}")
+        logger.info("تم إيقاف التشغيل.")
 
