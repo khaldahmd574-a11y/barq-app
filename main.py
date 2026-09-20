@@ -1,9 +1,10 @@
 import os
 import asyncio
+from threading import Thread
+from flask import Flask
 from hydrogram import Client, filters
 from hydrogram.types import Message
 from groq import Groq
-from aiohttp import web
 
 # ----------------- الإعدادات والمتغيرات -----------------
 API_ID = int(os.environ.get("API_ID"))
@@ -22,18 +23,20 @@ GROQ_KEYS = [
 current_key_index = 0
 
 # ----------------- سيرفر خفيف لإبقاء Render شغالاً 24/7 -----------------
-async def handle(request):
-    return web.Response(text="Userbot with Groq AI is Active")
+web_app = Flask('')
 
-async def start_web_server():
-    server = web.Application()
-    server.router.add_get('/', handle)
-    runner = web.AppRunner(server)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))  # استخدام البورت 10000 الخاص بـ Render
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
-    print(f"🌐 تم تشغيل سيرفر الويب على البورت: {port}")
+@web_app.route('/')
+def home():
+    return "Userbot with Groq AI is Active"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.daemon = True
+    t.start()
 
 # ----------------- دالة الذكاء الاصطناعي Groq -----------------
 def analyze_with_groq(text):
@@ -76,7 +79,7 @@ def analyze_with_groq(text):
 
     return False
 
-# ----------------- تشغيل الحساب الوهمي -----------------
+# ----------------- تشغيل الحساب -----------------
 app = Client("userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
 @app.on_message(filters.group & ~filters.me)
@@ -84,8 +87,7 @@ async def process_group_messages(client: Client, message: Message):
     if not message.text:
         return
     
-    # طباعة للاختبار وتأكيد وصول الرسالة لـ Render Logs
-    print(f"📩 وصلت رسالة جديدة من: {message.chat.title or message.chat.id}")
+    print(f"📩 تم استقبال رسالة في الجروب: {message.chat.title or message.chat.id}")
 
     # تحليل النص بذكاء بواسطة Groq
     is_customer_request = await asyncio.to_thread(analyze_with_groq, message.text)
@@ -93,19 +95,15 @@ async def process_group_messages(client: Client, message: Message):
     if is_customer_request:
         try:
             await message.forward(FORWARD_TO)
-            print(f"✅ [طلب زبون] تم التوجيه بنجاح إلى {FORWARD_TO}")
+            print(f"✅ تم توجيه طلب زبون بنجاح إلى {FORWARD_TO}")
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ تم تجاهل الرسالة (ليست طلب زبون).")
-
-# ----------------- نقطة البدء الصحيحة -----------------
-async def main():
-    await start_web_server()
-    await app.start()
-    print("🚀 تم تشغيل الحساب الوهمي ونظام Groq بنجاح وربطهم برندر!")
-    await asyncio.Event().wait()
+        print("ℹ️ ليست رسالة طلب زبون، تم التغاضي عنها.")
 
 if __name__ == "__main__":
-    asyncio.run(main())  # التعديل الهام لمنع تعليق الكود
+    # أضف Flask إلى ملف requirements.txt أيضاً
+    keep_alive()
+    print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq...")
+    app.run()
 
