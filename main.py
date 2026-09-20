@@ -41,27 +41,26 @@ OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
-CLIENT_KEYWORDS = ["احتاج مشوار", "أحتاج مشوار", "ابغى توصيل", "أبغى توصيل", "ابي سواق", "أبي سواق", "من يوديني", "توصيل طرد", "توصيل اغراض"]
-DRIVER_KEYWORDS = ["فاضي", "متواجد", "تفضل خاص", "تواصل خاص", "جاهز للطلبات", "توصيل معلمات"]
-
 # =========================================================
-# OPENROUTER PAID AI ENGINE
+# ADVANCED OPENROUTER AI ENGINE (ALL-IN-ONE ANALYSIS)
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
     if not OPENROUTER_KEY:
+        print("❌ لا يوجد مفتاح OpenRouter!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي لمراقبة طلبات المشاوير في منطقة جيزان وما حولها.
-حدد هل النص التالي هو لزبون يبحث عن توصيل/مشوار؟
+    prompt = f"""أنت نظام ذكاء اصطناعي ذكي جداً متنامي الفهم لمراقبة طلبات المشاوير والتوصيل والأغراض والأطعمة في منطقة جيزان وما حولها.
 
-أجب بـ YES إذا كان زبون يطلب مشوار أو توصيل.
-أجب بـ NO إذا كان سائق يعرض خدماته أو يقول إنه فاضي/متواجد أو يضع رقمه.
+وظيفتك: قراءة الرسالة وتحديد هل هي (طلب زبون/عميل) أم (إعلان سائق/مندوب)؟
+
+- أجب بـ YES إذا كانت الرسالة لـ زبون/عميل يبحث عن توصيل مشوار، توصيل أكل/مطعم، توصيل طرد، أواني، أغراض، أو يستفسر عن توصيل (مثل: "احد يوصل لي من اي ام برجر"، "مين يوصل لي من مدار"، "ابي توصيل"، "من يوديني"، "احتاج مشوار").
+- أجب بـ NO إذا كانت الرسالة لـ سائق/مندوب يعرض خدماته (مثل: "فاضي"، "متواجد"، "جاهز للطلبات"، "تواصل خاص"، "توصيل معلمات"، أو وضع رقم جواله).
 
 الرسالة:
 "{text}"
 
-الجواب (YES أو NO فقط):"""
+الجواب (أجب بكلمة واحدة فقط: YES أو NO):"""
 
     model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
@@ -76,13 +75,15 @@ def analyze_with_openrouter(text: str) -> bool:
             "temperature": 0.0,
             "max_tokens": 10
         }
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=6)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
         if response.status_code == 200:
             res_data = response.json()
             answer = res_data['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
+        else:
+            print(f"⚠️ خطأ AI ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ ذكاء اصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ اتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -94,14 +95,16 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
+    # تجاهل رسائلي الشخصية
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 4:
+    if len(clean_text) < 3:
         return
 
+    # منع التكرار
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -114,20 +117,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # استبعاد سائق فوراً
-    if any(dk in clean_text for dk in DRIVER_KEYWORDS):
-        return
-
-    # قبول زبون فوراً بالكلمات المباشرة أو عبر الذكاء الاصطناعي
-    is_client_request = False
-    if any(ck in clean_text for ck in CLIENT_KEYWORDS):
-        is_client_request = True
-    else:
-        loop = asyncio.get_event_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
+    # التحليل بالذكاء الاصطناعي المأجور لكل الرسائل
+    loop = asyncio.get_event_loop()
+    is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب زبون مقبول]: {clean_text[:40]}...", flush=True)
+        print(f"✅ [طلب زبون مقبول بالذكاء الاصطناعي]: {clean_text[:40]}...", flush=True)
 
         buttons = []
         row = []
@@ -155,27 +150,27 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 try:
                     await bot.send_message(
                         chat_id=user,
-                        text=f"📌 **طلب مشوار جديد:**\n\n{clean_text}",
+                        text=clean_text,  # تم إزالة كلمة "طلب مشوار جديد" لتنزل الرسالة كما هي
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
                     sent = True
-                except Exception as e:
-                    print(f"⚠️ فشل إرسال البوت لـ {user}: {e}", flush=True)
+                except Exception:
+                    pass
 
             if not sent:
                 try:
                     await userbot.send_message(
                         chat_id=user,
-                        text=f"📌 **طلب مشوار جديد:**\n\n{clean_text}",
+                        text=clean_text,  # تم إزالة كلمة "طلب مشوار جديد"
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                except Exception as e:
-                    print(f"⚠️ فشل إرسال اليوزربوت لـ {user}: {e}", flush=True)
+                except Exception:
+                    pass
 
 # =========================================================
-# MAIN ENTRYPOINT
+# MAIN ENTRYPOINT (شامل للقروبات الكبيرة والعادية)
 # =========================================================
 
 async def main():
@@ -203,13 +198,13 @@ async def main():
         except Exception:
             pass
 
-    # تم إصلاح الفلتر هنا بتنظيف السنتكس المعتمد
-    @userbot.on_message(~filters.me & (filters.group | filters.channel))
+    # استماع حي وشامل لكل أنواع الرسائل في جميع القروبات الكبيرة والقنوات والمجموعات
+    @userbot.on_message(~filters.me & ~filters.private)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت المطور بنجاح بدون أخطاء!", flush=True)
+    print("🚀 تم تشغيل البوت الذكي الشامل للقروبات الكبيرة والمصنف الدقيق!", flush=True)
 
     await asyncio.Event().wait()
 
