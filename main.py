@@ -41,30 +41,30 @@ OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
+# كلمات دالة صريحة للزبائن للالتقاط السريع الفوري
+CLIENT_KEYWORDS = ["احتاج مشوار", "أحتاج مشوار", "ابغى توصيل", "أبغى توصيل", "ابي سواق", "أبي سواق", "من يوديني", "توصيل طرد", "توصيل اغراض"]
+# كلمات استبعاد فورية لسائق يعرض خدمته
+DRIVER_KEYWORDS = ["فاضي", "متواجد", "تفضل خاص", "تواصل خاص", "جاهز للطلبات", "توصيل معلمات"]
+
 # =========================================================
 # OPENROUTER PAID AI ENGINE
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ لم يتم العثور على OPENROUTER_API_KEY في البيئة!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي احترافي لمراقبة وتصفية طلبات التوصيل والمشاوير في منطقة جيزان وما حولها.
-وظيفتك: قراءة النص واعطاء قرار دقيق بدون خطأ:
+    prompt = f"""أنت نظام ذكاء اصطناعي لمراقبة طلبات المشاوير في منطقة جيزان وما حولها.
+حدد هل النص التالي هو لزبون يبحث عن توصيل/مشوار؟
 
-أولاً: أجب بـ YES فقط إذا كان النص صريحاً لـ (زبون/عميل) يبحث عن سائق أو توصيل أو نقل أغراض أو طرد:
-- أمثلة الزبائن (YES): "احتاج مشوار من الدرب لين ضمد"، "ابغى طلب توصيل من جيزان لين صبيا"، "ابي سواق فاضي في جيزان"، "احد في صامطه ابغى توصيل"، "من يوديني".
+أجب بـ YES إذا كان زبون يطلب مشوار أو توصيل.
+أجب بـ NO إذا كان سائق يعرض خدماته أو يقول إنه فاضي/متواجد أو يضع رقمه.
 
-ثانياً: أجب بـ NO فوراً إذا كان النص لسائق/مندوب يعرض خدماته، أو يقول أنه فاضي/متواجد، أو يطلب التواصل خاص، أو يضع رقمه:
-- أمثلة السائقين (NO): "- فاضي بجيزان أي طلب او مشوار تفضل/ي خاص 0539986632"، "متواجد للمشاوير"، "جاهز الآن"، "توصيل معلمات".
-
-الرسالة المراد تحليلها:
+الرسالة:
 "{text}"
 
-الجواب (أجب فقط بكلمة YES أو NO):"""
+الجواب (YES أو NO فقط):"""
 
-    # نموذج سريع جداً ودقيق ومتاح بحسابك المأجور
     model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -78,15 +78,13 @@ def analyze_with_openrouter(text: str) -> bool:
             "temperature": 0.0,
             "max_tokens": 10
         }
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=6)
         if response.status_code == 200:
             res_data = response.json()
             answer = res_data['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
-        else:
-            print(f"⚠️ خطأ الاستجابة ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ اتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ ذكاء اصطناعي: {e}", flush=True)
 
     return False
 
@@ -118,12 +116,23 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # تحليل الرسالة بالذكاء الاصطناعي المأجور
-    loop = asyncio.get_event_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
+    # 1. الفحص الفوري المباشر عبر الكلمات المفتاحية
+    is_client_request = False
+    
+    # إذا كانت الرسالة تحتوي كلمة سائق واضحة نلغيها فوراً
+    if any(dk in clean_text for dk in DRIVER_KEYWORDS):
+        return
+
+    # إذا كانت الرسالة تحتوي كلمة زبون صريحة تقبل فوراً بدون استهلاك الذكاء الاصطناعي
+    if any(ck in clean_text for ck in CLIENT_KEYWORDS):
+        is_client_request = True
+    else:
+        # 2. الاستعانة بالذكاء الاصطناعي للرسائل المزدوجة أو المترددة
+        loop = asyncio.get_event_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب زبون مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب زبون مقبول]: {clean_text[:40]}...", flush=True)
 
         buttons = []
         row = []
@@ -131,10 +140,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.from_user:
             if message.from_user.username:
                 user_url = f"https://t.me/{message.from_user.username}"
-                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                user_label = f"💬 المحادثة (@{message.from_user.username})"
             else:
                 user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                user_label = f"💬 المحادثة ({message.from_user.first_name or 'المستخدم'})"
             row.append(InlineKeyboardButton(user_label, url=user_url))
 
         if message.link:
@@ -151,42 +160,28 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 try:
                     await bot.send_message(
                         chat_id=user,
-                        text=clean_text,
+                        text=f"📌 **طلب مشوار جديد:**\n\n{clean_text}",
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
                     sent = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ فشل إرسال البوت لـ {user}: {e}", flush=True)
 
             if not sent:
                 try:
                     await userbot.send_message(
                         chat_id=user,
-                        text=clean_text,
+                        text=f"📌 **طلب مشوار جديد:**\n\n{clean_text}",
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ فشل إرسال اليوزربوت لـ {user}: {e}", flush=True)
 
 # =========================================================
-# MAIN ENTRYPOINT & SUPERGROUP BACKGROUND POLLER
+# MAIN ENTRYPOINT
 # =========================================================
-
-async def fetch_supergroups_periodically(userbot: Client, bot: Client):
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=100):
-                if dialog.chat.type.name in ["SUPERGROUP", "CHANNEL", "GROUP"]:
-                    try:
-                        async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
-                            await process_live_message(userbot, bot, msg)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
-        await asyncio.sleep(5)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
@@ -213,14 +208,14 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message(~filters.me)
+    # الاستماع اللحظي الفوري لجميع الرسائل الواردة من كافة القروبات والقنوات الكبيرة
+    @userbot.on_message(~filters.me & (filters.group | filters.channel | filters.supergroup))
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المأجور المطور بنجاح!", flush=True)
+    print("🚀 تم تشغيل البوت المحسّن للمراقبة اللحظية الشاملة!", flush=True)
 
-    asyncio.create_task(fetch_supergroups_periodically(userbot, bot))
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
