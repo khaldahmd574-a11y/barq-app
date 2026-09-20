@@ -4,7 +4,7 @@ import hashlib
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import requests
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
@@ -42,26 +42,35 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# OPENROUTER PURE AI ANALYSIS ENGINE
+# OPENROUTER AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY في متغيرات البيئة!", flush=True)
+        print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في فهم وتصنيف طلبات التوصيل والمشاوير باللغة العربية واللهجات المحلية.
-مهمتك الوحيدة: تحليل النص المرفق والتمييز الدقيق بين نوعين من الكتاب:
+    prompt = f"""أنت خبير ذكاء اصطناعي محترف لمراقبة وتصنيف طلبات التوصيل والمشاوير.
+وظيفتك: تحليل النص وإرجاع YES فقط إذا كان الكاتب زبوناً يبحث عن توصيل، وإرجاع NO إذا كان الكاتب سائقاً يعرض إعلاناً.
 
-1. أجب بـ YES إذا كان الكاتب (زبوناً / عميلاً) يطلب توصيلاً أو يبحث عن سائق أو يسأل عن شخص يوصله أو يطلب استلام طرد/أغراض.
-2. أجب بـ NO إذا كان الكاتب (سائقاً / مندوباً) يعرض سيارته، أو يعلن عن توفره ونقله للركاب أو يضع رقم تواصل للخدمات.
+قواعد تصنيف صارمة جداً:
 
-الرسالة المراد تحليلها:
+أولاً: أجب بـ YES فوراً وبدون تردد إذا كان النص يحتوي على صيغة طلب أو استفسار من زبون مثل:
+- "ابغى سواق" / "اي سواق فاضي" / "من قريب من..." / "مين فاضي"
+- "احتاج توصيل" / "محتاجه مندوب" / "اريد مشوار"
+- "مين يوديني" / "مين يرجعني" / "مين ياخذ طرد"
+- أي سؤال عن وجود سائق في منطقة معينة مثل "أي سواق فاضي في جيزان؟" أو "مين بصبيا؟"
+
+ثانياً: أجب بـ NO فقط إذا كان النص عرضاً واضحاً من سائق يقدم خدمته مثل:
+- "متواجد حاليا للمشاوير" / "أنا سواق جاهز"
+- "نوفر نقل طالبات والموظفات" / "توصيل معلمات"
+- "عندي سيارة كامري للمشاوير" / إعلان يحتوي على قائمة أسعار وأرقام تواصل لخدمة نقل.
+
+الرسالة المكتوبة:
 "{text}"
 
-الجواب (أجب فقط بكلمة YES أو NO بدون أي كلام آخر):"""
+الجواب (اكتب YES أو NO فقط):"""
 
-    # استخدام نموذج Llama 3.1 8B المباشر والسريع جداً
     model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -72,7 +81,7 @@ def analyze_with_pure_ai(text: str) -> bool:
         payload = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
+            "temperature": 0.0,
             "max_tokens": 10
         }
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
@@ -82,9 +91,9 @@ def analyze_with_pure_ai(text: str) -> bool:
             print(f"🤖 [تحليل الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
         else:
-            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي ({response.status_code}): {response.text}", flush=True)
+            print(f"⚠️ خطأ الاستجابة ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ أثناء الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ اتصال: {e}", flush=True)
 
     return False
 
@@ -96,7 +105,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل الرسائل الصادرة من نفس الحساب
+    # تجاهل الرسائل الصادرة من نفس الحساب الوهمي
     if message.from_user and message.from_user.is_self:
         return
 
@@ -117,7 +126,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # تحويل عملية التحليل للذكاء الاصطناعي إلى مسار منفصل لمنع التجميد
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
@@ -198,20 +206,27 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
+    # استقبال الرسائل المنشورة في المجموعات والمجموعات الخارقة والقنوات دون أي قيود
+    @userbot.on_message(filters.group | filters.channel | filters.private)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
     print("🚀 تم تشغيل النظام بنجاح!", flush=True)
 
-    # جلب ومزامنة جميع المحادثات والمجموعات الكبيرة والقنوات التي ينتمي إليها الحساب
+    # تنشيط كاش المجموعات الخارقة والقنوات الكبيرة
     try:
-        print("🔄 جاري مزامنة وربط جميع المحادثات والمجموعات الكبيرة...", flush=True)
+        print("🔄 جاري مزامنة وتنسيق المجموعات والقنوات الكبيرة...", flush=True)
         dialogs_count = 0
         async for dialog in userbot.get_dialogs():
             dialogs_count += 1
-        print(f"✅ تم ربط البوت بنجاح مع {dialogs_count} محادثة ومجموعة وقناة!", flush=True)
+            # جلب تفاصيل القنوات والقروبات الكبيرة لتحديث جلسة تليجرام
+            if dialog.chat.type.name in ["SUPERGROUP", "CHANNEL", "GROUP"]:
+                try:
+                    await userbot.get_chat(dialog.chat.id)
+                except Exception:
+                    pass
+        print(f"✅ تم ربط وتنشيط {dialogs_count} محادثة ومجموعة وقناة كبرى بنجاح!", flush=True)
     except Exception as e:
         print(f"⚠️ تنبيه أثناء عملية المزامنة: {e}", flush=True)
 
