@@ -18,7 +18,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Merged AI & Deep Scanner Active!")
+        self.wfile.write(b"Strict AI Active - No Duplicates!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,26 +44,31 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_MESSAGES = set()
 
 # =========================================================
-# PURE AI CLASSIFIER (NO KEYWORDS)
+# HARD FILTERS & STRICT AI CLASSIFIER
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
-    if not OPENROUTER_KEY:
-        print("❌ خطأ: لا يوجد مفتاح OpenRouter API Key!", flush=True)
+    # 1. تصفية أولية فورية: إن كان النص يحتوي على أرقام هواتف أو روابط تواصل فهو إعلان سائق/خدمة 100%
+    phone_pattern = r"(05\d{8}|\+9665\d{8}|05\d{1}[\s\-]\d{3}[\s\-]\d{4})"
+    if re.search(phone_pattern, text):
+        print(f"🛑 [إعلان مرفوض وجود رقم جوال]: {text[:30]}...", flush=True)
         return False
 
-    prompt = f"""You are an expert AI classifier analyzing raw Telegram chat messages from delivery/transportation groups.
+    if not OPENROUTER_KEY:
+        print("❌ خطأ: مفتاح OpenRouter غير موجود!", flush=True)
+        return False
 
-Determine if the author is a CLIENT/CUSTOMER seeking a service, or a DRIVER/COURIER offering a service.
+    prompt = f"""أنت نظام ذكاء اصطناعي صارم جداً لتصنيف رسائل التلغرام.
+مهمتك: السماح فقط لطلبات الزبائن والعملاء الذين يبحثون عن توصيل أو سائق أو اغراض، ومنع أي إعلان سائق أو توصيل أو نقل أو بيع وشراء.
 
-Rules:
-- Respond YES if the message is written by a client looking for a ride, food delivery, package transfer, driver, courier, or asking if someone is available.
-- Respond NO if the message is written by a driver/courier offering their availability, services, or posting contact details.
+قواعد صارمة جداً:
+- أجب بـ YES فقط إذا كانت الرسالة من زبون/عميل يسأل أو يطلب توصيل/سائق/مشوار/أكل/طلب (مثل: "ابي مندوب"، "مين فاضي يوصلني"، "اريد توصيل ل صامطه"، "فيه سواق"، "احتاج توصيل").
+- أجب بـ NO فوراً إذا كانت الرسالة إعلان سائق، توفر باصات/نقل، عروض توصيل، بيع أثاث/أغراض، أو أكواد برمجية وروابط.
 
-Message:
+النص المراد تحليله:
 "{text}"
 
-Output ONLY "YES" or "NO":"""
+الجواب (أجب فقط إما YES أو NO):"""
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -77,13 +82,13 @@ Output ONLY "YES" or "NO":"""
             "temperature": 0.0,
             "max_tokens": 5
         }
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=6)
         if response.status_code == 200:
             res_data = response.json()
             answer = res_data['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
         else:
-            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي ({response.status_code}): {response.text}", flush=True)
+            print(f"⚠️ خطأ AI Status ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ اتصال بالذكاء الاصطناعي: {e}", flush=True)
 
@@ -97,12 +102,13 @@ async def process_message(bot, message: Message):
     if not message or not message.id:
         return
 
+    # منع التكرار تماماً باستخدام معرف الشات والرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     if msg_key in PROCESSED_MESSAGES:
         return
     
     PROCESSED_MESSAGES.add(msg_key)
-    if len(PROCESSED_MESSAGES) > 10000:
+    if len(PROCESSED_MESSAGES) > 20000:
         PROCESSED_MESSAGES.clear()
 
     if message.from_user and message.from_user.is_self:
@@ -113,12 +119,12 @@ async def process_message(bot, message: Message):
     if len(clean_text) < 2:
         return
 
-    # الفحص بالذكاء الاصطناعي الخالص
+    # الفحص الصارم بالذكاء الاصطناعي
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_client_request:
-        print(f"✅ [تمت الموافقة بالذكاء الاصطناعي]: {clean_text[:40]}...", flush=True)
+        print(f"✅ [طلب زبون حقيقي مقبول]: {clean_text[:40]}...", flush=True)
 
         buttons = []
         row = []
@@ -160,28 +166,6 @@ async def process_message(bot, message: Message):
                 print(f"❌ خطأ توجيه: {e}", flush=True)
 
 # =========================================================
-# REAL-TIME DEEP SCANNER (من كودك القديم لجلب كل القروبات)
-# =========================================================
-
-async def real_time_channel_and_group_scanner(userbot, bot):
-    while True:
-        try:
-            # جلب آخر 100 محادثة ونشاط بانتظام لضمان تغطية كامل القروبات الكبيرة
-            async for dialog in userbot.get_dialogs(limit=100):
-                try:
-                    async for msg in userbot.get_chat_history(dialog.chat.id, limit=3):
-                        await process_message(bot, msg)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.05)
-
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الفحص العميق: {e}", flush=True)
-            
-        # إعادة الفحص الشامل والسريع كل 5 ثوانٍ
-        await asyncio.sleep(5)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -204,17 +188,24 @@ async def main():
         in_memory=True
     )
 
-    # الاستماع الحي الفوري
+    # الاستماع المباشر الحقيقي اللحظي (بدون حلقات تكرارية لمنع التكرار)
     @userbot.on_message(~filters.me & ~filters.private)
     async def global_listener(client: Client, message: Message):
         await process_message(bot, message)
 
     await userbot.start()
     await bot.start()
-    print("🚀 تم تشغيل النظام المدمج (فحص عميق للقروبات الكبيرة + ذكاء اصطناعي خالص)!", flush=True)
 
-    # تشغيل الفاحص المباشر في الخلفية
-    asyncio.create_task(real_time_channel_and_group_scanner(userbot, bot))
+    # تحمئة ومزامنة جميع المحادثات والقروبات الكبيرة مرة واحدة فقط عند التشغيل
+    print("🔄 جاري مزامنة القروبات لضمان استقبال الرسائل الحية...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=200):
+            pass
+        print("✅ تم المزامنة وتفعيل القروبات بنجاح!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء المزامنة: {e}", flush=True)
+
+    print("🚀 تم تشغيل البوت الذكي بنجاح بدون تكرار وبفلترة صارمة 100%!", flush=True)
 
     await asyncio.Event().wait()
 
