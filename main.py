@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Active!")
+        self.wfile.write(b"Barq AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -36,74 +36,55 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728
 API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# مفتاح OpenRouter
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# OPENROUTER AI ANALYSIS ENGINE
+# OPENROUTER PURE AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY!", flush=True)
+        print("❌ لم يتم العثور على مفتاح OPENROUTER_API_KEY في متغيرات البيئة!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
-مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق/مندوب" وبين "سائق يعرض خدمته أو إعلانه".
+    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في فهم وتصنيف طلبات التوصيل والمشاوير باللغة العربية واللهجات المحلية.
+مهمتك الوحيدة: تحليل النص المرفق والتمييز الدقيق بين نوعين من الكتاب:
 
-قواعد التمييز والتصنيف الصارمة:
-
-1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، استلام طرد، توصيل أغراض، أو يستفسر عن شخص قريب منه للتوصيل:
-   - أمثلة لطلب الزبون (YES):
-     * "احتاج مندوب يستلم لي طرد من ارامكس"
-     * "مين فاضي في جيزان؟" / "من قريب من الشواجرة؟"
-     * "ابغى مشوار من جازان الى جامعة الطب"
-     * "محتاجه مندوب داخل جازان"
-     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
-
-2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
-   - أمثلة لعرض السائق (NO):
-     * "أنا قريب من الشواجرة" / "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
-     * "موجود في جازان اي مشوار خاص" / "نوفر نقل الطالبات"
+1. أجب بـ YES إذا كان الكاتب (زبوناً / عميلاً) يطلب توصيلاً أو يبحث عن سائق أو يسأل عن شخص يوصله أو يطلب استلام طرد/أغراض.
+2. أجب بـ NO إذا كان الكاتب (سائقاً / مندوباً) يعرض سيارته، أو يعلن عن توفره ونقله للركاب أو يضع رقم تواصل للخدمات.
 
 الرسالة المراد تحليلها:
 "{text}"
 
-الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
+الجواب (أجب فقط بكلمة YES أو NO بدون أي كلام آخر):"""
 
-    # أسماء النماذج الدقيقة المعتمدة في OpenRouter
-    models = [
-        "google/gemini-flash-1.5-8b",
-        "meta-llama/llama-3.1-8b-instruct",
-        "qwen/qwen-2.5-7b-instruct"
-    ]
-
+    # استخدام نموذج Llama 3.1 8B المباشر والسريع جداً
+    model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_KEY}",
         "Content-Type": "application/json"
     }
 
-    for model_name in models:
-        try:
-            payload = {
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": 10
-            }
-            response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
-            if response.status_code == 200:
-                res_data = response.json()
-                answer = res_data['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [تحليل OpenRouter - {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
-                return "YES" in answer
-            else:
-                print(f"⚠️ فشل النموذج ({model_name}) كود الحالة: {response.status_code} - {response.text}", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ أثناء الاتصال بـ ({model_name}): {e}", flush=True)
+    try:
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": 10
+        }
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
+        if response.status_code == 200:
+            res_data = response.json()
+            answer = res_data['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [تحليل الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
+            return "YES" in answer
+        else:
+            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي ({response.status_code}): {response.text}", flush=True)
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -115,6 +96,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
+    # تجاهل الرسائل الصادرة من نفس الحساب
     if message.from_user and message.from_user.is_self:
         return
 
@@ -135,6 +117,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
+    # تحويل عملية التحليل للذكاء الاصطناعي إلى مسار منفصل لمنع التجميد
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
@@ -221,6 +204,16 @@ async def main():
 
     await userbot.start()
     print("🚀 تم تشغيل النظام بنجاح!", flush=True)
+
+    # جلب ومزامنة جميع المحادثات والمجموعات الكبيرة والقنوات التي ينتمي إليها الحساب
+    try:
+        print("🔄 جاري مزامنة وربط جميع المحادثات والمجموعات الكبيرة...", flush=True)
+        dialogs_count = 0
+        async for dialog in userbot.get_dialogs():
+            dialogs_count += 1
+        print(f"✅ تم ربط البوت بنجاح مع {dialogs_count} محادثة ومجموعة وقناة!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء عملية المزامنة: {e}", flush=True)
 
     await asyncio.Event().wait()
 
