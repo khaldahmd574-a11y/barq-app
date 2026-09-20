@@ -2,3 +2,4 @@ hydrogram
 tgcrypto
 groq
 flask
+requests
