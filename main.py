@@ -66,7 +66,7 @@ def analyze_with_groq(text):
         try:
             client = Groq(api_key=key)
             completion = client.chat.completions.create(
-                model="llama-3.1-8b-instant",  # تم تغيير النموذج ليعمل بدون أخطاء 404
+                model="llama-3.1-8b-instant",  # نموذج شغال ومتاح مجاناً
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=10
@@ -82,7 +82,7 @@ def analyze_with_groq(text):
 # ----------------- تشغيل الحساب -----------------
 app = Client("userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# الاستماع للرسائل في الجروبات واستثناء رسائل الحساب الوهمي نفسه
+# الاستماع للرسائل في الجروبات واستثناء رسائل الحساب نفسه
 @app.on_message(filters.group & ~filters.me)
 async def process_group_messages(client: Client, message: Message):
     text = message.text or message.caption
@@ -101,7 +101,7 @@ async def process_group_messages(client: Client, message: Message):
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ ليست رسالة طلب زبون، تم التغاضي عنها.")
+        print("ℹ️ تم فحص الرسالة عبر Groq وهي ليست طلب زبون.")
 
 if __name__ == "__main__":
     keep_alive()
