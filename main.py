@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq OpenRouter Paid AI Active!")
+        self.wfile.write(b"Pure AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,25 +42,26 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# ADVANCED OPENROUTER AI ENGINE
+# PURE AI ENGINE (NO KEYWORDS, NO EXAMPLES, ZERO-SHOT)
 # =========================================================
 
 def analyze_with_openrouter(text: str) -> bool:
     if not OPENROUTER_KEY:
-        print("❌ لا يوجد مفتاح OpenRouter!", flush=True)
+        print("❌ ERROR: Missing OpenRouter API Key!", flush=True)
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي محترف لمراقبة طلبات المشاوير والتوصيل في منطقة جيزان وما حولها.
+    prompt = f"""You are a smart AI classifier analyzing raw chat messages from Telegram delivery/ride groups.
 
-وظيفتك تحديد هل صاحب الرسالة (زبون يحتاج توصيل) أم (سائق/مندوب يعرض خدمته)؟
+Determine whether the message author is a CLIENT requesting/seeking a service, OR a DRIVER/PROVIDER offering a service.
 
-- أجب بـ YES إذا كان زبوناً يطلب توصيل أو مشوار أو يتساءل عن مندوب أو طلب أكل/طرد (أمثلة: "ابغى مندوب"، "احتاج مندوب"، "ابي توصيل"، "احد يوصل لي من اي ام برجر"، "مين يوصل لي"، "من يوديني"، "احتاج مشوار").
-- أجب بـ NO إذا كان سائقاً أو مندوباً يعرض نفسه للعمل (أمثلة: "مندوب متواجد"، "فاضي للمشاوير"، "توصيل طلبات خاص"، "جاهز الآن"، أو وضع رقم هاتفه).
+Rules:
+- Output "YES" if the text is written by a client looking for transportation, food/item delivery, or asking if a driver/courier is available.
+- Output "NO" if the text is written by a driver/courier offering their availability, services, or contact details.
 
-الرسالة:
+Message:
 "{text}"
 
-الجواب (أجب بكلمة واحدة فقط: YES أو NO):"""
+Response (Reply ONLY with YES or NO):"""
 
     model_name = "meta-llama/llama-3.1-8b-instruct"
     headers = {
@@ -73,7 +74,7 @@ def analyze_with_openrouter(text: str) -> bool:
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.0,
-            "max_tokens": 10
+            "max_tokens": 5
         }
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers, timeout=8)
         if response.status_code == 200:
@@ -81,9 +82,9 @@ def analyze_with_openrouter(text: str) -> bool:
             answer = res_data['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
         else:
-            print(f"⚠️ خطأ AI ({response.status_code}): {response.text}", flush=True)
+            print(f"⚠️ AI Error Status ({response.status_code}): {response.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ اتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ AI Request Failure: {e}", flush=True)
 
     return False
 
@@ -95,18 +96,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائلي الشخصية
     if message.from_user and message.from_user.is_self:
         return
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
     
-    # السماح بالنصوص القصيرة جداً بدءاً من حرفين
     if len(clean_text) < 2:
         return
 
-    # منع تكرار معالجة نفس الرسالة
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -119,12 +117,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # التحليل بواسطة الذكاء الاصطناعي
     loop = asyncio.get_event_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_openrouter, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب زبون مقبول]: {clean_text[:40]}...", flush=True)
+        print(f"✅ [ACCEPTED BY PURE AI]: {clean_text[:40]}...", flush=True)
 
         buttons = []
         row = []
@@ -172,7 +169,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# MAIN ENTRYPOINT
+# MAIN ENTRYPOINT (SUPERGROUP FIX INCLUDED)
 # =========================================================
 
 async def main():
@@ -200,13 +197,23 @@ async def main():
         except Exception:
             pass
 
-    # استماع حي وشامل لكافة الرسائل القادمة من القروبات والقنوات
-    @userbot.on_message(~filters.me & ~filters.private)
+    # استماع لكافة الرسائل بجميع أنواع المجموعات والقنوات بدون أي فلاتر
+    @userbot.on_message(filters.group | filters.channel | filters.supergroup)
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت المطور لالتقاط العبارات القصيرة مثل (ابغى مندوب)!", flush=True)
+
+    # حل مشكلة القروبات الكبيرة: تحميل المحادثات لتفعيل التحديثات المباشرة
+    print("🔄 جاري مزامنة المحادثات والقروبات الكبيرة...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=200):
+            pass
+        print("✅ تم ربط وحفظ القروبات الكبيرة بنجاح!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه أثناء جلب المحادثات: {e}", flush=True)
+
+    print("🚀 تم تشغيل البوت الذكي بالكامل بدون أي كلمات وبدعم المجموعات الكبيرة!", flush=True)
 
     await asyncio.Event().wait()
 
