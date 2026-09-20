@@ -82,15 +82,18 @@ def analyze_with_groq(text):
 # ----------------- تشغيل الحساب -----------------
 app = Client("userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
+# الاستماع للرسائل في الجروبات واستثناء رسائل الحساب الوهمي نفسه
 @app.on_message(filters.group & ~filters.me)
 async def process_group_messages(client: Client, message: Message):
-    if not message.text:
+    # قراءة النص سواء كان رسالة نصية أو شرحاً على صورة/فيديو
+    text = message.text or message.caption
+    if not text:
         return
     
-    print(f"📩 تم استقبال رسالة في الجروب: {message.chat.title or message.chat.id}")
+    print(f"📩 تم استقبال رسالة جديدة من عضو في الجروب ({message.chat.title or message.chat.id}): {text}")
 
     # تحليل النص بذكاء بواسطة Groq
-    is_customer_request = await asyncio.to_thread(analyze_with_groq, message.text)
+    is_customer_request = await asyncio.to_thread(analyze_with_groq, text)
     
     if is_customer_request:
         try:
@@ -99,10 +102,9 @@ async def process_group_messages(client: Client, message: Message):
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ ليست رسالة طلب زبون، تم التغاضي عنها.")
+        print("ℹ️ تم فحص الرسالة عبر Groq وهي ليست طلب زبون.")
 
 if __name__ == "__main__":
-    # أضف Flask إلى ملف requirements.txt أيضاً
     keep_alive()
     print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq...")
     app.run()
