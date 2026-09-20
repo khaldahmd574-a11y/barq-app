@@ -17,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq OpenRouter AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -37,19 +37,22 @@ API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728
 API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# مفاتيح الذكاء الاصطناعي
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
+# مفتاح OpenRouter الجديد
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# القائمة المحدثة (بدون fs_990)
+# قائمة المستخدمين المستهدفين (بدون fs_990)
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# MULTI-ENGINE AI ANALYSIS
+# OPENROUTER AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
+    if not OPENROUTER_KEY:
+        print("❌ خطأ: لم يتم إضافة متغير البيئة OPENROUTER_API_KEY في Render!", flush=True)
+        return False
+
     prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
 مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق/مندوب" وبين "سائق يعرض خدمته أو إعلانه".
 
@@ -68,57 +71,43 @@ def analyze_with_pure_ai(text: str) -> bool:
      * "أنا قريب من الشواجرة" / "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
      * "موجود في جازان اي مشوار خاص" / "نوفر نقل الطالبات"
 
-الرسالة المراد تحلیلها:
+الرسالة المراد تحليلها:
 "{text}"
 
 الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
 
-    # 1. التجربة عبر Google Gemini (بأسماء النماذج الحالية والرسمية)
-    if GEMINI_KEY:
-        models = ["gemini-1.5-flash", "gemini-1.5-pro"]
-        for model in models:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY.strip()}"
-                headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.1, "maxOutputTokens": 10}
-                }
-                req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    if response.status == 200:
-                        res_data = json.loads(response.read().decode('utf-8'))
-                        answer = res_data['candidates'][0]['content']['parts'][0]['text'].strip().upper()
-                        print(f"🤖 [تحليل Gemini ({model})]: '{text[:30]}...' -> {answer}", flush=True)
-                        return "YES" in answer
-            except Exception as e:
-                print(f"⚠️ فشل Gemini ({model}): {e}", flush=True)
+    # نماذج مجانية وسريعة جداً في OpenRouter
+    models = [
+        "google/gemini-2.5-flash:free",
+        "qwen/qwen-2.5-7b-instruct:free",
+        "meta-llama/llama-3.3-70b-instruct:free"
+    ]
 
-    # 2. التجربة عبر OpenRouter (خيار احتياطي ممتاز)
-    if OPENROUTER_KEY:
+    for model_name in models:
         try:
             url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {
-                "Authorization": f"Bearer {OPENROUTER_KEY.strip()}",
-                "Content-Type": "application/json"
+                "Authorization": f"Bearer {OPENROUTER_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://render.com",
+                "X-Title": "BarqBot"
             }
             payload = {
-                "model": "qwen/qwen-2.5-7b-instruct",
+                "model": model_name,
                 "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 5
+                "temperature": 0.1,
+                "max_tokens": 10
             }
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
-            with urllib.request.urlopen(req, timeout=5) as response:
+            with urllib.request.urlopen(req, timeout=6) as response:
                 if response.status == 200:
                     res_data = json.loads(response.read().decode('utf-8'))
                     answer = res_data['choices'][0]['message']['content'].strip().upper()
-                    print(f"🤖 [تحليل OpenRouter]: '{text[:30]}...' -> {answer}", flush=True)
+                    print(f"🤖 [تحليل OpenRouter - {model_name}]: '{text[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
         except Exception as e:
-            print(f"⚠️ فشل OpenRouter: {e}", flush=True)
+            print(f"⚠️ فشل الاتصال بالنموذج ({model_name}): {e}", flush=True)
 
-    print("❌ لم يتم العثور على أي مفتاح API صالح يعمل في متغيرات البيئة!", flush=True)
     return False
 
 # =========================================================
@@ -240,3 +229,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
