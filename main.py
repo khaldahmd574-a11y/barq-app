@@ -14,20 +14,13 @@ SESSION_STRING = os.environ.get("SESSION_STRING")
 # المعرف المستهدف للتوجيه
 FORWARD_TO = "@abood1317"
 
-# قائمة مفاتيح Groq الثلاثة
-GROQ_KEYS = [
-    os.environ.get("GROQ_API_KEY_1"),
-    os.environ.get("GROQ_API_KEY_2"),
-    os.environ.get("GROQ_API_KEY_3")
-]
-current_key_index = 0
+# مفتاح API من متغيرات البيئة
+GROQ_KEY = os.environ.get("GROQ_API_KEY_1")
 
-# قائمة نماذج الذكاء الاصطناعي المتاحة مجاناً للتجربة بالتتابع
+# الأسماء الرسمية الصحيحة لموديلات Groq الحالية
 GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "llama3-8b-8192",
-    "llama3-70b-8192",
-    "mixtral-8x7b-32768"
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant"
 ]
 
 # ----------------- سيرفر خفيف لإبقاء Render شغالاً 24/7 -----------------
@@ -46,17 +39,19 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# ----------------- دالة الذكاء الاصطناعي Groq -----------------
+# ----------------- دالة الذكاء الاصطناعي -----------------
 def analyze_with_groq(text):
-    global current_key_index
-    
+    if not GROQ_KEY:
+        print("⚠️ لم يتم العثور على GROQ_API_KEY_1")
+        return False
+
     prompt = f"""
 أنت مساعد متخصص في تصنيف رسائل مجموعات التوصيل والمشاوير على التلجرام.
 
 حلل النص التالي بذكاء واقرر نية الكاتب:
-- إذا كان النص **طلب زبون حقيقي** يبحث عن توصيل (مثل: طلب توصيل أغراض، مشوار، توصيل طلب مطعم، طرد) -> أجب بـ: YES
-- إذا كان النص **عروض أو إعلانات سائقين/مندوبين** يعلنون عن أنفسهم أو سياراتهم (مثل: "مستعد للتوصيل"، "سائق متاح"، "توصيل مشاوير خاص"، "سيارة مكيفة") -> أجب بـ: NO
-- إذا كان النص كلاماً عاماً، إعلانات أخرى، أو سبام -> أجب بـ: NO
+- إذا كان النص **طلب زبون حقيقي** يبحث عن توصيل (مثل: طلب توصيل، يبغى توصيل، طرد، مشوار، توصيل طلب) -> أجب بـ: YES
+- إذا كان النص **عروض سائقين** يعلنون عن أنفسهم (مثل: مستعد للتوصيل، سائق متاح، سيارة مكيفة) -> أجب بـ: NO
+- إذا كان النص غير ذلك -> أجب بـ: NO
 
 اجعل إجابتك كلمة واحدة فقط: إما YES أو NO.
 
@@ -66,41 +61,30 @@ def analyze_with_groq(text):
 \"\"\"
 """
 
-    # تجربة المفاتيح والنماذج المتاحة للذكاء الاصطناعي
-    for _ in range(len(GROQ_KEYS)):
-        key = GROQ_KEYS[current_key_index]
-        if not key:
-            current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
-            continue
-        
-        client = Groq(api_key=key)
-        
-        # تجربة النماذج المتاحة في Groq بالتتابع
-        for model_name in GROQ_MODELS:
-            try:
-                completion = client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=10
-                )
-                response = completion.choices[0].message.content.strip().upper()
-                print(f"🤖 تحليل الذكاء الاصطناعي ({model_name}): {response}")
-                return "YES" in response
-            except Exception as e:
-                # إذا لم ينجح النموذج يستمر في تجربة النموذج التالي
-                continue
-        
-        # التبديل للمفتاح التالي عند استنفاد الرصيد أو حدوث خطأ بالمفتاح الحالي
-        current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+    client = Groq(api_key=GROQ_KEY)
 
-    print("⚠️ تعذر الاتصال بجميع مفاتيح/نماذج Groq.")
-    return False
+    for model_name in GROQ_MODELS:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=10
+            )
+            response = completion.choices[0].message.content.strip().upper()
+            print(f"🤖 تحليل الذكاء الاصطناعي بواسطة ({model_name}): {response}")
+            return "YES" in response
+        except Exception as e:
+            print(f"⚠️ فشل النموذج {model_name}: {e}")
+            continue
+
+    print("⚠️ فشل جميع النماذج، جاري استخدام الفحص البديل...")
+    keywords = ["ابغى توصيل", "يبغى توصيل", "مطلوب توصيل", "محتاج توصيل", "توصيل من", "نوصل"]
+    return any(k in text for k in keywords)
 
 # ----------------- تشغيل الحساب -----------------
 app = Client("userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING)
 
-# الاستماع للرسائل في الجروبات واستثناء رسائل الحساب نفسه
 @app.on_message(filters.group & ~filters.me)
 async def process_group_messages(client: Client, message: Message):
     text = message.text or message.caption
@@ -109,7 +93,7 @@ async def process_group_messages(client: Client, message: Message):
     
     print(f"📩 تم استقبال رسالة جديدة: {text}")
 
-    # تحليل النص بنسبة 100% بواسطة الذكاء الاصطناعي
+    # تحليل النص بواسطة الذكاء الاصطناعي
     is_customer_request = await asyncio.to_thread(analyze_with_groq, text)
     
     if is_customer_request:
@@ -119,9 +103,10 @@ async def process_group_messages(client: Client, message: Message):
         except Exception as e:
             print(f"❌ خطأ أثناء توجيه الرسالة إلى {FORWARD_TO}: {e}")
     else:
-        print("ℹ️ تم فحص الرسالة عبر الذكاء الاصطناعي وهي ليست طلب زبون.")
+        print("ℹ️ ليست طلب زبون حقيقي.")
 
 if __name__ == "__main__":
     keep_alive()
-    print("🚀 جاري تشغيل الحساب الوهمي ونظام Groq AI...")
+    print("🚀 جاري تشغيل الحساب الوهمي ونظام الذكاء الاصطناعي...")
     app.run()
+
