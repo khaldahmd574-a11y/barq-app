@@ -38,7 +38,6 @@ OPENROUTER_MODEL = os.getenv(
 #                  المستهدفون بالطلبات
 # ============================================================
 
-# يمكن تعيينهم من بيئة العمل مفصولين بفاصلة، أو استخدام الافتراضي
 env_targets = os.getenv("TARGET_USERS", "")
 if env_targets:
     TARGET_USERS = [t.strip() for t in env_targets.split(",") if t.strip()]
@@ -208,7 +207,7 @@ async def is_duplicate(message: Message, text: str) -> bool:
 
 
 # ============================================================
-#                  فلتر أرقام الجوال
+#                  فلتر أرقام الجوال والعبارات الإعلانية
 # ============================================================
 
 PHONE_PATTERNS = [
@@ -222,18 +221,36 @@ PHONE_PATTERNS = [
 
 PHONE_REGEX = re.compile("|".join(PHONE_PATTERNS))
 
+# عبارات صريحة خاصة بالسائقين يتم استبعادها فوراً قبل الذكاء الاصطناعي
+DRIVER_EXCLUDE_TRIGGERS = [
+    "متواجد في", "متواجدين", "فاضي في", "موجود في", "نوفر نقل", 
+    "توصيل طلبات", "سائق للمشاوير", "تواصل خاص", "سواق مشاوير", "سيارة لنقل"
+]
+
 
 def normalize_arabic_digits(text: str) -> str:
     translation = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
     return text.translate(translation)
 
 
-def contains_phone_number(text: str) -> bool:
+def is_driver_advertisement(text: str) -> bool:
     try:
         normalized = normalize_arabic_digits(text)
-        return bool(PHONE_REGEX.search(normalized))
+        
+        # 1. فحص رقم الجوال
+        if PHONE_REGEX.search(normalized):
+            return True
+
+        # 2. فحص عبارات السائقين المباشرة (ما لم تكن تحتوي على لفظ طلب صريح مثل: أبغى/أحتاج)
+        clean = text.lower()
+        if not any(req in clean for req in ["ابغى", "أبغى", "احتاج", "أحتاج", "ابي", "مطلوب", "مين يوصل"]):
+            for trigger in DRIVER_EXCLUDE_TRIGGERS:
+                if trigger in clean:
+                    return True
+
+        return False
     except Exception as e:
-        logger.exception(f"Phone regex error: {e}")
+        logger.exception(f"Filter check error: {e}")
         return False
 
 
@@ -251,24 +268,29 @@ def clean_text(text: str) -> str:
 
 
 # ============================================================
-#                    AI SYSTEM PROMPT
+#             AI SYSTEM PROMPT (تحليل نية الطلب حصراً)
 # ============================================================
 
-AI_SYSTEM_PROMPT = """أنت نظام تصفية صارم ومحدد لطلبات المشاوير والتوصيل في السعودية.
-المطلوب منك تحديد هل الرسالة صادرة من زبون/عميل يطلب توصيل أو مشوار، أم أنها إعلان لسائق/مندوب أو رسالة غير متعلقة.
+AI_SYSTEM_PROMPT = """أنت فلتر ذكاء اصطناعي محترف متخصص في تحليل "نية الرسالة" (Message Intent Analysis).
 
-قواعد الإجابة:
-- أخرج كائن JSON حصراً بالشكل التالي: {"allow": true} أو {"allow": false}
+مهمتك الوحيدة: تحديد هل كاتب الرسالة "زبون يطلب توصيل/مشوار" أم "سائق يعرض خدمته/يتواجد في مكان".
 
-اجعل allow تساوي true فقط إذا كانت الرسالة طلب زبون مثل:
-- يبحث عن سواق/سائقة/مندوب
-- يريد مشوار أو توصيل غرض/أشخاص
-- يطلب توصيل من مكان إلى مكان
+المخرجات المطلوبة:
+أخرج كائن JSON حصراً:
+{"allow": true}
+أو
+{"allow": false}
 
-اجعل allow تساوي false إذا كانت الرسالة:
-- إعلان سائق أو مندوب يقدّم خدمة توصيل
-- تحتوي على أرقام هواتف أو روابط إعلانات
-- غير متعلقة بطلب مشوار أو توصيل"""
+قواعد التصنيف الصارمة:
+
+1. اجعل allow تساوي true فقط إذا كان الكاتب زبوناً/عميلاً يمتلك "نية طلب" واضحة مثل:
+- يبحث عن سائق أو توصيل ("أبغى سواق من جيزان لبيش"، "احتاج توصيل"، "مين فاضي يوصلني").
+- يطلب إحضار غرض أو استلام طلب ("أحد يقدر يجيب لي طلب من المطعم").
+
+2. اجعل allow تساوي false في الحالات التالية:
+- إذا كان الكاتب سائقاً يعرض خدمته أو يعلن عن توفره ("متواجد في أبو عريش للمشاوير"، "فاضي صامطة"، "أنا سواق"، "نقل طالبات").
+- الرسالة إعلانات، أرقام هواتف، روابط، تحيات، أو رسائل غير واضحة.
+"""
 
 
 # ============================================================
@@ -291,7 +313,7 @@ async def ask_openrouter(text: str) -> bool:
             "model": OPENROUTER_MODEL,
             "messages": [
                 {"role": "system", "content": AI_SYSTEM_PROMPT},
-                {"role": "user", "content": f"الرسالة: \"{text}\""}
+                {"role": "user", "content": f"حلل نية هذه الرسالة: \"{text}\""}
             ],
             "temperature": 0.0,
             "max_tokens": 20
@@ -321,7 +343,6 @@ async def ask_openrouter(text: str) -> bool:
                         if not content:
                             return False
 
-                        # تنظيف ناتج الذكاء الاصطناعي من أي أوسام Markdown
                         content_clean = re.sub(r"```json|```", "", content).strip()
                         
                         try:
@@ -546,20 +567,20 @@ async def process_message(message: Message):
                 logger.info("DUPLICATE -> SKIP")
                 return
 
-            # فلتر أرقام الجوال
-            if contains_phone_number(text):
-                logger.info("PHONE NUMBER -> SKIP")
+            # فلتر أرقام الجوال وعروض السائقين
+            if is_driver_advertisement(text):
+                logger.info("DRIVER OFFER / PHONE NUMBER -> SKIP")
                 return
 
-            # الذكاء الاصطناعي
-            logger.info(f"AI CHECK -> {text[:60]}")
+            # تحليل نية الطلب بالذكاء الاصطناعي
+            logger.info(f"AI CHECK INTENT -> {text[:60]}")
             allowed = await ask_openrouter(text)
 
             if not allowed:
-                logger.info("AI REJECTED")
+                logger.info("AI REJECTED (Not a customer request)")
                 return
 
-            logger.info("AI ACCEPTED")
+            logger.info("AI ACCEPTED (Customer request matched)")
             await send_to_all_targets(message, text)
 
         except FloodWait as e:
