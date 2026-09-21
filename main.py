@@ -2,6 +2,7 @@ import os
 import asyncio
 import hashlib
 import requests
+import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -16,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Human-Level AI Active!")
+        self.wfile.write(b"Barq System Online & Smart Filtered!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,37 +43,64 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HUMAN-LEVEL FULL POST INTENT ENGINE
+# HARD RULES (قواعد استبعاد السائقين والمناديب برمجياً)
 # =========================================================
 
-def analyze_post_like_a_human(text: str) -> bool:
+DRIVER_DENY_PATTERNS = [
+    r"يتوصل معي",
+    r"يتواصل معي",
+    r"تواصل معي",
+    r"تواصلوا معي",
+    r"يتواصلون معي",
+    r"يتواصل خاص",
+    r"تواصل خاص",
+    r"يجي خاص",
+    r"يجيني خاص",
+    r"يراسلني خاص",
+    r"فاضي لتوصيل",
+    r"متواجد لتوصيل",
+    r"على أتم الاستعداد",
+    r"الي يبغى.*يتوصل",
+    r"الي يبغى.*يتواصل",
+    r"اللي يبي.*يجي",
+    r"مين تبي سواق",
+    r"مين يبغى سواق",
+]
+
+def contains_driver_offer(text: str) -> bool:
+    for pattern in DRIVER_DENY_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
+# =========================================================
+# HYBRID INTENT ENGINE (الفلتر الذكي)
+# =========================================================
+
+def analyze_post_strictly(text: str) -> bool:
+    clean_text = text.strip()
+
+    # كلمات صريحة واضحة لطلبات الزبائن
+    is_explicit_request = any(clean_text.startswith(w) for w in ["ابغى", "أبغى", "ابغا", "أبغا", "احتاج", "أحتاج", "مطلوب", "مين", "من يوصل", "من يوديني"])
+
+    # 1. الاستبعاد البرمجي المباشر لإعلانات المناديب
+    if not is_explicit_request and contains_driver_offer(clean_text):
+        print(f"🚫 [استبعاد برمجي - إعلان مندوب/سائق]: '{clean_text[:35]}...'", flush=True)
+        return False
+
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""تخيل أنك إنسان بشري خبير يقرأ منشورات ومحادثات مجموعات المشاوير والتوصيل بالسعودية.
-لا تنظر لكلمات منفردة بل اقرأ المنشور كاملاً وافهم نية كاتب المنشور الحقيقية بشكل كامل:
+    # 2. الفحص بالذكاء الاصطناعي للتحقق من النية
+    prompt = f"""أنت نظام فلترة صارم جداً لطلبات التوصيل والمشاوير بالسعودية.
+اقرأ هذا المنشور بتركيز شديد وافهم النية الحقيقية لكاتبه:
+"{clean_text}"
 
-المنشور المراد تحليله:
-"{text}"
+هل كاتب هذا المنشور هو عميل/زبون يبحث عن توصيلة أو سواق/مندوب لنفسه؟
+- أجب بـ (YES) فقط إذا كان الكاتب زبون يحتاج خدمة (مثل: ابغى سواق, محتاجه مندوب, من يوصلني, ابغى مندوب فاضي يتواصل معاي).
+- أجب بـ (NO) إذا كان الكاتب هو السائق أو المندوب بنفسه يعلن عن توفره أو يضع رقمه أو يطلب من الناس التواصل معه.
 
-قواعد التصنيف البشري:
-
-1. أجب بـ (YES) فقط إذا كان صاحب المنشور شخصاً يبحث عن خدمة (زبون / عميل / ركاب / شخص يحتاج توصيل أغراض أو شحنة أو يريد سواق).
-   - أمثلة صريحة للقبول (YES):
-     * "من قريب من الراشد يوصلني السويس" (استفسار عن سائق قاطن قرب الراشد -> زبون)
-     * "من يوصلني لصبيا" (طلب توصيلة -> زبون)
-     * "ابغى سواقه شهري من بيش" (طلب سائق -> زبون)
-     * "ابغا سطحه من الحقو لصبيا" (طلب نقل -> زبون)
-     * "مين فاضي الحين ينفعني بمشوار" (استفسار زبون)
-
-2. أجب بـ (NO) وبشكل قاطع إذا كان صاحب المنشور هو السائق/المندوب بنفسه يعلن عن توفره، أو يعلن عن سيارته، أو يذكر خط سيره للآخرين، أو يطلب من الناس التواصل معه للركوب معك.
-   - أمثلة صريحة للرفض (NO):
-     * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب" (إعلان سائق -> NO)
-     * "اي طلب او مشوار صامطة خاص" (إعلان سائق -> NO)
-     * "طالع من صامطه لين مستشفى الملك فهد" (سائق يذكر خط سيره -> NO)
-     * "الي فاضي يرسل خاص" / "الي يبي مشوار يجي خاص" (سائق يطلب عملاء -> NO)
-
-الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
+الجواب كلمة واحدة فقط (YES أو NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -90,12 +118,10 @@ def analyze_post_like_a_human(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [فهم بشري كامل للنية]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🧠 [تحليل الذكاء الاصطناعي]: '{clean_text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-        else:
-            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -107,7 +133,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائل الحساب المسجل به البوت نفسه
+    # استثناء رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -130,13 +156,13 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
     chat_title = message.chat.title or str(message.chat.id)
     sender_name = message.from_user.first_name if message.from_user else "مجهول"
-    print(f"📩 [رسالة التُقطت من {chat_title} بواسطة {sender_name}]: {clean_text[:40]}...", flush=True)
+    print(f"📥 [رسالة جديدة من {chat_title} - {sender_name}]: {clean_text[:30]}...", flush=True)
 
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_post_like_a_human, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_post_strictly, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول - جارٍ الإرسال]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -184,22 +210,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     print(f"❌ فشل اليوزربوت لإرسال {user}: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER (100 GROUPS)
-# =========================================================
-
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=100):
-                if dialog.top_message:
-                    await process_live_message(userbot, bot, dialog.top_message)
-        except Exception as e:
-            print(f"⚠️ خطأ الفاحص الدائري: {e}", flush=True)
-            
-        await asyncio.sleep(3)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -228,16 +238,16 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع اللحظي المباشر السريع
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث بذكاء بشري كامل لنوايا المنشورات!", flush=True)
-
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
+    print("🚀 تم تشغيل النظام بالاستماع المباشر والفلترة الذكية!", flush=True)
 
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
+
