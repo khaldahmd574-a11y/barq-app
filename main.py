@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import asyncio
 import hashlib
@@ -8,7 +7,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import aiohttp
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message
 
 # ============================================================
@@ -20,24 +19,13 @@ API_HASH = os.getenv("API_HASH") or os.getenv("TELEGRAM_API_HASH")
 SESSION_STRING = os.getenv("SESSION_STRING")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
 PORT = int(os.getenv("PORT", "10000"))
-
-OPENROUTER_MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "qwen/qwen-2.5-7b-instruct"
-)
 
 env_targets = os.getenv("TARGET_USERS", "")
 if env_targets:
     TARGET_USERS = [t.strip() for t in env_targets.split(",") if t.strip()]
 else:
     TARGET_USERS = ["@abood1317", "@shaybq"]
-
-# ============================================================
-#                       Logging الشامل
-# ============================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,68 +65,9 @@ app = Client(
 )
 
 BOT_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # ============================================================
-#                 منع الرسائل المكررة
-# ============================================================
-
-processed_messages = {}
-processed_lock = asyncio.Lock()
-
-async def is_duplicate(message: Message, text: str) -> bool:
-    try:
-        chat_id = getattr(message.chat, "id", 0)
-        sender_id = getattr(message.from_user, "id", 0) if message.from_user else 0
-        normalized = text.strip().lower()
-        raw = f"{chat_id}|{sender_id}|{normalized}"
-        fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-        async with processed_lock:
-            if fingerprint in processed_messages:
-                return True
-            processed_messages[fingerprint] = time.time()
-        return False
-    except Exception:
-        return False
-
-# ============================================================
-#             AI SYSTEM PROMPT (فحص نية الزبون)
-# ============================================================
-
-AI_SYSTEM_PROMPT = "حدد هل الرسالة طلب توصيل من زبون؟ أجب بـ YES أو NO فقط."
-
-async def ask_openrouter(text: str) -> bool:
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": AI_SYSTEM_PROMPT},
-            {"role": "user", "content": text}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 10
-    }
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            async with session.post(OPENROUTER_URL, headers=headers, json=payload) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    content = data["choices"][0]["message"]["content"].strip().upper()
-                    res_bool = "YES" in content
-                    logger.info(f"🤖 [استجابة الذكاء الاصطناعي]: {res_bool} ({content})")
-                    return res_bool
-                else:
-                    logger.error(f"❌ [خطأ OpenRouter]: رمز {response.status}")
-    except Exception as e:
-        logger.error(f"❌ [خطأ الذكاء الاصطناعي]: {e}")
-    return False
-
-# ============================================================
-#            إرسال النتائج للمستهدفين وتتبع الأخطاء
+#            إرسال النتائج المباشرة للمستهدفين
 # ============================================================
 
 async def send_to_targets(message: Message, text: str):
@@ -147,7 +76,7 @@ async def send_to_targets(message: Message, text: str):
     
     user_link = f"https://t.me/{message.from_user.username}" if message.from_user and message.from_user.username else f"tg://user?id={message.from_user.id}" if message.from_user else ""
 
-    output = f"📦 طلب جديد من: {sender_name}\n📍 المصدر: {chat_name}\n\n💬 التفاصيل:\n{text}"
+    output = f"📦 رسالة جديدة من: {sender_name}\n📍 المصدر: {chat_name}\n\n💬 النص:\n{text}"
     if user_link:
         output += f"\n\n👤 رابط العميل: {user_link}"
 
@@ -165,15 +94,15 @@ async def send_to_targets(message: Message, text: str):
                     if res_json.get("ok"):
                         logger.info(f"✅ [تم الإرسال بنجاح للهدف]: {target}")
                     else:
-                        logger.error(f"❌ [فشل إرسال البوت لـ {target}]: {res_json}")
+                        logger.error(f"❌ [فشل الإرسال لـ {target}]: {res_json}")
         except Exception as e:
             logger.error(f"❌ [خطأ شبكة مع {target}]: {e}")
 
 # ============================================================
-#               معالج الرسائل واكتشاف المشاكل
+#           استماع مباشر وصريح لكافة الرسائل (Direct Hook)
 # ============================================================
 
-@app.on_message()
+@app.on_message(filters.all)
 async def process_all_messages(client: Client, message: Message):
     try:
         text = message.text or message.caption or ""
@@ -181,28 +110,15 @@ async def process_all_messages(client: Client, message: Message):
             return
 
         chat_title = message.chat.title or "خاص"
-        logger.info(f"📥 [رسالة من: {chat_title}]: {text[:40]}")
+        logger.info(f"📥 [تم سحب رسالة من {chat_title}]: {text[:40]}")
 
-        # أمر اختبار فوري
-        if text.strip() in ["/تست", "/test"]:
-            logger.info("🧪 [تشغيل اختبار الإرسال...]")
-            await send_to_targets(message, "اختبار إرسال مباشر لتأكد وصول الرسائل ✅")
-            return
-
+        # عدم إعادة معالجة الرسائل التي يكتبها الحساب نفسه
         me = await client.get_me()
         if message.from_user and message.from_user.id == me.id:
             return
 
-        if await is_duplicate(message, text):
-            return
-
-        is_request = await ask_openrouter(text)
-
-        if is_request:
-            logger.info("✅ طلب عميل -> جاري الإرسال...")
-            await send_to_targets(message, text)
-        else:
-            logger.info("❌ ليست طلب عميل")
+        # إرسال مباشر بدون التعقيد بالذكاء الاصطناعي لتأكيد السحب
+        await send_to_targets(message, text)
 
     except Exception as e:
         logger.exception(f"❌ [خطأ]: {e}")
@@ -212,7 +128,7 @@ async def process_all_messages(client: Client, message: Message):
 # ============================================================
 
 async def main():
-    logger.info("🚀 جاري بدء اليوزربوت...")
+    logger.info("🚀 تشغيل اليوزربوت واستماع كلي مباشر...")
     await app.start()
     me = await app.get_me()
     logger.info(f"✅ الحساب متصل: {me.first_name}")
