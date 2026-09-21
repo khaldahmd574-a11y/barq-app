@@ -42,34 +42,27 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE INTENT AI ANALYSIS ENGINE (تحليل النية بالذكاء الاصطناعي فقط)
+# FULL CONTEXT INTENT ANALYZER (تحليل السياق والنية الكاملة)
 # =========================================================
 
-def analyze_with_pure_ai(text: str) -> bool:
+def analyze_full_post_intent(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""حلل نية كاتب الرسالة بدقة في قروبات المشاوير والتوصيل:
+    prompt = f"""اقرأ هذا المنشور بالكامل وافهم النية العامة للكاتب من السياق الشامل للرسالة:
 
-1. أجب بـ YES فقط إذا كانت نية الكاتب "زبون محتاج توصيل أو يسأل عن سائق/مندوب يوصله"
-   أمثلة صريحة للنية المقبولة (YES):
-   - "احد فاضي في العدايا ينفعني؟"
-   - "مين قريب من صبيا يوصلني؟"
-   - "ابغى سواق شهر"
-   - "حد فاضي يجيب لي غرض؟"
-   - "ابي توصيل للكلية"
-
-2. أجب بـ NO إذا كانت نية الكاتب "سائق/مندوب يعرض خدمته أو سيارته أو توفره للآخرين"
-   أمثلة صريحة للنية المرفوضة (NO):
-   - "فاضي بصبيا اللي يبي مشوار يتواصل خاص"
-   - "مندوب متواجد بالداير"
-   - "نوفر نقل طالبات وموظفات"
-   - "متواجدين للتوصيل"
-
-الرسالة المراد تحليل نيتها:
+المنشور المراد تحليله:
 "{text}"
 
-الجواب (YES أو NO فقط بدون أي كلمة إضافية):"""
+المطلوب: حدد الدور الحقيقي للكاتب بناءً على مفهوم المنشور كاملاً:
+
+- اختر (YES) فقط وفقط إذا كانت نية الكاتب الكلية هي "عميل/زبون يريد توصيلاً لنفسه أو لأغراضه ويبحث عن شخص يخدمه".
+  (مثال للنية الشاملة: الكاتب هو المستفيد الذي يحتاج وسيلة نقل أو يبحث عن سائق/مندوب).
+
+- اختر (NO) فوراً إذا كانت نية الكاتب الكلية هي "سائق، أو مندوب، أو صاحب سيارة يعرض توفره أو خدمته لنقل الآخرين أو تنفيذ طلباتهم".
+  (تنبيه: حتى لو ذكر السائق كلمة "طلب" مثل "أي طلب على طريقي" أو "جاهز للطلبات"، فالنية العامة هي "إعلان سائق" وليست طلب عميل، وتصنف NO).
+
+الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -87,7 +80,7 @@ def analyze_with_pure_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل نية المنشور بالكامل]: '{text[:40]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -122,12 +115,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # تحويل كامل المعالجة للذكاء الاصطناعي
+    # إرسال المنشور كاملاً للذكاء الاصطناعي ليحلل النية الشاملة
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_full_post_intent, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل مقبول بناءً على النية]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول بناءً على السياق]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -224,7 +217,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالتحليل النحوي المباشر للذكاء الاصطناعي فقط!", flush=True)
+    print("🚀 تم تشغيل النظام بفحص السياق الكامل والنية المباشرة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
