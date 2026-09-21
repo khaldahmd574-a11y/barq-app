@@ -1,138 +1,238 @@
 import os
-import time
 import asyncio
 import hashlib
-import logging
+import requests
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from hydrogram import Client
+from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-import aiohttp
-from hydrogram import Client, filters
-from hydrogram.types import Message
+# =========================================================
+# KEEP ALIVE SERVER 24/7
+# =========================================================
 
-# ============================================================
-#                    إعدادات Environment
-# ============================================================
-
-API_ID = os.getenv("API_ID") or os.getenv("TELEGRAM_API_ID")
-API_HASH = os.getenv("API_HASH") or os.getenv("TELEGRAM_API_HASH")
-SESSION_STRING = os.getenv("SESSION_STRING")
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PORT = int(os.getenv("PORT", "10000"))
-
-env_targets = os.getenv("TARGET_USERS", "")
-if env_targets:
-    TARGET_USERS = [t.strip() for t in env_targets.split(",") if t.strip()]
-else:
-    TARGET_USERS = ["@abood1317", "@shaybq"]
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
-)
-logger = logging.getLogger("BARQ_DEBUG")
-
-# ============================================================
-#                     Keep Alive Server
-# ============================================================
-
-class KeepAliveHandler(BaseHTTPRequestHandler):
+class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
-        try:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(b"Barq Userbot Active")
-        except Exception:
-            pass
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Barq Pure AI System Active!")
 
-    def log_message(self, format, *args):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    server.serve_forever()
+
+# =========================================================
+# CONFIGURATION
+# =========================================================
+
+SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+# تم استبعاد fs_990
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
+
+PROCESSED_KEYS = set()
+
+# =========================================================
+# PURE AI ANALYSIS ENGINE (تحليل بالذكاء الاصطناعي الصافي)
+# =========================================================
+
+def analyze_with_pure_ai(text: str) -> bool:
+    if not OPENROUTER_API_KEY:
+        return False
+
+    prompt = f"""أنت نظام ذكاء اصطناعي متخصص في تصنيف رسائل التوصيل والمشاوير بدقة متناهية.
+مهمتك: التمييز بين "زبون يطلب توصيلاً أو يسأل عن سائق قريب" وبين "سائق يعرض خدمته أو إعلانه".
+
+قواعد التمييز والتصنيف الصارمة:
+
+1. أجب بـ YES إذا كان الكاتب زبوناً يسأل عن سائق، أو يستفسر عن شخص قريب منه للتوصيل، أو يشرح جدول دوامه:
+   - أمثلة صريحة لطلب الزبون (YES):
+     * "من قريب من الشواجرة؟" / "حد قريب من صبيا؟" / "مين القريب من جازان؟" (الزبون يبحث عن سائق قريب)
+     * "مين فاضي في جيزان؟" / "حد فاضي؟" / "فيه احد فاضي؟"
+     * "انا دوامي من الجهو والشقيري الي جازان... اللي يناسبه يجي نتفق ع السعر"
+     * "ابغى جازان اذ احد من احد المسارحة يوصل"
+     * "ابغى سواق" / "احتاج توصيل" / "مطلوب مندوب"
+
+2. أجب بـ NO فوراً إذا كان الكاتب سائقاً يعرض سيارته، أو متواجداً لنقل الآخرين، أو يضع رقماً/إعلاناً:
+   - أمثلة صريحة لعرض السائق (NO):
+     * "أنا قريب من الشواجرة" / "متواجد بالقرب من الشواجرة"
+     * "أنا فاضي في جيزان" / "فاضي الحين" / "فاضي في جازان تبغى شيء"
+     * "متواجد في صبيا الي محتاج مشوار يتواصل خاص"
+     * "موجود في جازان اي مشوار خاص"
+     * "فاضيه في جازان الي تبغى مشوار" / "او سواقات"
+     * "نوفر نقل الطالبات" / "نقل موظفات" / "للتواصل خاص"
+
+الرسالة المراد تحلیلها:
+"{text}"
+
+الجواب (أجب بكلمة YES أو NO فقط بدون أي إضافة):"""
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        payload = {
+            "model": "qwen/qwen-2.5-7b-instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 3
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=5)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+
+    return False
+
+# =========================================================
+# MESSAGE PROCESSOR
+# =========================================================
+
+async def process_live_message(userbot: Client, bot: Client, message: Message):
+    if not message or not message.id:
         return
 
-threading.Thread(target=lambda: HTTPServer(("0.0.0.0", PORT), KeepAliveHandler).serve_forever(), daemon=True).start()
+    if message.from_user and message.from_user.is_self:
+        return
 
-# ============================================================
-#                    Hydrogram Client
-# ============================================================
+    raw_text = message.text or message.caption or ""
+    clean_text = raw_text.strip()
+    if len(clean_text) < 4:
+        return
 
-app = Client(
-    "barq_userbot",
-    api_id=int(API_ID),
-    api_hash=API_HASH,
-    session_string=SESSION_STRING,
-    in_memory=True,
-)
-
-BOT_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# ============================================================
-#            إرسال النتائج المباشرة للمستهدفين
-# ============================================================
-
-async def send_to_targets(message: Message, text: str):
-    sender_name = message.from_user.first_name if message.from_user else "عميل"
-    chat_name = message.chat.title or "محادثة خاصة"
+    msg_key = f"{message.chat.id}_{message.id}"
+    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
-    user_link = f"https://t.me/{message.from_user.username}" if message.from_user and message.from_user.username else f"tg://user?id={message.from_user.id}" if message.from_user else ""
+    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+        return
+        
+    PROCESSED_KEYS.add(msg_key)
+    PROCESSED_KEYS.add(text_hash)
 
-    output = f"📦 رسالة جديدة من: {sender_name}\n📍 المصدر: {chat_name}\n\n💬 النص:\n{text}"
-    if user_link:
-        output += f"\n\n👤 رابط العميل: {user_link}"
+    if len(PROCESSED_KEYS) > 10000:
+        PROCESSED_KEYS.clear()
 
-    for target in TARGET_USERS:
-        payload = {
-            "chat_id": target,
-            "text": output,
-            "disable_web_page_preview": True,
-        }
+    loop = asyncio.get_running_loop()
+    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+
+    if is_client_request:
+        print(f"✅ [طلب عميل مقبول بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+
+        buttons = []
+        row = []
+        
+        if message.from_user:
+            if message.from_user.username:
+                user_url = f"https://t.me/{message.from_user.username}"
+                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+            else:
+                user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+            row.append(InlineKeyboardButton(user_label, url=user_url))
+
+        if message.link:
+            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+        
+        if row:
+            buttons.append(row)
+            
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+
+        for user in TARGET_USERS:
+            sent = False
+            if bot:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=clean_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                    sent = True
+                except Exception:
+                    pass
+
+            if not sent:
+                try:
+                    await userbot.send_message(
+                        chat_id=user,
+                        text=clean_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception:
+                    pass
+
+# =========================================================
+# FAST MULTI-GROUP SCANNER
+# =========================================================
+
+async def fast_dialog_poller(userbot: Client, bot: Client):
+    await asyncio.sleep(5)
+    while True:
         try:
-            url = f"{BOT_API}/sendMessage"
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    res_json = await resp.json()
-                    if res_json.get("ok"):
-                        logger.info(f"✅ [تم الإرسال بنجاح للهدف]: {target}")
-                    else:
-                        logger.error(f"❌ [فشل الإرسال لـ {target}]: {res_json}")
+            async for dialog in userbot.get_dialogs(limit=30):
+                if dialog.top_message:
+                    await process_live_message(userbot, bot, dialog.top_message)
         except Exception as e:
-            logger.error(f"❌ [خطأ شبكة مع {target}]: {e}")
+            print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
+            
+        await asyncio.sleep(5)
 
-# ============================================================
-#           استماع مباشر وصريح لكافة الرسائل (Direct Hook)
-# ============================================================
-
-@app.on_message(filters.all)
-async def process_all_messages(client: Client, message: Message):
-    try:
-        text = message.text or message.caption or ""
-        if not text:
-            return
-
-        chat_title = message.chat.title or "خاص"
-        logger.info(f"📥 [تم سحب رسالة من {chat_title}]: {text[:40]}")
-
-        # عدم إعادة معالجة الرسائل التي يكتبها الحساب نفسه
-        me = await client.get_me()
-        if message.from_user and message.from_user.id == me.id:
-            return
-
-        # إرسال مباشر بدون التعقيد بالذكاء الاصطناعي لتأكيد السحب
-        await send_to_targets(message, text)
-
-    except Exception as e:
-        logger.exception(f"❌ [خطأ]: {e}")
-
-# ============================================================
-#                       التشغيل
-# ============================================================
+# =========================================================
+# MAIN ENTRYPOINT
+# =========================================================
 
 async def main():
-    logger.info("🚀 تشغيل اليوزربوت واستماع كلي مباشر...")
-    await app.start()
-    me = await app.get_me()
-    logger.info(f"✅ الحساب متصل: {me.first_name}")
-    logger.info(f"🎯 المستهدفين: {TARGET_USERS}")
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot = None
+    if BOT_TOKEN:
+        try:
+            bot = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot.start()
+        except Exception as e:
+            print(f"⚠️ لم يتم بدء البوت المساعد: {e}", flush=True)
+
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        await process_live_message(client, bot, message)
+
+    await userbot.start()
+    print("🚀 تم تشغيل النظام المحدث شاملاً الرسائل الاستفسارية القريبة!", flush=True)
+
+    asyncio.create_task(fast_dialog_poller(userbot, bot))
+
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
