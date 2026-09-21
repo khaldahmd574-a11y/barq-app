@@ -42,25 +42,34 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# FULL CONTEXT INTENT ANALYZER (تحليل السياق والنية الكاملة)
+# ADVANCED AI INTENT ENGINE (نموذج قوي يفهم اللهجات والنية)
 # =========================================================
 
-def analyze_full_post_intent(text: str) -> bool:
+def analyze_with_advanced_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""اقرأ هذا المنشور بالكامل وافهم النية العامة للكاتب من السياق الشامل للرسالة:
+    prompt = f"""أنت نظام ذكاء اصطناعي خبير ومتحقق من النية في قروبات المشاوير والتوصيل بالسعودية.
+مهمتك: حلل المنشور كاملاً وافهم النية الحقيقية للكاتب:
 
-المنشور المراد تحليله:
+1. أجب بـ (YES) فقط وفقط إذا كانت نية الكاتب هي "زبون/عميل يبحث عن سائق أو مندوب يوصله أو يجيب له أغراض".
+   - أمثلة صريحة للقبول (YES):
+     * "ابغى سواق شهر من اسكان الحصمه"
+     * "ابي مندوب من العدايا"
+     * "احد فاضي في العدايا ينفعني؟"
+     * "مين يوصل لي من صبيا؟"
+     * "ابغى سواقه من بيش"
+
+2. أجب بـ (NO) فوراً إذا كانت نية الكاتب هي "سائق أو مندوب أو صاحب سيارة يعرض توفره أو خدمته أو يذكر خط سيره للآخرين".
+   - أمثلة صريحة للرفض (NO):
+     * "طالع من صامطه لين مستشفي الملك فهد وبعدها جيزان اي مشوار خاص" (سائق يعرض خط سيره)
+     * "نازل بعد شوي من العارضة لجيزان اي طلب على طريقي" (سائق يعرض خدمته)
+     * "متواجد في مطعم التوفيق الي يبغا طلب يجي خاص" (مندوب يعرض توفره)
+     * "فاضي بصبيا الي يبي مشوار يتواصل خاص" (سائق يعرض توفره)
+     * أي منشور يحتوي على رقم جوال يعرض فيه صاحبه خدماته.
+
+المنشور المراد تحليل نيته:
 "{text}"
-
-المطلوب: حدد الدور الحقيقي للكاتب بناءً على مفهوم المنشور كاملاً:
-
-- اختر (YES) فقط وفقط إذا كانت نية الكاتب الكلية هي "عميل/زبون يريد توصيلاً لنفسه أو لأغراضه ويبحث عن شخص يخدمه".
-  (مثال للنية الشاملة: الكاتب هو المستفيد الذي يحتاج وسيلة نقل أو يبحث عن سائق/مندوب).
-
-- اختر (NO) فوراً إذا كانت نية الكاتب الكلية هي "سائق، أو مندوب، أو صاحب سيارة يعرض توفره أو خدمته لنقل الآخرين أو تنفيذ طلباتهم".
-  (تنبيه: حتى لو ذكر السائق كلمة "طلب" مثل "أي طلب على طريقي" أو "جاهز للطلبات"، فالنية العامة هي "إعلان سائق" وليست طلب عميل، وتصنف NO).
 
 الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
 
@@ -72,15 +81,15 @@ def analyze_full_post_intent(text: str) -> bool:
 
     try:
         payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
+            "model": "meta-llama/llama-3.3-70b-instruct",  # نموذج قوي وفائق الذكاء في فهم العامية والنيات
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=5)
+        res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل نية المنشور بالكامل]: '{text[:40]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل النية بالذكاء الاصطناعي الأقوى]: '{text[:40]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -115,12 +124,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # إرسال المنشور كاملاً للذكاء الاصطناعي ليحلل النية الشاملة
+    # إرسال الرسالة كاملاً للذكاء الاصطناعي المطور
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_full_post_intent, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_with_advanced_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل مقبول بناءً على السياق]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -217,7 +226,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بفحص السياق الكامل والنية المباشرة!", flush=True)
+    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي الصافي بدون أي كلمات مسجلة!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
