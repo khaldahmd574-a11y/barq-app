@@ -49,27 +49,30 @@ def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""حلل نية كاتب الرسالة بدقة في قروبات المشاوير والتوصيل:
+    prompt = f"""أنت عقل ذكاء اصطناعي خبير ومختص في فهم لهجات السعودية العامة (خاصة لهجة الجنوب وأقسام التوصيل).
+مهمتك الوحيدة: معرفة "نية الكاتب الحقيقية" في الرسالة التالية:
 
-1. أجب بـ YES فقط إذا كانت نية الكاتب "زبون محتاج توصيل أو يسأل عن سائق/مندوب يوصله"
-   أمثلة صريحة للنية المقبولة (YES):
+1. أجب بـ (YES) فقط وفقط إذا كان الكاتب هو "زبون/عميل" يبحث عن خدمة توصيل لنفسه أو لأهله أو يسأل عن وجود سائق/مندوب قاطن أو فاضي يوصله.
+   أمثلة مقبولة (YES):
+   - "فيه حد حول ابو السلع ؟"
+   - "في احد يوصل لصبيا؟"
    - "احد فاضي في العدايا ينفعني؟"
-   - "مين قريب من صبيا يوصلني؟"
+   - "مين قريب يوصلني؟"
    - "ابغى سواق شهر"
-   - "حد فاضي يجيب لي غرض؟"
-   - "ابي توصيل للكلية"
+   - "احتاج مندوب يوصل غرض"
 
-2. أجب بـ NO إذا كانت نية الكاتب "سائق/مندوب يعرض خدمته أو سيارته أو توفره للآخرين"
-   أمثلة صريحة للنية المرفوضة (NO):
+2. أجب بـ (NO) إذا كان الكاتب "سائق أو مندوب" يعلن عن توفره، أو يعرض سيارته/خدمته، أو يطلب من الناس التواصل معه لخدمتهم.
+   أمثلة مرفوضة (NO):
    - "فاضي بصبيا اللي يبي مشوار يتواصل خاص"
+   - "متواجد حاليا للتوصيل"
    - "مندوب متواجد بالداير"
+   - "اللي يبغى توصيل يراسلني"
    - "نوفر نقل طالبات وموظفات"
-   - "متواجدين للتوصيل"
 
 الرسالة المراد تحليل نيتها:
 "{text}"
 
-الجواب (YES أو NO فقط بدون أي كلمة إضافية):"""
+أجب بكلمة واحدة فقط وبدون أي إضافات: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -79,16 +82,18 @@ def analyze_with_pure_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",
+            "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=5)
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
+        else:
+            print(f"⚠️ خطأ استجابة الـ API ({res.status_code}): {res.text}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
@@ -232,5 +237,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
 
