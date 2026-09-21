@@ -7,7 +7,6 @@ import hashlib
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Optional
 
 import aiohttp
 from hydrogram import Client, filters
@@ -32,8 +31,6 @@ OPENROUTER_MODEL = os.getenv(
     "qwen/qwen-2.5-7b-instruct"
 )
 
-FILTER_INTENT_ACTIVE = True
-
 env_targets = os.getenv("TARGET_USERS", "")
 if env_targets:
     TARGET_USERS = [t.strip() for t in env_targets.split(",") if t.strip()]
@@ -48,10 +45,8 @@ else:
 #                       إعدادات عامة
 # ============================================================
 
-AI_RETRIES = 2
 AI_TIMEOUT = 12
 DEDUP_TTL = 60 * 60 * 24
-MAX_CONCURRENT_AI = 8
 
 logging.basicConfig(
     level=logging.INFO,
@@ -77,14 +72,7 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
-def run_keep_alive():
-    try:
-        server = HTTPServer(("0.0.0.0", PORT), KeepAliveHandler)
-        server.serve_forever()
-    except Exception as e:
-        logger.error(f"Keep Alive Error: {e}")
-
-threading.Thread(target=run_keep_alive, daemon=True).start()
+threading.Thread(target=lambda: HTTPServer(("0.0.0.0", PORT), KeepAliveHandler).serve_forever(), daemon=True).start()
 
 
 # ============================================================
@@ -143,35 +131,32 @@ AI_SYSTEM_PROMPT = """أنت نظام ذكاء اصطناعي مخصص لفلت�
 2. اجعل {"allow": false} إذا كان الكاتب سائقاً أو مندوباً يعرض خدماته أو يتواجد في مكان (مثال: "متواجد للمشاوير"، "سائق خاص"، "فاضي للطلب"، وجود أرقام جوال وإعلانات).
 """
 
-ai_semaphore = asyncio.Semaphore(MAX_CONCURRENT_AI)
-
 async def ask_openrouter(text: str) -> bool:
-    async with ai_semaphore:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": OPENROUTER_MODEL,
-            "messages": [
-                {"role": "system", "content": AI_SYSTEM_PROMPT},
-                {"role": "user", "content": f"حلل النية: \"{text}\""}
-            ],
-            "temperature": 0.0,
-            "max_tokens": 20
-        }
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=AI_TIMEOUT)) as session:
-                async with session.post(OPENROUTER_URL, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        content = data["choices"][0]["message"]["content"].strip()
-                        content_clean = re.sub(r"```json|```", "", content).strip()
-                        result = json.loads(content_clean)
-                        return bool(result.get("allow", False))
-        except Exception as e:
-            logger.error(f"AI Error: {e}")
-        return False
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": AI_SYSTEM_PROMPT},
+            {"role": "user", "content": f"حلل النية: \"{text}\""}
+        ],
+        "temperature": 0.0,
+        "max_tokens": 20
+    }
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=AI_TIMEOUT)) as session:
+            async with session.post(OPENROUTER_URL, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    content = data["choices"][0]["message"]["content"].strip()
+                    content_clean = re.sub(r"```json|```", "", content).strip()
+                    result = json.loads(content_clean)
+                    return bool(result.get("allow", False))
+    except Exception as e:
+        logger.error(f"AI Error: {e}")
+    return False
 
 
 # ============================================================
@@ -216,36 +201,36 @@ async def send_to_targets(message: Message, text: str):
 
 
 # ============================================================
-#         معالجة كافة الرسائل القادمة (الضبط المضمون للسحب)
+#              معالج الرسائل (التقاط شامل وشفاف)
 # ============================================================
 
-@app.on_message(filters.incoming & ~filters.me)
+@app.on_message()
 async def process_all_messages(client: Client, message: Message):
     try:
+        # 1. عدم معالجة الرسائل التي يكتبها الحساب بنفسه
+        me = await client.get_me()
+        if message.from_user and message.from_user.id == me.id:
+            return
+
         text = message.text or message.caption or ""
         if not text:
             return
 
-        # أمر التأكد من التفعيل
-        if text.startswith("/نية_طلب") or text.startswith("/نية طلب"):
-            await message.reply_text("✅ **نظام الفلترة بذكاء الطلبات مفعل ويستمع لكافة المجموعات!**")
-            return
+        # 2. طباعة الرسالة فوراً في الـ Logs لتأكيد السحب
+        logger.info(f"📥 [تم سحب رسالة]: {text[:60]}")
 
-        # طباعة أي رسالة تم التلقطها في السجلات
-        logger.info(f"📥 [التقاط رسالة]: {text[:50]}")
-
-        # منع التكرار
+        # 3. منع التكرار
         if await is_duplicate(message, text):
             return
 
-        # التحليل بالذكاء الاصطناعي
+        # 4. فحص نية الطلب بالذكاء الاصطناعي
         is_request = await ask_openrouter(text)
 
         if is_request:
-            logger.info("✅ نية طلب زبون مؤكدة -> جاري الإرسال")
+            logger.info("✅ طلب زبون مؤكد -> جاري الإرسال للمشتركين")
             await send_to_targets(message, text)
         else:
-            logger.info("❌ رسالة مستبعدة (إعلان سائق/غير مطابقة)")
+            logger.info("❌ إعلان سائق / غير مطابقة")
 
     except Exception as e:
         logger.exception(f"خطأ أثناء معالجة الرسالة: {e}")
@@ -256,9 +241,9 @@ async def process_all_messages(client: Client, message: Message):
 # ============================================================
 
 async def main():
-    logger.info("🚀 تشغيل اليوزربوت واستماع المجموعات والقنوات...")
+    logger.info("🚀 تشغيل اليوزربوت واستماع جميع الرسائل بدون فلاتر معقدة...")
     await app.start()
-    logger.info("✅ الحساب متصل وجاهز لالتقاط الرسائل.")
+    logger.info("✅ الحساب متصل بنجاح وجاهز لسحب كل النص الصادر والوارد.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
