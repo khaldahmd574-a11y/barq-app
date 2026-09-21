@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq Fast AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,36 +42,19 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# ADVANCED AI INTENT ENGINE (نموذج قوي يفهم اللهجات والنية)
+# FAST AI INTENT ENGINE (استجابة فائقة السرعة)
 # =========================================================
 
-def analyze_with_advanced_ai(text: str) -> bool:
+def analyze_with_fast_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي خبير ومتحقق من النية في قروبات المشاوير والتوصيل بالسعودية.
-مهمتك: حلل المنشور كاملاً وافهم النية الحقيقية للكاتب:
+    prompt = f"""أنت فلاتر سريع لرسائل التوصيل:
+1. YES = الكاتب زبون محتاج سواق أو توصيل (مثل: ابغى سواق, احد فاضي ينفعني, مين يوصل لي, ابي مندوب).
+2. NO = الكاتب سواق أو مندوب يعرض توفره أو مساره (مثل: طالع من.. الى.., متواجد بـ.., اي مشوار خاص, على طريقي, رقم جوال سائق).
 
-1. أجب بـ (YES) فقط وفقط إذا كانت نية الكاتب هي "زبون/عميل يبحث عن سائق أو مندوب يوصله أو يجيب له أغراض".
-   - أمثلة صريحة للقبول (YES):
-     * "ابغى سواق شهر من اسكان الحصمه"
-     * "ابي مندوب من العدايا"
-     * "احد فاضي في العدايا ينفعني؟"
-     * "مين يوصل لي من صبيا؟"
-     * "ابغى سواقه من بيش"
-
-2. أجب بـ (NO) فوراً إذا كانت نية الكاتب هي "سائق أو مندوب أو صاحب سيارة يعرض توفره أو خدمته أو يذكر خط سيره للآخرين".
-   - أمثلة صريحة للرفض (NO):
-     * "طالع من صامطه لين مستشفي الملك فهد وبعدها جيزان اي مشوار خاص" (سائق يعرض خط سيره)
-     * "نازل بعد شوي من العارضة لجيزان اي طلب على طريقي" (سائق يعرض خدمته)
-     * "متواجد في مطعم التوفيق الي يبغا طلب يجي خاص" (مندوب يعرض توفره)
-     * "فاضي بصبيا الي يبي مشوار يتواصل خاص" (سائق يعرض توفره)
-     * أي منشور يحتوي على رقم جوال يعرض فيه صاحبه خدماته.
-
-المنشور المراد تحليل نيته:
-"{text}"
-
-الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
+الرسالة: "{text}"
+الجواب (YES أو NO فقط):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -81,18 +64,19 @@ def analyze_with_advanced_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "meta-llama/llama-3.3-70b-instruct",  # نموذج قوي وفائق الذكاء في فهم العامية والنيات
+            "model": "qwen/qwen-2.5-7b-instruct",  # نموذج خفيف وسريع جداً
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
-            "max_tokens": 3
+            "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=6)
+        # تقليل المهلة إلى 3 ثوانٍ فقط لمنع أي تأخير
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية بالذكاء الاصطناعي الأقوى]: '{text[:40]}...' -> {answer}", flush=True)
+            print(f"⚡ [تحليل سريع]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ تجاوز الوقت أو خطأ: {e}", flush=True)
 
     return False
 
@@ -109,7 +93,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 4:
+    if len(clean_text) < 3:
         return
 
     msg_key = f"{message.chat.id}_{message.id}"
@@ -124,12 +108,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # إرسال الرسالة كاملاً للذكاء الاصطناعي المطور
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_advanced_ai, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_with_fast_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -181,16 +164,16 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+    await asyncio.sleep(2)
     while True:
         try:
             async for dialog in userbot.get_dialogs(limit=30):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
-        except Exception as e:
-            print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
+        except Exception:
+            pass
             
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -218,15 +201,15 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-        except Exception as e:
-            print(f"⚠️ لم يتم بدء البوت المساعد: {e}", flush=True)
+        except Exception:
+            pass
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي الصافي بدون أي كلمات مسجلة!", flush=True)
+    print("🚀 تم تشغيل النظام السريع جداً!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
