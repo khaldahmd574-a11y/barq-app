@@ -42,51 +42,34 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HARDCODE FILTER (فلترة فورية لاستبعاد إعلانات السائقين)
-# =========================================================
-
-DRIVER_EXCLUDE_KEYWORDS = [
-    "يتواصل معي", "تتواصل معي", "تواصل معي", "تواصل خاص", "خاص معي",
-    "اللي يبغى", "اللي تبي", "اللي يحتاج", "اللي تحتاجه", "اللي تبي توصيل",
-    "الي يبغى", "الي تبي", "الي يحتاج", "الي تبي توصيل",
-    "متواجد", "متواجدين", "موجود في", "موجود بـ", "موجودين",
-    "فاضي", "فاضيه", "فاضيين",
-    "نوفر", "نوفر لكم", "خدمة توصيل", "خدمات توصيل", "للتوصيل", "جامعه او دوام",
-    "سواق خاص", "سواقة خاص", "سائق خاص", "مندوب توصيل", "مندوب الداير"
-]
-
-def contains_driver_keywords(text: str) -> bool:
-    t = text.lower()
-    for kw in DRIVER_EXCLUDE_KEYWORDS:
-        if kw in t:
-            # استثناء بسيط: إذا كان العميل يطلب "ابغى سواق" أو "ابي سواق" فلا نستبعدها
-            if ("ابغى" in t or "ابي" in t or "مطلوب" in t or "مين" in t or "حد" in t or "احتاج" in t) and ("فاضي" not in t and "يتواصل" not in t and "اللي تبي" not in t and "الي تبي" not in t):
-                continue
-            return True
-    return False
-
-# =========================================================
-# STRICT AI ANALYSIS ENGINE (محرك ذكاء اصطناعي صارم جداً)
+# PURE INTENT AI ANALYSIS ENGINE (تحليل النية بالذكاء الاصطناعي فقط)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت نظام فلترة صارم جداً لطلبات التوصيل.
-مهمتك: تحديد هل الرسالة صادرة من "زبون يطلب توصيلاً لنفسه" أم من "سائق/مندوب يعرض خدمته".
+    prompt = f"""حلل نية كاتب الرسالة بدقة في قروبات المشاوير والتوصيل:
 
-قواعد الحظر الصارمة (أجب بـ NO فوراً إذا انطبقت أي منها):
-1. إذا كان الكاتب سائقاً أو مندوباً يعرض خدماته للآخرين (أمثلة: "مندوب فاضي"، "الي تبي سواق يتواصل معي"، "موجود في جازان"، "اللي يبغى توصيل"، "فاضي للطلبات").
-2. إذا احتوت الرسالة على عبارات مثل "يتواصل معي"، "تواصل خاص"، "فاضي"، "متواجد".
-3. الإعلانات العامة والتسويق.
+1. أجب بـ YES فقط إذا كانت نية الكاتب "زبون محتاج توصيل أو يسأل عن سائق/مندوب يوصله"
+   أمثلة صريحة للنية المقبولة (YES):
+   - "احد فاضي في العدايا ينفعني؟"
+   - "مين قريب من صبيا يوصلني؟"
+   - "ابغى سواق شهر"
+   - "حد فاضي يجيب لي غرض؟"
+   - "ابي توصيل للكلية"
 
-أجب بـ YES فقط وفقط إذا كان الكاتب زبوناً يبحث عن توصيل بنفسه (أمثلة: "ابغى سواق شهر"، "احتاج توصيل للكلية"، "مين يوصلني صبيا"، "ابغى سواقة").
+2. أجب بـ NO إذا كانت نية الكاتب "سائق/مندوب يعرض خدمته أو سيارته أو توفره للآخرين"
+   أمثلة صريحة للنية المرفوضة (NO):
+   - "فاضي بصبيا اللي يبي مشوار يتواصل خاص"
+   - "مندوب متواجد بالداير"
+   - "نوفر نقل طالبات وموظفات"
+   - "متواجدين للتوصيل"
 
-الرسالة:
+الرسالة المراد تحليل نيتها:
 "{text}"
 
-الجواب (YES أو NO فقط):"""
+الجواب (YES أو NO فقط بدون أي كلمة إضافية):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -104,7 +87,7 @@ def analyze_with_pure_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [قرار الذكاء الاصطناعي]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -139,17 +122,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # 1. التصفية المباشرة أولاً بالكلمات المفتاحية للسائقين
-    if contains_driver_keywords(clean_text):
-        print(f"🚫 [استبعاد مباشر - عرض سائق/مندوب]: {clean_text[:35]}...", flush=True)
-        return
-
-    # 2. الفحص عن طريق الذكاء الاصطناعي إذا تجاوزت الفلتر المباشر
+    # تحويل كامل المعالجة للذكاء الاصطناعي
     loop = asyncio.get_running_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول بناءً على النية]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -246,7 +224,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث بالفلاتر الصارمة!", flush=True)
+    print("🚀 تم تشغيل النظام بالتحليل النحوي المباشر للذكاء الاصطناعي فقط!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
