@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq Live Pure System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,7 +42,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# FULL CONTEXT INTENT ANALYZER (تحليل نية المنشور كاملاً)
+# FULL CONTEXT INTENT ANALYZER
 # =========================================================
 
 def analyze_full_post_intent(text: str) -> bool:
@@ -62,13 +62,13 @@ def analyze_full_post_intent(text: str) -> bool:
   * "ابغى سواق سياره من اسكان الحصمه"
   * "مين يوصل لي من صبيا؟"
   * "احتاج توصيل ضروري"
+  * "تجريبية: ابي سواق الحين"
 
 - أجب بـ (NO) فوراً وبشكل قاطع إذا كانت نية الكاتب هي "سائق، أو مندوب، أو صاحب سيارة يعلن عن نفسه، أو يعرض توفره، أو يذكر خط سيره، أو يضع رقمه للطلب منه".
   أمثلة مرفوضة تماماً (NO):
-  * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب للتواصل خاص او على الواتس" (إعلان سائق واضح -> NO)
-  * "اي طلب او مشوار صامطة خاص" (إعلان سائق واضح -> NO)
-  * "مين تبي سواق سياره من اسكان الحصمه لين جامعه محليه؟" (سائق يعرض خدمته -> NO)
-  * "طالع من صامطه لين مستشفى الملك فهد" (سائق يذكر خط سيره -> NO)
+  * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب"
+  * "اي طلب او مشوار صامطة خاص"
+  * "طالع من صامطه لين مستشفى الملك فهد"
 
 الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
 
@@ -80,7 +80,7 @@ def analyze_full_post_intent(text: str) -> bool:
 
     try:
         payload = {
-            "model": "openai/gpt-4o-mini",  # نموذج فاهم جداً لنيات النصوص والعامية العربية
+            "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
@@ -88,12 +88,10 @@ def analyze_full_post_intent(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل نية المنشور بالكامل]: '{text[:40]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل نية النص]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-        else:
-            print(f"⚠️ خطأ استجابة: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ ذكاء اصطناعي: {e}", flush=True)
 
     return False
 
@@ -105,6 +103,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
+    # استثناء رسائل نفس الحساب المسجل به البوت
     if message.from_user and message.from_user.is_self:
         return
 
@@ -125,11 +124,16 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
+    # طباعة كل رسالة جديدة تدخل النظام للتحقق
+    chat_title = message.chat.title or str(message.chat.id)
+    sender_name = message.from_user.first_name if message.from_user else "مجهول"
+    print(f"📩 [رسالة جيدة التُقطت من {chat_title} بواسطة {sender_name}]: {clean_text[:40]}...", flush=True)
+
     loop = asyncio.get_running_loop()
     is_client_request = await loop.run_in_executor(None, analyze_full_post_intent, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [مقبولة كطلب عميل]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -162,8 +166,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         disable_web_page_preview=True
                     )
                     sent = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"❌ فشل البوت لإرسال {user}: {e}", flush=True)
 
             if not sent:
                 try:
@@ -173,24 +177,25 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         reply_markup=reply_markup,
                         disable_web_page_preview=True
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"❌ فشل اليوزربوت لإرسال {user}: {e}", flush=True)
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# FAST MULTI-GROUP SCANNER (100 GROUPS)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
+    await asyncio.sleep(2)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=30):
+            # مسح أحدث 100 محادثة وجروب لضمان عدم تفويت الحسابات الجديدة
+            async for dialog in userbot.get_dialogs(limit=100):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ خطأ الفاحص الدائري: {e}", flush=True)
             
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -226,7 +231,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بفحص النية الكاملة عبر نموذج GPT الذكي!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث مع زيادة القوة وفحص 100 جروب!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
