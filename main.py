@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Fast AI System Active!")
+        self.wfile.write(b"Barq Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,19 +42,35 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# FAST AI INTENT ENGINE (استجابة فائقة السرعة)
+# FULL CONTEXT INTENT ANALYZER (تحليل نية المنشور كاملاً)
 # =========================================================
 
-def analyze_with_fast_ai(text: str) -> bool:
+def analyze_full_post_intent(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت فلاتر سريع لرسائل التوصيل:
-1. YES = الكاتب زبون محتاج سواق أو توصيل (مثل: ابغى سواق, احد فاضي ينفعني, مين يوصل لي, ابي مندوب).
-2. NO = الكاتب سواق أو مندوب يعرض توفره أو مساره (مثل: طالع من.. الى.., متواجد بـ.., اي مشوار خاص, على طريقي, رقم جوال سائق).
+    prompt = f"""اقرأ المنشور التالي بالكامل وافهم النية العامة الحقيقية لكاتبه:
 
-الرسالة: "{text}"
-الجواب (YES أو NO فقط):"""
+المنشور المراد تحليله:
+"{text}"
+
+المطلوب: حدد هل صاحب المنشور هو (زبون يحتاج توصيل) أم (سائق/مندوب يعرض توفره أو خدمته):
+
+- أجب بـ (YES) فقط وفقط إذا كانت نية الكاتب هي "عميل/زبون يحتاج شحن أو توصيل لنفسه أو لأغراضه ويبحث عن شخص يخدمه".
+  أمثلة مقبولة (YES):
+  * "ابغى سواقه شهري من بيش"
+  * "ابغى سواق سياره من اسكان الحصمه"
+  * "مين يوصل لي من صبيا؟"
+  * "احتاج توصيل ضروري"
+
+- أجب بـ (NO) فوراً وبشكل قاطع إذا كانت نية الكاتب هي "سائق، أو مندوب، أو صاحب سيارة يعلن عن نفسه، أو يعرض توفره، أو يذكر خط سيره، أو يضع رقمه للطلب منه".
+  أمثلة مرفوضة تماماً (NO):
+  * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب للتواصل خاص او على الواتس" (إعلان سائق واضح -> NO)
+  * "اي طلب او مشوار صامطة خاص" (إعلان سائق واضح -> NO)
+  * "مين تبي سواق سياره من اسكان الحصمه لين جامعه محليه؟" (سائق يعرض خدمته -> NO)
+  * "طالع من صامطه لين مستشفى الملك فهد" (سائق يذكر خط سيره -> NO)
+
+الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -64,19 +80,20 @@ def analyze_with_fast_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "qwen/qwen-2.5-7b-instruct",  # نموذج خفيف وسريع جداً
+            "model": "openai/gpt-4o-mini",  # نموذج فاهم جداً لنيات النصوص والعامية العربية
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
-            "max_tokens": 2
+            "max_tokens": 3
         }
-        # تقليل المهلة إلى 3 ثوانٍ فقط لمنع أي تأخير
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"⚡ [تحليل سريع]: '{text[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل نية المنشور بالكامل]: '{text[:40]}...' -> {answer}", flush=True)
             return "YES" in answer
+        else:
+            print(f"⚠️ خطأ استجابة: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ تجاوز الوقت أو خطأ: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -109,10 +126,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         PROCESSED_KEYS.clear()
 
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_with_fast_ai, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_full_post_intent, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل مقبول]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -164,7 +181,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
+    await asyncio.sleep(3)
     while True:
         try:
             async for dialog in userbot.get_dialogs(limit=30):
@@ -173,7 +190,7 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
         except Exception:
             pass
             
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -209,7 +226,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام السريع جداً!", flush=True)
+    print("🚀 تم تشغيل النظام بفحص النية الكاملة عبر نموذج GPT الذكي!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
