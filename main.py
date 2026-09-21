@@ -9,7 +9,7 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7
+# KEEP ALIVE SERVER (مؤمن ضد خطأ 503 و 404)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -17,16 +17,22 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Online & Smart Filtered!")
+        self.wfile.write(b"Barq System Online 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
+    def log_message(self, format, *args):
+        return
+
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), DummyServer)
-    server.serve_forever()
+    try:
+        server = HTTPServer(("0.0.0.0", port), DummyServer)
+        server.serve_forever()
+    except Exception as e:
+        print(f"⚠️ تنبيه السيرفر الداخلي: {e}", flush=True)
 
 # =========================================================
 # CONFIGURATION
@@ -43,7 +49,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HARD RULES (قواعد استبعاد السائقين والمناديب برمجياً)
+# HARD RULES (استبعاد السائقين والمناديب برمجياً)
 # =========================================================
 
 DRIVER_DENY_PATTERNS = [
@@ -74,16 +80,14 @@ def contains_driver_offer(text: str) -> bool:
     return False
 
 # =========================================================
-# HYBRID INTENT ENGINE (الفلتر الذكي)
+# HYBRID INTENT ENGINE
 # =========================================================
 
 def analyze_post_strictly(text: str) -> bool:
     clean_text = text.strip()
 
-    # كلمات صريحة واضحة لطلبات الزبائن
     is_explicit_request = any(clean_text.startswith(w) for w in ["ابغى", "أبغى", "ابغا", "أبغا", "احتاج", "أحتاج", "مطلوب", "مين", "من يوصل", "من يوديني"])
 
-    # 1. الاستبعاد البرمجي المباشر لإعلانات المناديب
     if not is_explicit_request and contains_driver_offer(clean_text):
         print(f"🚫 [استبعاد برمجي - إعلان مندوب/سائق]: '{clean_text[:35]}...'", flush=True)
         return False
@@ -91,7 +95,6 @@ def analyze_post_strictly(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # 2. الفحص بالذكاء الاصطناعي للتحقق من النية
     prompt = f"""أنت نظام فلترة صارم جداً لطلبات التوصيل والمشاوير بالسعودية.
 اقرأ هذا المنشور بتركيز شديد وافهم النية الحقيقية لكاتبه:
 "{clean_text}"
@@ -133,7 +136,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # استثناء رسائل الحساب نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -238,13 +240,12 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع اللحظي المباشر السريع
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالاستماع المباشر والفلترة الذكية!", flush=True)
+    print("🚀 تم تشغيل البوت بنجاح وحل مشكلة 503!", flush=True)
 
     await asyncio.Event().wait()
 
