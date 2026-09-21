@@ -216,38 +216,33 @@ async def send_to_targets(message: Message, text: str):
 
 
 # ============================================================
-#                  معالجة كافة الرسائل دون استثناء
+#         معالجة كافة الرسائل القادمة (الضبط المضمون للسحب)
 # ============================================================
 
-@app.on_message(filters.group | filters.channel | filters.private)
+@app.on_message(filters.incoming & ~filters.me)
 async def process_all_messages(client: Client, message: Message):
     try:
-        # 1. عدم معالجة الرسائل الصادرة من نفس الحساب
-        me = await client.get_me()
-        if message.from_user and message.from_user.id == me.id:
-            return
-
         text = message.text or message.caption or ""
         if not text:
             return
 
-        # أمر الاستجابة والتأكد
+        # أمر التأكد من التفعيل
         if text.startswith("/نية_طلب") or text.startswith("/نية طلب"):
-            await message.reply_text("✅ **نظام الفلترة بذكاء الطلبات مفعل ويستمع لجميع الجروبات والقنوات!**")
+            await message.reply_text("✅ **نظام الفلترة بذكاء الطلبات مفعل ويستمع لكافة المجموعات!**")
             return
 
-        # طباعة النص الملتقط في سجلات السيرفر لتأكيد السحب
-        logger.info(f"📥 [رسالة واردة جديدة]: {text[:50]}")
+        # طباعة أي رسالة تم التلقطها في السجلات
+        logger.info(f"📥 [التقاط رسالة]: {text[:50]}")
 
-        # منع الرسائل المكررة
+        # منع التكرار
         if await is_duplicate(message, text):
             return
 
-        # الفحص بالذكاء الاصطناعي
+        # التحليل بالذكاء الاصطناعي
         is_request = await ask_openrouter(text)
 
         if is_request:
-            logger.info("✅ نية طلب زبون مؤكدة -> جاري الإرسال للمشتركين")
+            logger.info("✅ نية طلب زبون مؤكدة -> جاري الإرسال")
             await send_to_targets(message, text)
         else:
             logger.info("❌ رسالة مستبعدة (إعلان سائق/غير مطابقة)")
@@ -261,7 +256,7 @@ async def process_all_messages(client: Client, message: Message):
 # ============================================================
 
 async def main():
-    logger.info("🚀 تشغيل اليوزربوت واستماع كافة المحادثات والجروبات...")
+    logger.info("🚀 تشغيل اليوزربوت واستماع المجموعات والقنوات...")
     await app.start()
     logger.info("✅ الحساب متصل وجاهز لالتقاط الرسائل.")
     await asyncio.Event().wait()
