@@ -16,7 +16,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Live Pure System Active!")
+        self.wfile.write(b"Barq Human-Level AI Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,33 +42,35 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# FULL CONTEXT INTENT ANALYZER
+# HUMAN-LEVEL FULL POST INTENT ENGINE
 # =========================================================
 
-def analyze_full_post_intent(text: str) -> bool:
+def analyze_post_like_a_human(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""اقرأ المنشور التالي بالكامل وافهم النية العامة الحقيقية لكاتبه:
+    prompt = f"""تخيل أنك إنسان بشري خبير يقرأ منشورات ومحادثات مجموعات المشاوير والتوصيل بالسعودية.
+لا تنظر لكلمات منفردة بل اقرأ المنشور كاملاً وافهم نية كاتب المنشور الحقيقية بشكل كامل:
 
 المنشور المراد تحليله:
 "{text}"
 
-المطلوب: حدد هل صاحب المنشور هو (زبون يحتاج توصيل) أم (سائق/مندوب يعرض توفره أو خدمته):
+قواعد التصنيف البشري:
 
-- أجب بـ (YES) فقط وفقط إذا كانت نية الكاتب هي "عميل/زبون يحتاج شحن أو توصيل لنفسه أو لأغراضه ويبحث عن شخص يخدمه".
-  أمثلة مقبولة (YES):
-  * "ابغى سواقه شهري من بيش"
-  * "ابغى سواق سياره من اسكان الحصمه"
-  * "مين يوصل لي من صبيا؟"
-  * "احتاج توصيل ضروري"
-  * "تجريبية: ابي سواق الحين"
+1. أجب بـ (YES) فقط إذا كان صاحب المنشور شخصاً يبحث عن خدمة (زبون / عميل / ركاب / شخص يحتاج توصيل أغراض أو شحنة أو يريد سواق).
+   - أمثلة صريحة للقبول (YES):
+     * "من قريب من الراشد يوصلني السويس" (استفسار عن سائق قاطن قرب الراشد -> زبون)
+     * "من يوصلني لصبيا" (طلب توصيلة -> زبون)
+     * "ابغى سواقه شهري من بيش" (طلب سائق -> زبون)
+     * "ابغا سطحه من الحقو لصبيا" (طلب نقل -> زبون)
+     * "مين فاضي الحين ينفعني بمشوار" (استفسار زبون)
 
-- أجب بـ (NO) فوراً وبشكل قاطع إذا كانت نية الكاتب هي "سائق، أو مندوب، أو صاحب سيارة يعلن عن نفسه، أو يعرض توفره، أو يذكر خط سيره، أو يضع رقمه للطلب منه".
-  أمثلة مرفوضة تماماً (NO):
-  * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب"
-  * "اي طلب او مشوار صامطة خاص"
-  * "طالع من صامطه لين مستشفى الملك فهد"
+2. أجب بـ (NO) وبشكل قاطع إذا كان صاحب المنشور هو السائق/المندوب بنفسه يعلن عن توفره، أو يعلن عن سيارته، أو يذكر خط سيره للآخرين، أو يطلب من الناس التواصل معه للركوب معك.
+   - أمثلة صريحة للرفض (NO):
+     * "فاضي في أحد المسارحة وضواحيها وفاضي لتوصيل أي طلب" (إعلان سائق -> NO)
+     * "اي طلب او مشوار صامطة خاص" (إعلان سائق -> NO)
+     * "طالع من صامطه لين مستشفى الملك فهد" (سائق يذكر خط سيره -> NO)
+     * "الي فاضي يرسل خاص" / "الي يبي مشوار يجي خاص" (سائق يطلب عملاء -> NO)
 
 الجواب النهائي (أجب بكلمة YES أو كلمة NO فقط):"""
 
@@ -88,10 +90,12 @@ def analyze_full_post_intent(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل نية النص]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🧠 [فهم بشري كامل للنية]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
+        else:
+            print(f"⚠️ خطأ استجابة الذكاء الاصطناعي: {res.status_code}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ ذكاء اصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -103,7 +107,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # استثناء رسائل نفس الحساب المسجل به البوت
+    # تجاهل رسائل الحساب المسجل به البوت نفسه
     if message.from_user and message.from_user.is_self:
         return
 
@@ -124,16 +128,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    # طباعة كل رسالة جديدة تدخل النظام للتحقق
     chat_title = message.chat.title or str(message.chat.id)
     sender_name = message.from_user.first_name if message.from_user else "مجهول"
-    print(f"📩 [رسالة جيدة التُقطت من {chat_title} بواسطة {sender_name}]: {clean_text[:40]}...", flush=True)
+    print(f"📩 [رسالة التُقطت من {chat_title} بواسطة {sender_name}]: {clean_text[:40]}...", flush=True)
 
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_full_post_intent, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_post_like_a_human, clean_text)
 
     if is_client_request:
-        print(f"✅ [مقبولة كطلب عميل]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل حقيقي مقبول]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -188,7 +191,6 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     while True:
         try:
-            # مسح أحدث 100 محادثة وجروب لضمان عدم تفويت الحسابات الجديدة
             async for dialog in userbot.get_dialogs(limit=100):
                 if dialog.top_message:
                     await process_live_message(userbot, bot, dialog.top_message)
@@ -231,7 +233,7 @@ async def main():
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث مع زيادة القوة وفحص 100 جروب!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث بذكاء بشري كامل لنوايا المنشورات!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
@@ -239,4 +241,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
