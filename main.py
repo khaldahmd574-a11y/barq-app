@@ -9,7 +9,7 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# 1. KEEP ALIVE SERVER (مضاد لخطأ 503 و 404 لمنع نوم Render)
+# 1. KEEP ALIVE SERVER 24/7 (مؤمن لمنع خطأ 503 و404)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -17,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Online 24/7 - Max AI Engine Active!")
+        self.wfile.write(b"Barq Max Human-AI System Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -35,7 +35,7 @@ def run_dummy_server():
         print(f"⚠️ تنبيه السيرفر الداخلي: {e}", flush=True)
 
 # =========================================================
-# 2. CONFIGURATION & VARIABLES
+# 2. CONFIGURATION
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -49,7 +49,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# 3. HARD DENY PATTERNS (تصفية أولية سريعة لإعلانات المناديب)
+# 3. FAST HARDCODE EXCLUSION (فلترة أولية لإعلانات المناديب)
 # =========================================================
 
 DRIVER_DENY_PATTERNS = [
@@ -67,33 +67,33 @@ def contains_driver_offer(text: str) -> bool:
     return False
 
 # =========================================================
-# 4. MAXIMUM AI INTENT ENGINE (محرك الذكاء الاصطناعي الفائق)
+# 4. MAXIMUM HUMAN-LIKE AI INTENT ENGINE (الذكاء الاصطناعي البشري)
 # =========================================================
 
-def analyze_post_strictly(text: str) -> bool:
+def analyze_with_human_ai(text: str) -> bool:
     clean_text = text.strip()
 
-    # فحص الكلمات الصريحة لطلبات الزبائن
+    # فحص صريح للبدايات المباشرة لطلبات العملاء
     is_explicit_request = any(clean_text.startswith(w) for w in ["ابغى", "أبغى", "ابغا", "أبغا", "احتاج", "أحتاج", "مطلوب", "مين", "من يوصل", "من يوديني"])
 
     if not is_explicit_request and contains_driver_offer(clean_text):
-        print(f"🚫 [فلترة سريعة - إعلان مندوب]: '{clean_text[:35]}...'", flush=True)
+        print(f"🚫 [فلترة سريعة - إعلان سواق/مندوب]: '{clean_text[:35]}...'", flush=True)
         return False
 
     if not OPENROUTER_API_KEY:
-        print("⚠️ مفتاح OpenRouter غير موجود!", flush=True)
+        print("⚠️ مفتاح OpenRouter غير موجود في المتغيرات!", flush=True)
         return False
 
-    # برومبت احترافي فائق الدقة
-    prompt = f"""أنت خبير محترف جداً في تحليل نية نصوص طلبات التوصيل بالسعودية.
-حلل المنشور التالي بدقة متناهية لمعرفة نية كاتبه الحقيقية:
+    # برومبت مصمم ليدرك النية والمفهوم كأنه انسان فاهم للعامية السعودية
+    prompt = f"""أنت إنسان سعودي ذكي جداً وخبير في فهم نية الرسائل في قروبات التليجرام الخاصة بالتوصيل والمشاوير.
+مهمتك: قراءة المنشور التالي وفهم النية الحقيقية لكاتبه بعقلانية ودقة:
 "{clean_text}"
 
-هل كاتب هذا المنشور هو عميل / زبون يحتاج خدمة (توصيل, نقل, مشوار, مندوب) بنفسه؟
-- أجب بـ (YES) إذا كان الكاتب زبون يطلب خدمة (مثال: ابغى سواق, محتاجه مندوب, من يوصلني, ابغى مندوب يتواصل معي).
-- أجب بـ (NO) إذا كان الكاتب سواق أو مندوب يعلن عن توفره أو يضع خدماته ورقمه للناس.
+قم بتحليل المنشور بناءً على القواعد التالية:
+- أجب بـ (YES) فقط وفقط إذا كان الكاتب هو زبون/عميل يبحث عن خدمة توصيل لنفسه أو لأهله (أمثلة: "ابغى سواق يوديني صبيا"، "احتاج مندوب يوصل طلبية"، "مين فاضي يوصلني الجامعة"، "مطلوب سائق لنقل معلمات").
+- أجب بـ (NO) إذا كان الكاتب هو السائق أو المندوب بنفسه يعلن عن توفره أو يضع رقمه أو يطلب من الناس التواصل معه لتوصيلهم (أمثلة: "سواق فاضي للتوصيل"، "اللي يبغى مشوار يجي خاص"، "متواجد حالياً في جازان"، "نوفر لكم أفضل خدمات التوصيل").
 
-اجابتك يجب أن تكون كلمة واحدة فقط لا غير: (YES) أو (NO)."""
+الجواب كلمة واحدة فقط وبدون أي إضافات: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -102,34 +102,33 @@ def analyze_post_strictly(text: str) -> bool:
     }
 
     try:
-        # استخدام موديل GPT-4o بالطاقة القصوى لفهم المعنى
         payload = {
-            "model": "openai/gpt-4o",
+            "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        res = requests.post(url, headers=headers, json=payload, timeout=7)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [تحليل الذكاء الاصطناعي GPT-4o]: '{clean_text[:35]}...' -> {answer}", flush=True)
+            print(f"🧠 [قرار الذكاء الاصطناعي البشري]: '{clean_text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
         else:
-            print(f"⚠️ استجابة API خاطئة ({res.status_code}): {res.text}", flush=True)
+            print(f"⚠️ خطأ استجابة الـ API ({res.status_code}): {res.text}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ في اتصال الذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
 # =========================================================
-# 5. LIVE MESSAGE PROCESSOR (معالج الرسائل الحية)
+# 5. LIVE MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
     if not message or not message.id:
         return
 
-    # تجاهل رسائل الحساب نفسه
+    # استبعاد رسائل الحساب ذاته
     if message.from_user and message.from_user.is_self:
         return
 
@@ -138,7 +137,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     if len(clean_text) < 3:
         return
 
-    # منع تكرار المعالجة
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
@@ -153,14 +151,13 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
     chat_title = message.chat.title or str(message.chat.id)
     sender_name = message.from_user.first_name if message.from_user else "مجهول"
-    print(f"📥 [وصلت رسالة من {chat_title} - {sender_name}]: {clean_text[:30]}...", flush=True)
+    print(f"📥 [رسالة جديدة من {chat_title} - {sender_name}]: {clean_text[:30]}...", flush=True)
 
-    # تشغيل الفلترة والذكاء الاصطناعي
     loop = asyncio.get_running_loop()
-    is_client_request = await loop.run_in_executor(None, analyze_post_strictly, clean_text)
+    is_client_request = await loop.run_in_executor(None, analyze_with_human_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [طلب عميل حقيقي مقبول - جارٍ التحويل]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب عميل مقبول - جارٍ التحويل]: {clean_text[:30]}...", flush=True)
 
         buttons = []
         row = []
@@ -236,13 +233,13 @@ async def main():
         except Exception:
             pass
 
-    # استماع لحظي لكل المجموعات والقنوات التي يوجد بها الحساب
+    # استماع لحظي مباشر وشامل لجميع القروبات المضمومة بدون استثناء
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         await process_live_message(client, bot, message)
 
     await userbot.start()
-    print("🚀 تم تشغيل البوت بأقصى طاقة للذكاء الاصطناعي والاستماع اللحظي الشامل!", flush=True)
+    print("🚀 تم تشغيل النظام بأقصى قوة للذكاء الاصطناعي والاستماع الشامل!", flush=True)
 
     await asyncio.Event().wait()
 
