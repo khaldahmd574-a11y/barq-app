@@ -77,7 +77,14 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
-threading.Thread(target=lambda: HTTPServer(("0.0.0.0", PORT), KeepAliveHandler).serve_forever(), daemon=True).start()
+def run_keep_alive():
+    try:
+        server = HTTPServer(("0.0.0.0", PORT), KeepAliveHandler)
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Keep Alive Error: {e}")
+
+threading.Thread(target=run_keep_alive, daemon=True).start()
 
 
 # ============================================================
@@ -209,34 +216,44 @@ async def send_to_targets(message: Message, text: str):
 
 
 # ============================================================
-#                  معالجة كافة الرسائل والقنوات
+#                  معالجة كافة الرسائل دون استثناء
 # ============================================================
 
-@app.on_message(~filters.me)
+@app.on_message(filters.group | filters.channel | filters.private)
 async def process_all_messages(client: Client, message: Message):
     try:
+        # 1. عدم معالجة الرسائل الصادرة من نفس الحساب
+        me = await client.get_me()
+        if message.from_user and message.from_user.id == me.id:
+            return
+
         text = message.text or message.caption or ""
         if not text:
             return
 
+        # أمر الاستجابة والتأكد
         if text.startswith("/نية_طلب") or text.startswith("/نية طلب"):
-            await message.reply_text("✅ **الفلترة بذكاء الطلبات مفعلة وتستمع لكافة المجموعات!**")
+            await message.reply_text("✅ **نظام الفلترة بذكاء الطلبات مفعل ويستمع لجميع الجروبات والقنوات!**")
             return
 
+        # طباعة النص الملتقط في سجلات السيرفر لتأكيد السحب
+        logger.info(f"📥 [رسالة واردة جديدة]: {text[:50]}")
+
+        # منع الرسائل المكررة
         if await is_duplicate(message, text):
             return
 
-        logger.info(f"جاري فحص رسالة جديدة: {text[:40]}")
+        # الفحص بالذكاء الاصطناعي
         is_request = await ask_openrouter(text)
 
         if is_request:
-            logger.info("✅ طلب زبون حقيقي -> جاري الإرسال")
+            logger.info("✅ نية طلب زبون مؤكدة -> جاري الإرسال للمشتركين")
             await send_to_targets(message, text)
         else:
             logger.info("❌ رسالة مستبعدة (إعلان سائق/غير مطابقة)")
 
     except Exception as e:
-        logger.exception(f"خطأ في معالجة الرسالة: {e}")
+        logger.exception(f"خطأ أثناء معالجة الرسالة: {e}")
 
 
 # ============================================================
@@ -244,9 +261,9 @@ async def process_all_messages(client: Client, message: Message):
 # ============================================================
 
 async def main():
-    logger.info("🚀 تشغيل اليوزربوت واستماع المجموعات...")
+    logger.info("🚀 تشغيل اليوزربوت واستماع كافة المحادثات والجروبات...")
     await app.start()
-    logger.info("✅ الحساب يعمل ومربوط بالذكاء الاصطناعي بنجاح.")
+    logger.info("✅ الحساب متصل وجاهز لالتقاط الرسائل.")
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
