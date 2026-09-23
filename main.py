@@ -38,7 +38,8 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd"]
+# تم إضافة المعرف الجديد fs_990 هنا
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
 
@@ -114,7 +115,6 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        # رفع المهلة إلى 6 ثوانٍ لضمان عدم إسقاط الرسائل عند ضغط السيرفر
         res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
@@ -141,7 +141,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
     
-    # تخفيض طول النص الأدنى إلى حرفين لاستيعاب الكلمات القصيرة
     if len(clean_text) < 2:
         return
 
@@ -216,7 +215,6 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     while True:
         try:
-            # رفع حد الفحص إلى 150 حوار لضمان تغطية القروبات الصغرى والكبرى معاً
             async for dialog in userbot.get_dialogs(limit=150):
                 if dialog.top_message:
                     asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
@@ -259,7 +257,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث بمسح كامل 100% لجميع القروبات!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث مع إرسال التنبيهات للمعرف الجديد!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
