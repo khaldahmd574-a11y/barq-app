@@ -56,21 +56,23 @@ def run_dummy_server():
 
 
 # =========================================================
-# CONFIG
+# CONFIGURATION
 # =========================================================
 
-SESSION_STRING = os.environ.get(
-    "SESSION_STRING",
-    ""
-).strip()
+# نفس أسماء Environment الموجودة عندك في Render
 
 API_ID_RAW = os.environ.get(
-    "TELEGRAM_API_ID",
+    "API_ID",
     ""
 ).strip()
 
 API_HASH = os.environ.get(
-    "TELEGRAM_API_HASH",
+    "API_HASH",
+    ""
+).strip()
+
+SESSION_STRING = os.environ.get(
+    "SESSION_STRING",
     ""
 ).strip()
 
@@ -92,7 +94,7 @@ except Exception:
 
 
 # =========================================================
-# TARGET USERS
+# TARGET SUBSCRIBERS
 # =========================================================
 
 TARGET_USERS = [
@@ -111,7 +113,7 @@ MAX_CONCURRENT_AI_REQUESTS = 10
 
 
 # =========================================================
-# DEDUP CACHE
+# DEDUPLICATION CACHE
 # =========================================================
 
 class TTLCache:
@@ -127,10 +129,12 @@ class TTLCache:
         self.cache = OrderedDict()
         self.lock = None
 
+
     def initialize_lock(self):
 
         if self.lock is None:
             self.lock = asyncio.Lock()
+
 
     async def add_if_not_exists(
         self,
@@ -140,9 +144,11 @@ class TTLCache:
         if self.lock is None:
             self.initialize_lock()
 
+
         async with self.lock:
 
             now = time.time()
+
 
             while self.cache:
 
@@ -161,16 +167,20 @@ class TTLCache:
                     )
 
                 else:
+
                     break
+
 
             if key in self.cache:
                 return False
+
 
             if len(self.cache) >= self.max_size:
 
                 self.cache.popitem(
                     last=False
                 )
+
 
             self.cache[key] = (
                 now + self.ttl
@@ -183,7 +193,7 @@ DEDUP_CACHE = TTLCache()
 
 
 # =========================================================
-# PROCESSING
+# PROCESSING LOCK
 # =========================================================
 
 PROCESSING_LOCKS = set()
@@ -191,7 +201,7 @@ PROCESSING_LOCK = None
 
 
 # =========================================================
-# NORMALIZE TEXT
+# TEXT NORMALIZATION
 # =========================================================
 
 def normalize_text_for_hash(
@@ -200,11 +210,13 @@ def normalize_text_for_hash(
 
     text = text.lower()
 
+
     text = re.sub(
         r'[\u064B-\u0652]',
         '',
         text
     )
+
 
     text = re.sub(
         r'[^\w\s]',
@@ -212,11 +224,13 @@ def normalize_text_for_hash(
         text
     )
 
+
     text = re.sub(
         r'\s+',
         ' ',
         text
     ).strip()
+
 
     return text
 
@@ -235,8 +249,11 @@ def generate_text_fingerprint(
         )
     )
 
+
     return hashlib.sha256(
-        normalized.encode("utf-8")
+        normalized.encode(
+            "utf-8"
+        )
     ).hexdigest()
 
 
@@ -264,15 +281,15 @@ def analyze_with_pure_ai(
 
 حلل معنى المنشور كاملاً.
 
-المطلوب:
-
-YES = عميل يبحث عن سائق أو مندوب أو توصيل أو مشوار.
-
-NO = سائق أو مندوب يعرض خدماته، أو إعلان، أو سبام، أو محتوى غير متعلق.
+مهمتك تحديد هل الكاتب عميل يحتاج خدمة أم سائق/مندوب يعرض خدمة.
 
 ========================================
-أمثلة YES
+YES = طلب عميل
 ========================================
+
+العميل يبحث عن سائق أو مندوب أو توصيل أو مشوار.
+
+أمثلة:
 
 "مين رايح من صبيا لجيزان؟"
 
@@ -292,7 +309,7 @@ NO = سائق أو مندوب يعرض خدماته، أو إعلان، أو س�
 
 "مين عنده مشوار من صامطة إلى جيزان؟"
 
-وجود رقم جوال في طلب العميل لا يجعله سائقاً.
+وجود رقم جوال داخل طلب العميل لا يجعله إعلان سائق.
 
 مثال:
 
@@ -302,8 +319,12 @@ NO = سائق أو مندوب يعرض خدماته، أو إعلان، أو س�
 = YES
 
 ========================================
-أمثلة NO
+NO = سائق أو مندوب
 ========================================
+
+إذا كان الشخص يعرض نفسه لتقديم الخدمة فهو NO.
+
+أمثلة:
 
 "أنا متواجد في جيزان واللي يحتاج توصيل يكلمني"
 
@@ -324,21 +345,18 @@ NO = سائق أو مندوب يعرض خدماته، أو إعلان، أو س�
 "الله يرزقنا ويرزقكم"
 
 ========================================
-مهم
+NO = محتوى غير متعلق
 ========================================
+
+الإعلانات العامة والسبام وعروض الوظائف والعملات الرقمية وأي محتوى غير متعلق بطلبات العملاء = NO.
 
 لا تعتمد على كلمة واحدة.
 
-افهم نية صاحب المنشور.
+افهم نية صاحب المنشور كاملة.
 
-إذا كان يبحث عن شخص يقدم له الخدمة:
-YES
+إذا كان يبحث عن شخص يقدم له الخدمة = YES
 
-إذا كان هو الشخص الذي يقدم الخدمة:
-NO
-
-الإعلانات والوظائف والعملات الرقمية والمحتوى غير المتعلق:
-NO
+إذا كان هو الشخص الذي يقدم الخدمة = NO
 
 ========================================
 المنشور:
@@ -424,6 +442,7 @@ NO
 
                 data = response.json()
 
+
                 answer = (
                     data[
                         "choices"
@@ -447,8 +466,10 @@ NO
                 if answer == "YES":
                     return "YES"
 
+
                 if answer == "NO":
                     return "NO"
+
 
                 return "ERROR"
 
@@ -468,6 +489,7 @@ NO
                     flush=True
                 )
 
+
                 time.sleep(1)
 
                 continue
@@ -479,6 +501,7 @@ NO
                 f"{response.text[:500]}",
                 flush=True
             )
+
 
             return "ERROR"
 
@@ -492,6 +515,7 @@ NO
                 flush=True
             )
 
+
             time.sleep(1)
 
 
@@ -499,7 +523,8 @@ NO
 
 
 # =========================================================
-# CREATE INTERNAL MESSAGE
+# CREATE INTERNAL PAYLOAD
+# USERBOT -> BOT
 # =========================================================
 
 def create_bot_payload(
@@ -563,6 +588,8 @@ async def send_request_to_bot(
     message
 ):
 
+    payload = None
+
     try:
 
         sender_id = None
@@ -588,9 +615,13 @@ async def send_request_to_bot(
 
         message_link = None
 
+
         try:
+
             message_link = message.link
+
         except Exception:
+
             message_link = None
 
 
@@ -608,6 +639,13 @@ async def send_request_to_bot(
         )
 
 
+        print(
+            "📤 [USERBOT → BOT]: "
+            f"إرسال إلى @{bot_username}...",
+            flush=True
+        )
+
+
         await userbot.send_message(
 
             chat_id=bot_username,
@@ -619,10 +657,11 @@ async def send_request_to_bot(
 
 
         print(
-            "📤 [USERBOT → BOT]: "
-            "تم إرسال الطلب إلى البوت.",
+            "✅ [USERBOT → BOT]: "
+            "تم تحويل الطلب إلى البوت.",
             flush=True
         )
+
 
         return True
 
@@ -631,9 +670,10 @@ async def send_request_to_bot(
 
         print(
             "⏳ [USERBOT → BOT]: "
-            f"FloodWait {e.value}",
+            f"FloodWait {e.value} ثانية.",
             flush=True
         )
+
 
         await asyncio.sleep(
             e.value
@@ -651,13 +691,16 @@ async def send_request_to_bot(
                 disable_web_page_preview=True
             )
 
+
             print(
-                "📤 [USERBOT → BOT]: "
-                "تم الإرسال بعد الانتظار.",
+                "✅ [USERBOT → BOT]: "
+                "تم التحويل بعد الانتظار.",
                 flush=True
             )
 
+
             return True
+
 
         except Exception as ex:
 
@@ -667,6 +710,7 @@ async def send_request_to_bot(
                 flush=True
             )
 
+
             return False
 
 
@@ -674,15 +718,16 @@ async def send_request_to_bot(
 
         print(
             "❌ [USERBOT → BOT]: "
-            f"فشل إرسال الطلب -> {e}",
+            f"فشل تحويل الطلب -> {e}",
             flush=True
         )
+
 
         return False
 
 
 # =========================================================
-# BOT -> ONE SUBSCRIBER
+# BOT -> SUBSCRIBER
 # =========================================================
 
 async def send_to_subscriber(
@@ -693,6 +738,13 @@ async def send_to_subscriber(
 ):
 
     try:
+
+        print(
+            "📨 [BOT]: "
+            f"جاري الإرسال إلى @{username}",
+            flush=True
+        )
+
 
         await bot.send_message(
 
@@ -713,14 +765,18 @@ async def send_to_subscriber(
         )
 
 
+        return True
+
+
     except FloodWait as e:
 
         print(
             "⏳ [BOT]: "
-            f"@{username} FloodWait "
-            f"{e.value}",
+            f"FloodWait @{username}: "
+            f"{e.value} ثانية.",
             flush=True
         )
+
 
         await asyncio.sleep(
             e.value
@@ -743,10 +799,13 @@ async def send_to_subscriber(
 
             print(
                 "✅ [BOT → SUBSCRIBER]: "
-                f"تم الإرسال بعد الانتظار إلى "
-                f"@{username}",
+                f"تم الإرسال بعد الانتظار "
+                f"إلى @{username}",
                 flush=True
             )
+
+
+            return True
 
 
         except Exception as ex:
@@ -758,6 +817,9 @@ async def send_to_subscriber(
             )
 
 
+            return False
+
+
     except Exception as e:
 
         print(
@@ -765,6 +827,9 @@ async def send_to_subscriber(
             f"@{username} -> {e}",
             flush=True
         )
+
+
+        return False
 
 
 # =========================================================
@@ -784,9 +849,12 @@ async def bot_broadcast_to_subscribers(
     )
 
 
+    success_count = 0
+
+
     for username in TARGET_USERS:
 
-        await send_to_subscriber(
+        success = await send_to_subscriber(
 
             bot,
 
@@ -797,6 +865,12 @@ async def bot_broadcast_to_subscribers(
             reply_markup
         )
 
+
+        if success:
+
+            success_count += 1
+
+
         await asyncio.sleep(
             0.2
         )
@@ -804,7 +878,9 @@ async def bot_broadcast_to_subscribers(
 
     print(
         "🏁 [BOT]: "
-        "انتهى إرسال الطلب للمشتركين.",
+        f"انتهى الإرسال. "
+        f"نجح {success_count}/"
+        f"{len(TARGET_USERS)}",
         flush=True
     )
 
@@ -837,7 +913,7 @@ async def handle_bot_internal_message(
 
     print(
         "📥 [BOT]: "
-        "استلام رسالة داخلية من الحساب الوهمي.",
+        "استلام طلب داخلي من الحساب الوهمي.",
         flush=True
     )
 
@@ -866,9 +942,10 @@ async def handle_bot_internal_message(
 
         print(
             "❌ [BOT]: "
-            f"فشل فك الرسالة -> {e}",
+            f"فشل قراءة الطلب الداخلي -> {e}",
             flush=True
         )
+
 
         return
 
@@ -894,9 +971,11 @@ async def handle_bot_internal_message(
         "sender_id"
     )
 
+
     sender_username = data.get(
         "sender_username"
     )
+
 
     sender_first_name = (
         data.get(
@@ -905,6 +984,7 @@ async def handle_bot_internal_message(
         or "المستخدم"
     )
 
+
     message_link = data.get(
         "message_link"
     )
@@ -912,7 +992,7 @@ async def handle_bot_internal_message(
 
     print(
         "✅ [BOT]: "
-        "تم التعرف على طلب عميل.",
+        "تم التعرف على طلب العميل.",
         flush=True
     )
 
@@ -926,13 +1006,14 @@ async def handle_bot_internal_message(
     row = []
 
 
-    # فتح المحادثة
+    # زر فتح المحادثة
     if sender_username:
 
         user_url = (
             "https://t.me/"
             + str(sender_username)
         )
+
 
         row.append(
 
@@ -954,6 +1035,7 @@ async def handle_bot_internal_message(
             + str(sender_id)
         )
 
+
         row.append(
 
             InlineKeyboardButton(
@@ -966,7 +1048,7 @@ async def handle_bot_internal_message(
         )
 
 
-    # الرسالة الأصلية
+    # زر الرسالة الأصلية
     if message_link:
 
         row.append(
@@ -990,13 +1072,15 @@ async def handle_bot_internal_message(
         InlineKeyboardMarkup(
             buttons
         )
+
         if buttons
+
         else None
     )
 
 
     # =====================================================
-    # BOT SENDS
+    # BOT SENDS TO SUBSCRIBERS
     # =====================================================
 
     await bot_broadcast_to_subscribers(
@@ -1010,7 +1094,7 @@ async def handle_bot_internal_message(
 
 
 # =========================================================
-# PROCESS USERBOT MESSAGE
+# CORE USERBOT PROCESSOR
 # =========================================================
 
 async def process_live_message(
@@ -1024,6 +1108,7 @@ async def process_live_message(
         return
 
 
+    # تجاهل رسائل الحساب نفسه
     if (
         message.from_user
         and message.from_user.is_self
@@ -1039,7 +1124,9 @@ async def process_live_message(
     )
 
 
-    clean_text = raw_text.strip()
+    clean_text = (
+        raw_text.strip()
+    )
 
 
     if len(clean_text) < 4:
@@ -1085,10 +1172,15 @@ async def process_live_message(
 
         print(
             "📩 [USERBOT]: "
-            f"{clean_text[:80]}",
+            f"رسالة جديدة -> "
+            f"{clean_text[:100]}",
             flush=True
         )
 
+
+        # =================================================
+        # AI
+        # =================================================
 
         ai_result = "ERROR"
 
@@ -1121,7 +1213,17 @@ async def process_live_message(
 
             if attempt < 2:
 
-                await asyncio.sleep(1)
+                print(
+                    "🔄 [AI]: "
+                    f"إعادة المحاولة "
+                    f"{attempt + 2}/3",
+                    flush=True
+                )
+
+
+                await asyncio.sleep(
+                    1
+                )
 
 
         # =================================================
@@ -1130,13 +1232,14 @@ async def process_live_message(
 
         if ai_result == "YES":
 
+            # التكرار يسجل فقط بعد YES
             if not await DEDUP_CACHE.add_if_not_exists(
                 text_fingerprint
             ):
 
                 print(
                     "🛑 [DEDUP]: "
-                    "طلب مكرر.",
+                    "الطلب مكرر، تم تجاهله.",
                     flush=True
                 )
 
@@ -1168,8 +1271,7 @@ async def process_live_message(
 
                 print(
                     "❌ [FLOW]: "
-                    "الحساب الوهمي لم يستطع "
-                    "إرسال الطلب إلى البوت.",
+                    "فشل تحويل الطلب إلى البوت.",
                     flush=True
                 )
 
@@ -1178,7 +1280,7 @@ async def process_live_message(
 
             print(
                 "🚫 [AI]: "
-                "ليس طلب عميل.",
+                "ليس طلب عميل، تم تجاهله.",
                 flush=True
             )
 
@@ -1187,7 +1289,7 @@ async def process_live_message(
 
             print(
                 "⚠️ [AI]: "
-                "فشل التحليل.",
+                "فشل التحليل بعد المحاولات.",
                 flush=True
             )
 
@@ -1268,9 +1370,10 @@ async def background_dialog_poller(
 
                     print(
                         "⚠️ [SCANNER]: "
-                        f"{e}",
+                        f"Telegram RPC -> {e}",
                         flush=True
                     )
+
 
                 except Exception as e:
 
@@ -1310,11 +1413,12 @@ async def main():
 
 
     # =====================================================
-    # CHECK ENV
+    # CONFIG CHECK
     # =====================================================
 
     print(
-        "🔧 [CONFIG]: فحص الإعدادات...",
+        "🔧 [CONFIG]: "
+        "فحص Environment...",
         flush=True
     )
 
@@ -1323,7 +1427,7 @@ async def main():
 
         print(
             "❌ [CONFIG]: "
-            "TELEGRAM_API_ID غير موجود أو غير صحيح.",
+            "API_ID غير موجود أو غير صحيح.",
             flush=True
         )
 
@@ -1334,18 +1438,7 @@ async def main():
 
         print(
             "❌ [CONFIG]: "
-            "TELEGRAM_API_HASH غير موجود.",
-            flush=True
-        )
-
-        return
-
-
-    if not BOT_TOKEN:
-
-        print(
-            "❌ [CONFIG]: "
-            "BOT_TOKEN غير موجود.",
+            "API_HASH غير موجود.",
             flush=True
         )
 
@@ -1357,6 +1450,17 @@ async def main():
         print(
             "❌ [CONFIG]: "
             "SESSION_STRING غير موجود.",
+            flush=True
+        )
+
+        return
+
+
+    if not BOT_TOKEN:
+
+        print(
+            "❌ [CONFIG]: "
+            "BOT_TOKEN غير موجود.",
             flush=True
         )
 
@@ -1376,22 +1480,31 @@ async def main():
 
     print(
         "✅ [CONFIG]: "
-        "جميع المتغيرات الأساسية موجودة.",
+        "Environment جاهز بالكامل.",
         flush=True
     )
 
 
     # =====================================================
-    # LOCK
+    # LOCKS
     # =====================================================
 
-    PROCESSING_LOCK = asyncio.Lock()
+    PROCESSING_LOCK = (
+        asyncio.Lock()
+    )
+
 
     DEDUP_CACHE.initialize_lock()
 
 
-    ai_semaphore = asyncio.Semaphore(
-        MAX_CONCURRENT_AI_REQUESTS
+    # =====================================================
+    # AI SEMAPHORE
+    # =====================================================
+
+    ai_semaphore = (
+        asyncio.Semaphore(
+            MAX_CONCURRENT_AI_REQUESTS
+        )
     )
 
 
@@ -1425,6 +1538,10 @@ async def main():
 
     # =====================================================
     # BOT
+    #
+    # مهم:
+    # لا نستخدم in_memory=True للبوت.
+    # جلسة البوت تحفظ في Render أثناء التشغيل.
     # =====================================================
 
     bot = Client(
@@ -1440,7 +1557,7 @@ async def main():
 
 
     # =====================================================
-    # BOT HANDLER
+    # BOT INTERNAL RECEIVER
     # =====================================================
 
     @bot.on_message(
@@ -1460,7 +1577,7 @@ async def main():
 
 
     # =====================================================
-    # START BOT
+    # START BOT FIRST
     # =====================================================
 
     try:
@@ -1475,7 +1592,9 @@ async def main():
         await bot.start()
 
 
-        bot_me = await bot.get_me()
+        bot_me = (
+            await bot.get_me()
+        )
 
 
         bot_username = (
@@ -1491,6 +1610,7 @@ async def main():
                 flush=True
             )
 
+
             await bot.stop()
 
             return
@@ -1498,7 +1618,7 @@ async def main():
 
         print(
             "✅ [BOT]: "
-            f"تم تشغيل @{bot_username}",
+            f"تم تشغيل البوت @{bot_username}",
             flush=True
         )
 
@@ -1572,16 +1692,18 @@ async def main():
             flush=True
         )
 
+
         try:
             await bot.stop()
         except Exception:
             pass
 
+
         return
 
 
     # =====================================================
-    # START SCANNER
+    # SCANNER
     # =====================================================
 
     asyncio.create_task(
@@ -1598,7 +1720,7 @@ async def main():
 
 
     # =====================================================
-    # FINAL STATUS
+    # STATUS
     # =====================================================
 
     print(
@@ -1606,10 +1728,12 @@ async def main():
         flush=True
     )
 
+
     print(
         "🚀 [BARQ]: النظام يعمل الآن",
         flush=True
     )
+
 
     print(
         "📡 القروبات"
@@ -1619,16 +1743,18 @@ async def main():
         flush=True
     )
 
+
     print(
         "🤖 OpenRouter: ACTIVE",
         flush=True
     )
 
+
     print(
-        "👥 المشتركين:",
+        "👥 TARGET USERS:",
         ", ".join(
-            "@" + x
-            for x in TARGET_USERS
+            "@" + username
+            for username in TARGET_USERS
         ),
         flush=True
     )
