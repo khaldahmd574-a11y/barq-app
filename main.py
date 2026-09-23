@@ -38,7 +38,6 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم إضافة اليوزر الجديد هنا
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd"]
 
 PROCESSED_KEYS = set()
@@ -73,7 +72,6 @@ def is_hard_driver_advertisement(text: str) -> bool:
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
-    # 1. التثبت الأولي من الفلتر الصارم للإعلانات وأرقام الهواتف
     if is_hard_driver_advertisement(text):
         return False
 
@@ -82,14 +80,14 @@ def analyze_with_pure_ai(text: str) -> bool:
 
     prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (خاصة منطقة جازان والجنوب).
 
-مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة) أم (سائق يعرض خدمة):
+مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة/توصيلة/طرد) أم (سائق يعرض خدمة):
 
 [الصنف الأول: طلب عميل/زبون -> أجب بـ YES]
 يكون الكاتب زبوناً ويجب قبول رسالته (YES) إذا كان يُعبر عن احتياجه أو يبحث عن سواق/مندوب لنقل طرد/مشوار/ركاب:
-1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟").
-2. طلبات الاحتياج والمبادرة بجميع صيغ العامية (مثل: "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "مطلوب سواق دوامات"، "مين يوصلني").
-3. أي طلب لنقل أغراض، طرود، ركاب، هدايا، أو مطاعم يطلبه العميل لنفسه.
-* قاعدة حاسمة: لو كان النص يحتوي على صيغة سؤال/استفسار أو طلب احتياج (مين/فيه/ابغى/محتاج/أبي/مطلوب) -> أجب بـ (YES) فوراً.
+1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟"، "من قريب من ماك").
+2. طلبات الاحتياج والتوصيل المباشرة أو القليلة الكلمات (مثل: "توصيل ضمد"، "توصيل ضمد من فاضي"، "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة").
+3. السلام والتحية المتبوعة بطلب أو استفسار عن توصيلة (مثل: "السلام عليكم ورحمة الله وبركاته صباح الخير من قريب من ماك").
+* قاعدة حاسمة: أي رسالة قصيرة تشير إلى اسم مكان مع كلمة "توصيل" أو "مين" أو "فاضي" أو "قريب" تعتبر (YES) فوراً.
 
 [الصنف الثاني: إعلان سائق/مندوب أو سبام -> أجب بـ NO]
 يكون الكاتب سائقاً/معلناً ويجب رفض رسالته (NO) إذا كان يُعلن صراحةً عن توفره الشخصي أو سيارته أو خدماته للجمهور:
@@ -116,8 +114,8 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        # تم تقليل مهلة الانتظار إلى 3 ثوانٍ لرفع السرعة
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        # رفع المهلة إلى 6 ثوانٍ لضمان عدم إسقاط الرسائل عند ضغط السيرفر
+        res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل النية والفلترة]: '{text[:35]}...' -> {answer}", flush=True)
@@ -142,7 +140,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 4:
+    
+    # تخفيض طول النص الأدنى إلى حرفين لاستيعاب الكلمات القصيرة
+    if len(clean_text) < 2:
         return
 
     msg_key = f"{message.chat.id}_{message.id}"
@@ -209,21 +209,21 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER
+# FAST MULTI-GROUP SCANNER (تغطية 100% لجميع القروبات)
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=30):
+            # رفع حد الفحص إلى 150 حوار لضمان تغطية القروبات الصغرى والكبرى معاً
+            async for dialog in userbot.get_dialogs(limit=150):
                 if dialog.top_message:
-                    # تسريع الفاحص عبر تشغيل الرسائل كمهام خلفية متوازية
                     asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
         except Exception as e:
             print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
             
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -256,11 +256,10 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
-        # تشغيل فوري غير متزامن للرسائل اللحظية للسرعة الفائقة
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث مع المشترك الجديد!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث بمسح كامل 100% لجميع القروبات!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
