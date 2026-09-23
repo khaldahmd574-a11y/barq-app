@@ -14,1693 +14,288 @@ from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait, RPCError
 
-
 # =========================================================
-# KEEP ALIVE - RENDER
+# KEEP ALIVE SERVER 24/7
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
-
     def do_GET(self):
         self.send_response(200)
-        self.send_header(
-            "Content-type",
-            "text/plain; charset=utf-8"
-        )
+        self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-
-        self.wfile.write(
-            b"Barq OpenRouter AI System Active!"
-        )
+        self.wfile.write(b"Barq AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
 
-
 def run_dummy_server():
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            "10000"
-        )
-    )
-
-    server = HTTPServer(
-        ("0.0.0.0", port),
-        DummyServer
-    )
-
+    port = int(os.environ.get("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
-
 
 # =========================================================
 # CONFIGURATION
 # =========================================================
 
-API_ID_RAW = os.environ.get(
-    "API_ID",
-    ""
-).strip()
-
-API_HASH = os.environ.get(
-    "API_HASH",
-    ""
-).strip()
-
-SESSION_STRING = os.environ.get(
-    "SESSION_STRING",
-    ""
-).strip()
-
-BOT_TOKEN = os.environ.get(
-    "BOT_TOKEN",
-    ""
-).strip()
-
-OPENROUTER_API_KEY = os.environ.get(
-    "OPENROUTER_API_KEY",
-    ""
-).strip()
-
+API_ID_RAW = os.environ.get("API_ID", os.environ.get("TELEGRAM_API_ID", "39120728")).strip()
+API_HASH = os.environ.get("API_HASH", os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
+SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 try:
     API_ID = int(API_ID_RAW)
 except Exception:
     API_ID = 0
 
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd"]
 
 # =========================================================
-# TARGET SUBSCRIBERS
+# DEDUPLICATION & LOCKS
 # =========================================================
 
-TARGET_USERS = [
-    "shaybq",
-    "Waaaaaaa33",
-    "abood1317",
-    "Ndhhyfvvjkcd"
-]
+PROCESSED_KEYS = set()
+PROCESSED_LOCK = asyncio.Lock()
 
-
-# =========================================================
-# AI SETTINGS
-# =========================================================
-
-MAX_CONCURRENT_AI_REQUESTS = 10
-
+def get_text_hash(text: str) -> str:
+    clean = re.sub(r'\s+', ' ', text.strip().lower())
+    return hashlib.md5(clean.encode('utf-8')).hexdigest()
 
 # =========================================================
-# DEDUPLICATION CACHE
+# HARD REGEX PRE-FILTER (فلتر صريح للسائقين لتقليل الضغط)
 # =========================================================
 
-class TTLCache:
-
-    def __init__(
-        self,
-        ttl_seconds=10800,
-        max_size=20000
-    ):
-
-        self.ttl = ttl_seconds
-        self.max_size = max_size
-        self.cache = OrderedDict()
-        self.lock = None
-
-
-    def initialize_lock(self):
-
-        if self.lock is None:
-            self.lock = asyncio.Lock()
-
-
-    async def add_if_not_exists(
-        self,
-        key: str
-    ) -> bool:
-
-        if self.lock is None:
-            self.initialize_lock()
-
-
-        async with self.lock:
-
-            now = time.time()
-
-
-            while self.cache:
-
-                first_key = next(
-                    iter(self.cache)
-                )
-
-                first_expiry = self.cache[
-                    first_key
-                ]
-
-                if first_expiry < now:
-
-                    self.cache.popitem(
-                        last=False
-                    )
-
-                else:
-
-                    break
-
-
-            if key in self.cache:
-                return False
-
-
-            if len(self.cache) >= self.max_size:
-
-                self.cache.popitem(
-                    last=False
-                )
-
-
-            self.cache[key] = (
-                now + self.ttl
-            )
-
-            return True
-
-
-DEDUP_CACHE = TTLCache()
-
+def is_hard_driver_advertisement(text: str) -> bool:
+    has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', text)
+    driver_keywords = [
+        "متواجد", "كلموني", "تواصل معي", "تواصلوا", "اتصل", "رزقني", "يرزقكم", 
+        "فاضي", "سيارتي", "جاهز", "نوفر لكم", "خدمات توصيل", "خاص مفتوح"
+    ]
+    if has_phone:
+        for kw in driver_keywords:
+            if kw in text:
+                return True
+    return False
 
 # =========================================================
-# PROCESSING LOCK
+# FLEXIBLE AI ENGINE
 # =========================================================
 
-PROCESSING_LOCKS = set()
-PROCESSING_LOCK = None
-
-
-# =========================================================
-# TEXT NORMALIZATION
-# =========================================================
-
-def normalize_text_for_hash(
-    text: str
-) -> str:
-
-    text = text.lower()
-
-
-    text = re.sub(
-        r'[\u064B-\u0652]',
-        '',
-        text
-    )
-
-
-    text = re.sub(
-        r'[^\w\s]',
-        '',
-        text
-    )
-
-
-    text = re.sub(
-        r'\s+',
-        ' ',
-        text
-    ).strip()
-
-
-    return text
-
-
-# =========================================================
-# FINGERPRINT
-# =========================================================
-
-def generate_text_fingerprint(
-    text: str
-) -> str:
-
-    normalized = (
-        normalize_text_for_hash(
-            text
-        )
-    )
-
-
-    return hashlib.sha256(
-        normalized.encode(
-            "utf-8"
-        )
-    ).hexdigest()
-
-
-# =========================================================
-# OPENROUTER AI (تم تحديث الـ PROMPT لضبط الأسئلة العامة)
-# =========================================================
-
-def analyze_with_pure_ai(
-    text: str
-) -> str:
+def analyze_with_pure_ai(text: str) -> bool:
+    if is_hard_driver_advertisement(text):
+        return False
 
     if not OPENROUTER_API_KEY:
+        return False
 
-        print(
-            "❌ [OpenRouter]: "
-            "OPENROUTER_API_KEY غير موجود.",
-            flush=True
-        )
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (خاصة منطقة جازان والجنوب).
 
-        return "ERROR"
+مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة/طرد/توصيلة) أم (سائق يعرض خدمة):
 
+[الصنف الأول: طلب عميل/زبون -> أجب بـ YES]
+يكون الكاتب زبوناً ويجب قبول رسالته (YES) إذا كان يُعبر عن احتياجه أو يبحث عن سواق/مندوب لنقل طرد/مشوار/ركاب:
+1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟").
+2. طلبات الاحتياج والمبادرة بجميع صيغ العامية سواء كانت سؤالاً أو إخباراً (مثل: "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "مطلوب سواق"، "مشوار الآن ابي سيارة.."، "مندوب من صبيا جاي صامطة يستلم طلبية..").
+3. أي طلب لنقل أغراض، طرود، ركاب، هدايا، طلبات مطاعم، أو استلام شحنات من مواقع مثل (ريد بوكس، سمسا، جرير... إلخ).
 
-    prompt = f"""
-أنت نظام ذكاء اصطناعي متخصص في تصنيف منشورات قروبات المشاوير والتوصيل في السعودية، وخاصة جازان والمنطقة الجنوبية.
+[الصنف الثاني: إعلان سائق/مندوب أو سبام -> أجب بـ NO]
+يكون الكاتب سائقاً/معلناً ويجب رفض رسالته (NO) إذا كان يُعلن صراحةً عن توفره الشخصي أو سيارته أو خدماته للجمهور:
+1. أي نص يحتوي على "رقم جوال" للسائق مع عبارات التوفر (مثل: "متواجد كلموني 055xxx", "تواصل خاص 050xxx").
+2. التصريح بالتحرك أو الجاهزية الشخصية للعامة (مثل: "متحرك من صبياء"، "مشي العصر"، "أنا فاضي"، "متواجد حالياً"، "طالع جازان اللي يبي يكلمني"، "الله يرزقنا ويرزقكم").
+3. إعلانات قوائم الخدمات المكررة، والوظائف والتسويق.
 
-حلل معنى المنشور كاملاً.
+الرسالة المراد تحليلها:
+"{text}"
 
-مهمتك تحديد هل الكاتب عميل يبحث عن خدمة/سائق أم هو سائق/مندوب يعرض خدمة.
+الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
 
-========================================
-YES = طلب عميل (بحث عن خدمة أو تفرغ)
-========================================
-
-العميل يبحث عن سائق أو مندوب أو توصيل أو يتساءل عن وجود شخص متفرغ لنقله أو قضاء طلب.
-
-أمثلة مؤكدة لـ YES:
-
-"مين رايح من صبيا لجيزان؟"
-"فيه أحد رايح أبو عريش؟"
-"مين فاضي يوصلني الآن؟"
-"السلام عليكم في احد فاضي في جازان ؟"
-"فيه أحد فاضي الحين؟"
-"في أحد متواجد بجازان؟"
-"أحتاج سواق للجامعة"
-"محتاج أحد يوصل لي طلب"
-"أبي مندوب يجيب لي غرض"
-"مطلوب سواق دوامات"
-"أحتاج أحد يوصلني من جيزان لصبيا"
-"مين عنده مشوار من صامطة إلى جيزان؟"
-
-وجود رقم جوال داخل طلب العميل لا يجعله إعلان سائق.
-
-========================================
-NO = سائق أو مندوب (عرض خدمة)
-========================================
-
-إذا كان الشخص يعرض نفسه ومستعداً لتقديم الخدمة للآخرين فهو NO.
-
-أمثلة مؤكدة لـ NO:
-
-"أنا متواجد في جيزان واللي يحتاج توصيل يكلمني"
-"فاضي من صبيا إلى جيزان"
-"سلام عليكم متواجد في جازان للاتصال 05xxxx"
-"متواجد 24 ساعة للتوصيل"
-"عندي سيارة وأوصل مشاوير"
-"طالع جازان اللي يبي يكلمني"
-"أنا مندوب ومتواجد الآن"
-"أي أحد يحتاج مشوار يكلمني"
-"متوفر للتوصيل"
-
-========================================
-NO = محتوى غير متعلق
-========================================
-
-الإعلانات العامة، السبام، الوظائف، والدردشة العامة غير المتعلقة بالطلب = NO.
-
-افهم النية كاملة:
-- يبحث عن شخص يوصله أو يتساءل هل هناك أحد متفرغ للخدمة = YES
-- يعرض نفسه للخدمة والتوصيل = NO
-
-========================================
-المنشور:
-========================================
-
-{text}
-
-========================================
-
-أجب بكلمة واحدة فقط:
-
-YES
-
-أو
-
-NO
-"""
-
-
-    url = (
-        "https://openrouter.ai/"
-        "api/v1/chat/completions"
-    )
-
-
+    url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
-
-        "Authorization":
-            f"Bearer {OPENROUTER_API_KEY}",
-
-        "Content-Type":
-            "application/json",
-
-        "HTTP-Referer":
-            "https://barq.local",
-
-        "X-Title":
-            "Barq Jazan AI"
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
     }
 
+    try:
+        payload = {
+            "model": "openai/gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 3
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [الذكاء الاصطناعي]: '{text[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ API: {e}", flush=True)
 
-    payload = {
-
-        "model":
-            "openai/gpt-4o-mini",
-
-        "messages": [
-
-            {
-                "role":
-                    "user",
-
-                "content":
-                    prompt
-            }
-        ],
-
-        "temperature":
-            0,
-
-        "max_tokens":
-            5
-    }
-
-
-    for attempt in range(3):
-
-        try:
-
-            response = requests.post(
-
-                url,
-
-                headers=headers,
-
-                json=payload,
-
-                timeout=15
-            )
-
-
-            if response.status_code == 200:
-
-                data = response.json()
-
-
-                answer = (
-                    data[
-                        "choices"
-                    ][0][
-                        "message"
-                    ][
-                        "content"
-                    ]
-                    .strip()
-                    .upper()
-                )
-
-
-                print(
-                    "🤖 [OpenRouter]: "
-                    f"{answer}",
-                    flush=True
-                )
-
-
-                if answer == "YES":
-                    return "YES"
-
-
-                if answer == "NO":
-                    return "NO"
-
-
-                return "ERROR"
-
-
-            if response.status_code in (
-                429,
-                500,
-                502,
-                503,
-                504
-            ):
-
-                print(
-                    "⚠️ [OpenRouter]: "
-                    f"HTTP {response.status_code} "
-                    f"محاولة {attempt + 1}/3",
-                    flush=True
-                )
-
-
-                time.sleep(1)
-
-                continue
-
-
-            print(
-                "❌ [OpenRouter]: "
-                f"HTTP {response.status_code} "
-                f"{response.text[:500]}",
-                flush=True
-            )
-
-
-            return "ERROR"
-
-
-        except Exception as e:
-
-            print(
-                "⚠️ [OpenRouter]: "
-                f"{e} "
-                f"محاولة {attempt + 1}/3",
-                flush=True
-            )
-
-
-            time.sleep(1)
-
-
-    return "ERROR"
-
+    return False
 
 # =========================================================
-# CREATE INTERNAL PAYLOAD
-# USERBOT -> BOT
+# INTERNAL PAYLOAD CREATOR
 # =========================================================
 
-def create_bot_payload(
-    text,
-    sender_id,
-    sender_username,
-    sender_first_name,
-    message_link
-):
-
+def create_bot_payload(text, sender_id, sender_username, sender_first_name, message_link):
     data = {
-
-        "type":
-            "BARQ_CUSTOMER_REQUEST",
-
-        "text":
-            text,
-
-        "sender_id":
-            sender_id,
-
-        "sender_username":
-            sender_username,
-
-        "sender_first_name":
-            sender_first_name,
-
-        "message_link":
-            message_link
+        "type": "BARQ_CUSTOMER_REQUEST",
+        "text": text,
+        "sender_id": sender_id,
+        "sender_username": sender_username,
+        "sender_first_name": sender_first_name,
+        "message_link": message_link
     }
-
-
-    raw = json.dumps(
-        data,
-        ensure_ascii=False
-    )
-
-
-    encoded = (
-        base64.urlsafe_b64encode(
-            raw.encode("utf-8")
-        )
-        .decode("ascii")
-    )
-
-
-    return (
-        "BARQ_INTERNAL:"
-        + encoded
-    )
-
+    raw = json.dumps(data, ensure_ascii=False)
+    encoded = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+    return "BARQ_INTERNAL:" + encoded
 
 # =========================================================
-# USERBOT -> BOT
+# BOT INTERNAL HANDLER
 # =========================================================
 
-async def send_request_to_bot(
-    userbot,
-    bot_username,
-    text,
-    message
-):
-
-    payload = None
+async def handle_bot_internal_message(bot: Client, message: Message):
+    if not message or not message.text or not message.text.startswith("BARQ_INTERNAL:"):
+        return
 
     try:
-
-        sender_id = None
-        sender_username = None
-        sender_first_name = "المستخدم"
-
-
-        if message.from_user:
-
-            sender_id = (
-                message.from_user.id
-            )
-
-            sender_username = (
-                message.from_user.username
-            )
-
-            sender_first_name = (
-                message.from_user.first_name
-                or "المستخدم"
-            )
-
-
-        message_link = None
-
-
-        try:
-
-            message_link = message.link
-
-        except Exception:
-
-            message_link = None
-
-
-        payload = create_bot_payload(
-
-            text,
-
-            sender_id,
-
-            sender_username,
-
-            sender_first_name,
-
-            message_link
-        )
-
-
-        print(
-            "📤 [USERBOT → BOT]: "
-            f"إرسال إلى @{bot_username}...",
-            flush=True
-        )
-
-
-        await userbot.send_message(
-
-            chat_id=bot_username,
-
-            text=payload,
-
-            disable_web_page_preview=True
-        )
-
-
-        print(
-            "✅ [USERBOT → BOT]: "
-            "تم تحويل الطلب إلى البوت.",
-            flush=True
-        )
-
-
-        return True
-
-
-    except FloodWait as e:
-
-        print(
-            "⏳ [USERBOT → BOT]: "
-            f"FloodWait {e.value} ثانية.",
-            flush=True
-        )
-
-
-        await asyncio.sleep(
-            e.value
-        )
-
-
-        try:
-
-            await userbot.send_message(
-
-                chat_id=bot_username,
-
-                text=payload,
-
-                disable_web_page_preview=True
-            )
-
-
-            print(
-                "✅ [USERBOT → BOT]: "
-                "تم التحويل بعد الانتظار.",
-                flush=True
-            )
-
-
-            return True
-
-
-        except Exception as ex:
-
-            print(
-                "❌ [USERBOT → BOT]: "
-                f"{ex}",
-                flush=True
-            )
-
-
-            return False
-
-
-    except Exception as e:
-
-        print(
-            "❌ [USERBOT → BOT]: "
-            f"فشل تحويل الطلب -> {e}",
-            flush=True
-        )
-
-
-        return False
-
-
-# =========================================================
-# BOT -> SUBSCRIBER
-# =========================================================
-
-async def send_to_subscriber(
-    bot,
-    username,
-    text,
-    reply_markup
-):
-
-    try:
-
-        print(
-            "📨 [BOT]: "
-            f"جاري الإرسال إلى @{username}",
-            flush=True
-        )
-
-
-        await bot.send_message(
-
-            chat_id=username,
-
-            text=text,
-
-            reply_markup=reply_markup,
-
-            disable_web_page_preview=True
-        )
-
-
-        print(
-            "✅ [BOT → SUBSCRIBER]: "
-            f"تم الإرسال إلى @{username}",
-            flush=True
-        )
-
-
-        return True
-
-
-    except FloodWait as e:
-
-        print(
-            "⏳ [BOT]: "
-            f"FloodWait @{username}: "
-            f"{e.value} ثانية.",
-            flush=True
-        )
-
-
-        await asyncio.sleep(
-            e.value
-        )
-
-
-        try:
-
-            await bot.send_message(
-
-                chat_id=username,
-
-                text=text,
-
-                reply_markup=reply_markup,
-
-                disable_web_page_preview=True
-            )
-
-
-            print(
-                "✅ [BOT → SUBSCRIBER]: "
-                f"تم الإرسال بعد الانتظار "
-                f"إلى @{username}",
-                flush=True
-            )
-
-
-            return True
-
-
-        except Exception as ex:
-
-            print(
-                "❌ [BOT → SUBSCRIBER]: "
-                f"@{username} -> {ex}",
-                flush=True
-            )
-
-
-            return False
-
-
-    except Exception as e:
-
-        print(
-            "❌ [BOT → SUBSCRIBER]: "
-            f"@{username} -> {e}",
-            flush=True
-        )
-
-
-        return False
-
-
-# =========================================================
-# BOT BROADCAST
-# =========================================================
-
-async def bot_broadcast_to_subscribers(
-    bot,
-    text,
-    reply_markup
-):
-
-    print(
-        "📢 [BOT]: "
-        "بدء إرسال الطلب للمشتركين...",
-        flush=True
-    )
-
-
-    success_count = 0
-
-
-    for username in TARGET_USERS:
-
-        success = await send_to_subscriber(
-
-            bot,
-
-            username,
-
-            text,
-
-            reply_markup
-        )
-
-
-        if success:
-
-            success_count += 1
-
-
-        await asyncio.sleep(
-            0.2
-        )
-
-
-    print(
-        "🏁 [BOT]: "
-        f"انتهى الإرسال. "
-        f"نجح {success_count}/"
-        f"{len(TARGET_USERS)}",
-        flush=True
-    )
-
-
-# =========================================================
-# BOT INTERNAL RECEIVER
-# =========================================================
-
-async def handle_bot_internal_message(
-    bot,
-    message
-):
-
-    if not message:
+        encoded = message.text[len("BARQ_INTERNAL:"):]
+        decoded = base64.urlsafe_b64decode(encoded).decode("utf-8")
+        data = json.loads(decoded)
+    except Exception:
         return
 
-
-    raw_text = (
-        message.text
-        or ""
-    )
-
-
-    if not raw_text.startswith(
-        "BARQ_INTERNAL:"
-    ):
-
-        return
-
-
-    print(
-        "📥 [BOT]: "
-        "استلام طلب داخلي من الحساب الوهمي.",
-        flush=True
-    )
-
-
-    try:
-
-        encoded = raw_text[
-            len("BARQ_INTERNAL:")
-        :]
-
-
-        decoded = (
-            base64.urlsafe_b64decode(
-                encoded
-            )
-            .decode("utf-8")
-        )
-
-
-        data = json.loads(
-            decoded
-        )
-
-
-    except Exception as e:
-
-        print(
-            "❌ [BOT]: "
-            f"فشل قراءة الطلب الداخلي -> {e}",
-            flush=True
-        )
-
-
-        return
-
-
-    if data.get("type") != (
-        "BARQ_CUSTOMER_REQUEST"
-    ):
-
-        return
-
-
-    text = (
-        data.get("text")
-        or ""
-    ).strip()
-
-
-    if len(text) < 4:
-        return
-
-
-    sender_id = data.get(
-        "sender_id"
-    )
-
-
-    sender_username = data.get(
-        "sender_username"
-    )
-
-
-    sender_first_name = (
-        data.get(
-            "sender_first_name"
-        )
-        or "المستخدم"
-    )
-
-
-    message_link = data.get(
-        "message_link"
-    )
-
-
-    print(
-        "✅ [BOT]: "
-        "تم التعرف على طلب العميل.",
-        flush=True
-    )
-
-
-    # =====================================================
-    # BUTTONS
-    # =====================================================
+    text = data.get("text", "").strip()
+    sender_id = data.get("sender_id")
+    sender_username = data.get("sender_username")
+    sender_first_name = data.get("sender_first_name", "المستخدم")
+    message_link = data.get("message_link")
 
     buttons = []
-
     row = []
 
-
     if sender_username:
-
-        user_url = (
-            "https://t.me/"
-            + str(sender_username)
-        )
-
-
-        row.append(
-
-            InlineKeyboardButton(
-
-                "💬 فتح المحادثة "
-                f"(@{sender_username})",
-
-                url=user_url
-            )
-        )
-
-
+        row.append(InlineKeyboardButton(f"💬 فتح المحادثة (@{sender_username})", url=f"https://t.me/{sender_username}"))
     elif sender_id:
-
-        user_url = (
-            "tg://openmessage"
-            "?user_id="
-            + str(sender_id)
-        )
-
-
-        row.append(
-
-            InlineKeyboardButton(
-
-                "💬 فتح المحادثة "
-                f"({sender_first_name})",
-
-                url=user_url
-            )
-        )
-
+        row.append(InlineKeyboardButton(f"💬 فتح المحادثة ({sender_first_name})", url=f"tg://openmessage?user_id={sender_id}"))
 
     if message_link:
-
-        row.append(
-
-            InlineKeyboardButton(
-
-                "📩 الرسالة الأصلية",
-
-                url=message_link
-            )
-        )
-
+        row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message_link))
 
     if row:
-
         buttons.append(row)
 
+    reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-    reply_markup = (
-
-        InlineKeyboardMarkup(
-            buttons
-        )
-
-        if buttons
-
-        else None
-    )
-
-
-    # =====================================================
-    # BOT SENDS TO SUBSCRIBERS
-    # =====================================================
-
-    await bot_broadcast_to_subscribers(
-
-        bot,
-
-        text,
-
-        reply_markup
-    )
-
+    for user in TARGET_USERS:
+        try:
+            await bot.send_message(chat_id=user, text=text, reply_markup=reply_markup, disable_web_page_preview=True)
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"❌ فشل إرسال إلى {user}: {e}", flush=True)
 
 # =========================================================
-# CORE USERBOT PROCESSOR
+# PROCESSOR FOR LIVE MESSAGES
 # =========================================================
 
-async def process_live_message(
-    userbot,
-    bot_username,
-    message,
-    ai_semaphore
-):
-
+async def process_live_message(userbot: Client, bot_username: str, message: Message):
     if not message or not message.id:
         return
 
-
-    if (
-        message.from_user
-        and message.from_user.is_self
-    ):
-
+    if message.from_user and message.from_user.is_self:
         return
 
-
-    raw_text = (
-        message.text
-        or message.caption
-        or ""
-    )
-
-
-    clean_text = (
-        raw_text.strip()
-    )
-
-
+    raw_text = message.text or message.caption or ""
+    clean_text = raw_text.strip()
     if len(clean_text) < 4:
         return
 
+    msg_key = f"{message.chat.id}_{message.id}"
+    text_hash = get_text_hash(clean_text)
 
-    unique_msg_id = (
-        f"{message.chat.id}:"
-        f"{message.id}"
-    )
-
-
-    text_fingerprint = (
-        generate_text_fingerprint(
-            clean_text
-        )
-    )
-
-
-    async with PROCESSING_LOCK:
-
-        if (
-            unique_msg_id
-            in PROCESSING_LOCKS
-            or
-            text_fingerprint
-            in PROCESSING_LOCKS
-        ):
-
+    async with PROCESSED_LOCK:
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
+        if len(PROCESSED_KEYS) > 15000:
+            PROCESSED_KEYS.clear()
 
+    loop = asyncio.get_running_loop()
+    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
-        PROCESSING_LOCKS.add(
-            unique_msg_id
-        )
+    if is_client_request:
+        print(f"✅ [طلب عميل مقبول]: {clean_text[:30]}...", flush=True)
 
-        PROCESSING_LOCKS.add(
-            text_fingerprint
-        )
+        sender_id = message.from_user.id if message.from_user else None
+        sender_username = message.from_user.username if message.from_user else None
+        sender_first_name = message.from_user.first_name if message.from_user else "المستخدم"
+        message_link = message.link
 
-
-    try:
-
-        print(
-            "📩 [USERBOT]: "
-            f"رسالة جديدة -> "
-            f"{clean_text[:100]}",
-            flush=True
-        )
-
-
-        # =================================================
-        # AI
-        # =================================================
-
-        ai_result = "ERROR"
-
-
-        for attempt in range(3):
-
-            async with ai_semaphore:
-
-                loop = (
-                    asyncio.get_running_loop()
-                )
-
-
-                ai_result = (
-                    await loop.run_in_executor(
-                        None,
-                        analyze_with_pure_ai,
-                        clean_text
-                    )
-                )
-
-
-            if ai_result in (
-                "YES",
-                "NO"
-            ):
-
-                break
-
-
-            if attempt < 2:
-
-                print(
-                    "🔄 [AI]: "
-                    f"إعادة المحاولة "
-                    f"{attempt + 2}/3",
-                    flush=True
-                )
-
-
-                await asyncio.sleep(
-                    1
-                )
-
-
-        # =================================================
-        # YES
-        # =================================================
-
-        if ai_result == "YES":
-
-            if not await DEDUP_CACHE.add_if_not_exists(
-                text_fingerprint
-            ):
-
-                print(
-                    "🛑 [DEDUP]: "
-                    "الطلب مكرر، تم تجاهله.",
-                    flush=True
-                )
-
-                return
-
-
-            print(
-                "✅ [AI]: "
-                "طلب عميل مؤكد.",
-                flush=True
-            )
-
-
-            success = (
-                await send_request_to_bot(
-
-                    userbot,
-
-                    bot_username,
-
-                    clean_text,
-
-                    message
-                )
-            )
-
-
-            if not success:
-
-                print(
-                    "❌ [FLOW]: "
-                    "فشل تحويل الطلب إلى البوت.",
-                    flush=True
-                )
-
-
-        elif ai_result == "NO":
-
-            print(
-                "🚫 [AI]: "
-                "ليس طلب عميل، تم تجاهله.",
-                flush=True
-            )
-
-
-        else:
-
-            print(
-                "⚠️ [AI]: "
-                "فشل التحليل بعد المحاولات.",
-                flush=True
-            )
-
-
-    finally:
-
-        async with PROCESSING_LOCK:
-
-            PROCESSING_LOCKS.discard(
-                unique_msg_id
-            )
-
-            PROCESSING_LOCKS.discard(
-                text_fingerprint
-            )
-
-
-# =========================================================
-# BACKGROUND SCANNER
-# =========================================================
-
-async def background_dialog_poller(
-    userbot,
-    bot_username,
-    ai_semaphore
-):
-
-    await asyncio.sleep(15)
-
-
-    while True:
+        payload = create_bot_payload(clean_text, sender_id, sender_username, sender_first_name, message_link)
 
         try:
-
-            async for dialog in (
-                userbot.get_dialogs()
-            ):
-
-                if not dialog.chat:
-                    continue
-
-
-                if dialog.chat.type not in (
-                    "group",
-                    "supergroup"
-                ):
-
-                    continue
-
-
-                try:
-
-                    async for msg in (
-                        userbot.get_chat_history(
-                            dialog.chat.id,
-                            limit=1
-                        )
-                    ):
-
-                        asyncio.create_task(
-
-                            process_live_message(
-
-                                userbot,
-
-                                bot_username,
-
-                                msg,
-
-                                ai_semaphore
-                            )
-                        )
-
-                        break
-
-
-                except RPCError as e:
-
-                    print(
-                        "⚠️ [SCANNER]: "
-                        f"Telegram RPC -> {e}",
-                        flush=True
-                    )
-
-
-                except Exception as e:
-
-                    print(
-                        "⚠️ [SCANNER]: "
-                        f"{e}",
-                        flush=True
-                    )
-
-
-                await asyncio.sleep(
-                    0.5
-                )
-
-
+            await userbot.send_message(chat_id=bot_username, text=payload, disable_web_page_preview=True)
         except Exception as e:
-
-            print(
-                "⚠️ [SCANNER]: "
-                f"خطأ عام -> {e}",
-                flush=True
-            )
-
-
-        await asyncio.sleep(
-            30
-        )
-
+            print(f"❌ خطأ عند تحويل الطلب للبوت: {e}", flush=True)
 
 # =========================================================
-# MAIN
+# FAST SCANNER FOR LARGE GROUPS
+# =========================================================
+
+async def fast_dialog_poller(userbot: Client, bot_username: str):
+    await asyncio.sleep(5)
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=50):
+                if dialog.top_message:
+                    await process_live_message(userbot, bot_username, dialog.top_message)
+        except Exception as e:
+            print(f"⚠️ خطأ الفاحص: {e}", flush=True)
+        await asyncio.sleep(4)
+
+# =========================================================
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
-
-    global PROCESSING_LOCK
-
-
-    print(
-        "🔧 [CONFIG]: "
-        "فحص Environment...",
-        flush=True
-    )
-
-
-    if not API_ID:
-
-        print(
-            "❌ [CONFIG]: "
-            "API_ID غير موجود أو غير صحيح.",
-            flush=True
-        )
-
-        return
-
-
-    if not API_HASH:
-
-        print(
-            "❌ [CONFIG]: "
-            "API_HASH غير موجود.",
-            flush=True
-        )
-
-        return
-
-
-    if not SESSION_STRING:
-
-        print(
-            "❌ [CONFIG]: "
-            "SESSION_STRING غير موجود.",
-            flush=True
-        )
-
-        return
-
-
-    if not BOT_TOKEN:
-
-        print(
-            "❌ [CONFIG]: "
-            "BOT_TOKEN غير موجود.",
-            flush=True
-        )
-
-        return
-
-
-    if not OPENROUTER_API_KEY:
-
-        print(
-            "❌ [CONFIG]: "
-            "OPENROUTER_API_KEY غير موجود.",
-            flush=True
-        )
-
-        return
-
-
-    print(
-        "✅ [CONFIG]: "
-        "Environment جاهز بالكامل.",
-        flush=True
-    )
-
-
-    PROCESSING_LOCK = (
-        asyncio.Lock()
-    )
-
-
-    DEDUP_CACHE.initialize_lock()
-
-
-    ai_semaphore = (
-        asyncio.Semaphore(
-            MAX_CONCURRENT_AI_REQUESTS
-        )
-    )
-
-
-    threading.Thread(
-        target=run_dummy_server,
-        daemon=True
-    ).start()
-
+    threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
-
         "my_userbot",
-
         api_id=API_ID,
-
         api_hash=API_HASH,
-
         session_string=SESSION_STRING,
-
         in_memory=True
     )
 
-
     bot = Client(
-
         "barq_bot",
-
         api_id=API_ID,
-
         api_hash=API_HASH,
-
-        bot_token=BOT_TOKEN
+        bot_token=BOT_TOKEN,
+        in_memory=True
     )
 
-
-    @bot.on_message(
-        filters.private
-    )
-    async def bot_internal_receiver(
-        client,
-        message
-    ):
-
-        await handle_bot_internal_message(
-
-            client,
-
-            message
-        )
-
-
-    try:
-
-        print(
-            "🤖 [BOT]: "
-            "جاري تشغيل البوت...",
-            flush=True
-        )
-
-
-        await bot.start()
-
-
-        bot_me = (
-            await bot.get_me()
-        )
-
-
-        bot_username = (
-            bot_me.username
-        )
-
-
-        if not bot_username:
-
-            print(
-                "❌ [BOT]: "
-                "البوت لا يملك username.",
-                flush=True
-            )
-
-
-            await bot.stop()
-
-            return
-
-
-        print(
-            "✅ [BOT]: "
-            f"تم تشغيل البوت @{bot_username}",
-            flush=True
-        )
-
-
-    except Exception as e:
-
-        print(
-            "❌ [BOT]: "
-            f"فشل تشغيل البوت -> {e}",
-            flush=True
-        )
-
-        return
-
-
-    @userbot.on_message(
-        filters.group | filters.channel
-    )
-    async def global_live_listener(
-        client,
-        message
-    ):
-
-        asyncio.create_task(
-
-            process_live_message(
-
-                client,
-
-                bot_username,
-
-                message,
-
-                ai_semaphore
-            )
-        )
-
-
-    try:
-
-        print(
-            "👤 [USERBOT]: "
-            "جاري تشغيل الحساب الوهمي...",
-            flush=True
-        )
-
-
-        await userbot.start()
-
-
-        print(
-            "✅ [USERBOT]: "
-            "تم تشغيل الحساب الوهمي.",
-            flush=True
-        )
-
-
-    except Exception as e:
-
-        print(
-            "❌ [USERBOT]: "
-            f"فشل تشغيل الحساب الوهمي -> {e}",
-            flush=True
-        )
-
-
-        try:
-            await bot.stop()
-        except Exception:
-            pass
-
-
-        return
-
-
-    asyncio.create_task(
-
-        background_dialog_poller(
-
-            userbot,
-
-            bot_username,
-
-            ai_semaphore
-        )
-    )
-
-
-    print(
-        "",
-        flush=True
-    )
-
-
-    print(
-        "🚀 [BARQ]: النظام يعمل الآن",
-        flush=True
-    )
-
-
-    print(
-        "📡 القروبات"
-        " → 👤 الحساب الوهمي"
-        " → 🤖 البوت"
-        " → 👥 المشتركين",
-        flush=True
-    )
-
-
-    print(
-        "🤖 OpenRouter: ACTIVE",
-        flush=True
-    )
-
-
-    print(
-        "👥 TARGET USERS:",
-        ", ".join(
-            "@" + username
-            for username in TARGET_USERS
-        ),
-        flush=True
-    )
-
+    @bot.on_message(filters.private)
+    async def bot_receiver(client: Client, message: Message):
+        await handle_bot_internal_message(client, message)
+
+    await bot.start()
+    bot_me = await bot.get_me()
+    bot_username = bot_me.username
+
+    # تم إلغاء الفلاتر المقيدة لضمان التقاط كل المجموعات الكبيرة والقنوات الملحقة
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        await process_live_message(client, bot_username, message)
+
+    await userbot.start()
+    print(f"🚀 تم تشغيل النظام بنجاح! البوت: @{bot_username}", flush=True)
+
+    asyncio.create_task(fast_dialog_poller(userbot, bot_username))
 
     await asyncio.Event().wait()
 
-
 if __name__ == "__main__":
-
-    try:
-
-        asyncio.run(
-            main()
-        )
-
-    except KeyboardInterrupt:
-
-        print(
-            "🛑 تم إيقاف النظام.",
-            flush=True
-        )
-
-    except Exception as e:
-
-        print(
-            "💥 [FATAL]: "
-            f"{e}",
-            flush=True
-        )
-
+    asyncio.run(main())
