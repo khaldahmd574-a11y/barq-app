@@ -7,6 +7,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.enums import ChatType
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
@@ -38,7 +39,6 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم إضافة المعرف الجديد fs_990 هنا
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
@@ -132,7 +132,15 @@ def analyze_with_pure_ai(text: str) -> bool:
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
-    if not message or not message.id:
+    if not message or not message.id or not message.chat:
+        return
+
+    # 1. التجاهل التام لرسائل الخاص للحساب الوهمي (تفاعل في المجموعة فقط)
+    if message.chat.type == ChatType.PRIVATE:
+        return
+
+    # 2. التجاهل التام لأي ردود على رسائل أخرى (Reply) لمنع سحب ردود السائقين
+    if message.reply_to_message_id or message.reply_to_message:
         return
 
     if message.from_user and message.from_user.is_self:
@@ -216,8 +224,10 @@ async def fast_dialog_poller(userbot: Client, bot: Client):
     while True:
         try:
             async for dialog in userbot.get_dialogs(limit=150):
-                if dialog.top_message:
-                    asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
+                # قراءة المجموعات والقنوات فقط في الفاحص الدائري
+                if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+                    if dialog.top_message:
+                        asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
         except Exception as e:
             print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
             
@@ -257,7 +267,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث مع إرسال التنبيهات للمعرف الجديد!", flush=True)
+    print("🚀 تم تشغيل النظام: تصفية الردود (Replies) واستبعاد الخاص نهائياً!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
