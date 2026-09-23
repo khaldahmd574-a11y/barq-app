@@ -5,7 +5,6 @@ import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -34,28 +33,33 @@ def run_dummy_server():
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
-API_ID = int(os.environ.get("TELEGRAM_API_ID", os.environ.get("API_ID", 39120728)))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", os.environ.get("API_HASH", "1deec8393ce5aa05c54c0c7e280377d4")).strip()
+API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
+# تم إضافة اليوزر الجديد هنا
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd"]
 
 PROCESSED_KEYS = set()
-PROCESSED_LOCK = asyncio.Lock()
 
 # =========================================================
-# HARD REGEX FILTERS
+# HARD REGEX FILTERS (فلترة الأرقام والإعلانات الصريحة أولاً)
 # =========================================================
 
 def is_hard_driver_advertisement(text: str) -> bool:
     """يفحص الرسالة برمجياً لمنع إعلانات السائقين التي تحتوي على أرقام أو كلمات صريحة قبل الذكاء الاصطناعي"""
+    
+    # البحث عن أرقام هواتف
     has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', text)
+    
+    # كلمات إعلانات السائقين والمناديب
     driver_keywords = [
         "متواجد", "كلموني", "تواصل معي", "تواصلوا", "اتصل", "رزقني", "يرزقكم", 
         "فاضي", "سيارتي", "جاهز", "نوفر لكم", "خدمات توصيل", "حسابي", "خاص مفتوح"
     ]
     
+    # إذا كان النص يحتوي على رقم جوال وإحدى كلمات السائقين -> رفض فوري
     if has_phone:
         for kw in driver_keywords:
             if kw in text:
@@ -69,6 +73,7 @@ def is_hard_driver_advertisement(text: str) -> bool:
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
+    # 1. التثبت الأولي من الفلتر الصارم للإعلانات وأرقام الهواتف
     if is_hard_driver_advertisement(text):
         return False
 
@@ -77,13 +82,14 @@ def analyze_with_pure_ai(text: str) -> bool:
 
     prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (خاصة منطقة جازان والجنوب).
 
-مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة/طرد/توصيلة) أم (سائق يعرض خدمة):
+مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة) أم (سائق يعرض خدمة):
 
 [الصنف الأول: طلب عميل/زبون -> أجب بـ YES]
 يكون الكاتب زبوناً ويجب قبول رسالته (YES) إذا كان يُعبر عن احتياجه أو يبحث عن سواق/مندوب لنقل طرد/مشوار/ركاب:
 1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟").
-2. طلبات الاحتياج والمبادرة بجميع صيغ العامية سواء كانت سؤالاً أو إخباراً (مثل: "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "مطلوب سواق دوامات"، "مين يوصلني"، "مشوار الان ابي سيارة.."، "مندوب من صبيا يستلم طلبية من ريد بوكس..").
-3. أي طلب لنقل أغراض، طرود، ركاب، هدايا، طلبات مطاعم، أو استلام شحنات.
+2. طلبات الاحتياج والمبادرة بجميع صيغ العامية (مثل: "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "مطلوب سواق دوامات"، "مين يوصلني").
+3. أي طلب لنقل أغراض، طرود، ركاب، هدايا، أو مطاعم يطلبه العميل لنفسه.
+* قاعدة حاسمة: لو كان النص يحتوي على صيغة سؤال/استفسار أو طلب احتياج (مين/فيه/ابغى/محتاج/أبي/مطلوب) -> أجب بـ (YES) فوراً.
 
 [الصنف الثاني: إعلان سائق/مندوب أو سبام -> أجب بـ NO]
 يكون الكاتب سائقاً/معلناً ويجب رفض رسالته (NO) إذا كان يُعلن صراحةً عن توفره الشخصي أو سيارته أو خدماته للجمهور:
@@ -110,7 +116,8 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        # تم تقليل مهلة الانتظار إلى 3 ثوانٍ لرفع السرعة
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل النية والفلترة]: '{text[:35]}...' -> {answer}", flush=True)
@@ -141,15 +148,14 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     msg_key = f"{message.chat.id}_{message.id}"
     text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
     
-    async with PROCESSED_LOCK:
-        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-            return
-            
-        PROCESSED_KEYS.add(msg_key)
-        PROCESSED_KEYS.add(text_hash)
+    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+        return
+        
+    PROCESSED_KEYS.add(msg_key)
+    PROCESSED_KEYS.add(text_hash)
 
-        if len(PROCESSED_KEYS) > 10000:
-            PROCESSED_KEYS.clear()
+    if len(PROCESSED_KEYS) > 10000:
+        PROCESSED_KEYS.clear()
 
     loop = asyncio.get_running_loop()
     is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
@@ -207,16 +213,17 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 # =========================================================
 
 async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+    await asyncio.sleep(2)
     while True:
         try:
-            async for dialog in userbot.get_dialogs(limit=50):
+            async for dialog in userbot.get_dialogs(limit=30):
                 if dialog.top_message:
+                    # تسريع الفاحص عبر تشغيل الرسائل كمهام خلفية متوازية
                     asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
         except Exception as e:
             print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
             
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -249,10 +256,11 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
+        # تشغيل فوري غير متزامن للرسائل اللحظية للسرعة الفائقة
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المحدث بأسلوبه القديم والمنظم!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث مع المشترك الجديد!", flush=True)
 
     asyncio.create_task(fast_dialog_poller(userbot, bot))
 
@@ -260,3 +268,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
