@@ -48,8 +48,6 @@ PROCESSED_KEYS = set()
 # =========================================================
 
 def is_hard_driver_advertisement(text: str) -> bool:
-    """يفحص الرسالة برمجياً لمنع إعلانات السائقين التي تحتوي على أرقام أو كلمات صريحة قبل الذكاء الاصطناعي"""
-    
     has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', text)
     
     driver_keywords = [
@@ -133,12 +131,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
+        # 1. التجاهل التام لرسائل الخاص
         if message.chat.type == ChatType.PRIVATE:
             return
 
+        # 2. التجاهل التام للردود على الرسائل (Replies)
         if message.reply_to_message_id or message.reply_to_message:
             return
 
+        # 3. استبعاد رسائل الحساب نفسه
         if message.from_user and message.from_user.is_self:
             return
 
@@ -148,6 +149,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(clean_text) < 2:
             return
 
+        # منع التكرار
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
@@ -214,27 +216,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# FAST MULTI-GROUP SCANNER (آمن وبدون حظر)
-# =========================================================
-
-async def fast_dialog_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=150):
-                try:
-                    if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
-                        if dialog.top_message:
-                            asyncio.create_task(process_live_message(userbot, bot, dialog.top_message))
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f"⚠️ خطأ في الفاحص الدائري: {e}", flush=True)
-            
-        # زيادة الانتظار لـ 6 ثوانٍ لتفادي حظر تليجرام FloodWait
-        await asyncio.sleep(6)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -268,9 +249,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالكامل وبشكل استقراري حقيقي!", flush=True)
-
-    asyncio.create_task(fast_dialog_poller(userbot, bot))
+    print("🚀 تم تشغيل النظام بالكامل بنظام الاستماع اللحظي الفوري ومستقر 100%!", flush=True)
 
     await asyncio.Event().wait()
 
