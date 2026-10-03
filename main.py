@@ -42,10 +42,9 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-ACTIVE_GROUP_IDS = set()
 
 # =========================================================
-# HARD REGEX FILTERS (فلترة سريعة للرقم والإعلانات)
+# HARD REGEX FILTERS (تصفية فورية بأقل من 1 ملي ثانية)
 # =========================================================
 
 def is_hard_driver_advertisement(text: str) -> bool:
@@ -62,7 +61,7 @@ def is_hard_driver_advertisement(text: str) -> bool:
     return False
 
 # =========================================================
-# PURE INTENT AI ANALYSIS ENGINE
+# PURE INTENT AI ANALYSIS ENGINE (فائق السرعة)
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
@@ -106,9 +105,9 @@ def analyze_with_pure_ai(text: str) -> bool:
             "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
-            "max_tokens": 3
+            "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
@@ -123,112 +122,108 @@ def analyze_with_pure_ai(text: str) -> bool:
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
-    try:
-        if not message or not message.id or not message.chat:
-            return
+    if not message or not message.id or not message.chat:
+        return
 
-        if message.chat.type == ChatType.PRIVATE:
-            return
+    if message.chat.type == ChatType.PRIVATE:
+        return
 
-        # تسجيل آيدي القروب تلقائياً في القائمة النشطة
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            ACTIVE_GROUP_IDS.add(message.chat.id)
+    if message.reply_to_message_id or message.reply_to_message:
+        return
 
-        if message.reply_to_message_id or message.reply_to_message:
-            return
+    if message.from_user and message.from_user.is_self:
+        return
 
-        if message.from_user and message.from_user.is_self:
-            return
+    raw_text = message.text or message.caption or ""
+    clean_text = raw_text.strip()
+    
+    if len(clean_text) < 2:
+        return
 
-        raw_text = message.text or message.caption or ""
-        clean_text = raw_text.strip()
+    msg_key = f"{message.chat.id}_{message.id}"
+    text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+    
+    if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+        return
         
-        if len(clean_text) < 2:
-            return
+    PROCESSED_KEYS.add(msg_key)
+    PROCESSED_KEYS.add(text_hash)
 
-        msg_key = f"{message.chat.id}_{message.id}"
-        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+    if len(PROCESSED_KEYS) > 10000:
+        PROCESSED_KEYS.clear()
+
+    loop = asyncio.get_running_loop()
+    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+
+    if is_client_request:
+        print(f"✅ [طلب عميل مقبول]: {clean_text[:30]}...", flush=True)
+
+        buttons = []
+        row = []
         
-        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-            return
+        if message.from_user:
+            if message.from_user.username:
+                user_url = f"https://t.me/{message.from_user.username}"
+                user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+            else:
+                user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+            row.append(InlineKeyboardButton(user_label, url=user_url))
+
+        if message.link:
+            row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+        
+        if row:
+            buttons.append(row)
             
-        PROCESSED_KEYS.add(msg_key)
-        PROCESSED_KEYS.add(text_hash)
+        reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-        if len(PROCESSED_KEYS) > 10000:
-            PROCESSED_KEYS.clear()
+        for user in TARGET_USERS:
+            sent = False
+            if bot:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=clean_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                    sent = True
+                except Exception:
+                    pass
 
-        loop = asyncio.get_running_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
-
-        if is_client_request:
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
-
-            buttons = []
-            row = []
-            
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
-
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
-            
-            if row:
-                buttons.append(row)
-                
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-            for user in TARGET_USERS:
-                sent = False
-                if bot:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                        sent = True
-                    except Exception:
-                        pass
-
-                if not sent:
-                    try:
-                        await userbot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except Exception:
-                        pass
-    except Exception:
-        pass
+            if not sent:
+                try:
+                    await userbot.send_message(
+                        chat_id=user,
+                        text=clean_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception:
+                    pass
 
 # =========================================================
-# SAFE RECURSIVE POLLER (بدون get_dialogs لتجنب الأخطاء)
+# ULTRA FAST DIALOG SCANNER (أقصى سرعة مسح آمنة)
 # =========================================================
 
-async def safe_active_groups_poller(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+async def fast_dialog_poller(userbot: Client, bot: Client):
+    await asyncio.sleep(1)
     while True:
         try:
-            if ACTIVE_GROUP_IDS:
-                for cid in list(ACTIVE_GROUP_IDS):
-                    try:
-                        async for msg in userbot.get_chat_history(chat_id=cid, limit=3):
-                            asyncio.create_task(process_live_message(userbot, bot, msg))
-                    except Exception:
-                        continue
+            async for dialog in userbot.get_dialogs(limit=100):
+                try:
+                    if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+                        top_msg = getattr(dialog, "top_message", None)
+                        if top_msg:
+                            asyncio.create_task(process_live_message(userbot, bot, top_msg))
+                except Exception:
+                    continue
         except Exception:
             pass
-        await asyncio.sleep(2)
+            
+        # تقليل وقت الانتظار إلى 0.8 ثانية لزيادة سرعة الدوران
+        await asyncio.sleep(0.8)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -256,7 +251,7 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-        except Exception as e:
+        except Exception:
             pass
 
     @userbot.on_message()
@@ -264,9 +259,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالكامل بنسبة استقرار 100% وبدون أخطاء!", flush=True)
+    print("⚡ تم التحديث: تشغيل السرعة القصوى للسحب والمعالجة!", flush=True)
 
-    asyncio.create_task(safe_active_groups_poller(userbot, bot))
+    asyncio.create_task(fast_dialog_poller(userbot, bot))
 
     await asyncio.Event().wait()
 
