@@ -42,6 +42,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
 
 # =========================================================
 # HARD REGEX FILTERS (فلترة الأرقام والإعلانات)
@@ -78,7 +79,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 [الصنف الأول: طلب عميل/زبون -> أجب بـ YES]
 يكون الكاتب زبوناً ويجب قبول رسالته (YES) إذا كان يُعبر عن احتياجه أو يبحث عن سواق/مندوب لنقل طرد/مشوار/ركاب:
 1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟"، "من قريب من ماك").
-2. طلبات الاحتياج والتوصيل المباشرة أو القليلة الكلمات (مثل: "توصيل ضمد"، "توصيل ضمد من فاضي"، "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "ابي سواق يوصل من كليه التمريض الى مخطط 7").
+2. طلبات الاحتياج والتوصيل المباشرة أو القليلة الكلمات (مثل: "توصيل ضمد"، "توصيل ضمد من فاضي"، "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة"، "ابي سواق يوصل من كليه التمريض").
 3. السلام والتحية المتبوعة بطلب أو استفسار عن توصيلة (مثل: "السلام عليكم وركاب من قريب من ماك").
 * قاعدة حاسمة: أي رسالة قصيرة تشير إلى اسم مكان مع كلمة "توصيل" أو "مين" أو "فاضي" أو "قريب" أو "ابي سواق" تعتبر (YES) فوراً.
 
@@ -112,7 +113,7 @@ def analyze_with_pure_ai(text: str) -> bool:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception as e:
+    except Exception:
         pass
 
     return False
@@ -128,6 +129,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -207,7 +211,32 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# MAIN ENTRYPOINT (استماع مباشر 100% بدون قيود GetDialogs)
+# TARGETED GROUP HISTORY SCANNER (ضبط زمن المسح على 0.5 ثانية)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+        # القيمة المثالية المعتمدة: 0.5 ثانية لضمان أقصى سرعة بدون حظر
+        await asyncio.sleep(0.5)
+
+# =========================================================
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
@@ -240,7 +269,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم إلغاء القيود والتوقيف الموقّت! الحساب يستمع لحظياً لجميع القروبات بدون أي تأخير!", flush=True)
+    print("🚀 تم التشغيل بأعلى معدل مسح آمن (0.5 ثانية)!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
