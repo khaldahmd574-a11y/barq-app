@@ -44,23 +44,20 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# HARD REGEX FILTERS (فلترة الأرقام والإعلانات الصريحة أولاً)
+# HARD REGEX FILTERS (فلترة سريعة للرقم والإعلانات)
 # =========================================================
 
 def is_hard_driver_advertisement(text: str) -> bool:
     has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', text)
-    
     driver_keywords = [
         "متواجد", "كلموني", "تواصل معي", "تواصلوا", "اتصل", "رزقني", "يرزقكم", 
         "فاضي", "سيارتي", "جاهز", "نوفر لكم", "خدمات توصيل", "حسابي", "خاص مفتوح"
     ]
-    
     if has_phone:
         for kw in driver_keywords:
             if kw in text:
-                print(f"🚫 [فلتر الأرقام]: تم رفض إعلان سائق يحتوي على رقم هاتف: {text[:30]}...", flush=True)
+                print(f"🚫 [فلتر الأرقام]: تم رفض إعلان سائق: {text[:30]}...", flush=True)
                 return True
-                
     return False
 
 # =========================================================
@@ -82,7 +79,7 @@ def analyze_with_pure_ai(text: str) -> bool:
 يكون الكاتب زبوناً ويجب قبول رسالته (YES) إذا كان يُعبر عن احتياجه أو يبحث عن سواق/مندوب لنقل طرد/مشوار/ركاب:
 1. الأسئلة والاستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟"، "مين فاضي يوصل؟"، "من قريب من ماك").
 2. طلبات الاحتياج والتوصيل المباشرة أو القليلة الكلمات (مثل: "توصيل ضمد"، "توصيل ضمد من فاضي"، "ابغى سواق"، "أبي مندوب"، "محتاج توصيلة").
-3. السلام والتحية المتبوعة بطلب أو استفسار عن توصيلة (مثل: "السلام عليكم ورحمة الله وبركاته صباح الخير من قريب من ماك").
+3. السلام والتحية المتبوعة بطلب أو استفسار عن توصيلة (مثل: "السلام عليكم وركاب من قريب من ماك").
 * قاعدة حاسمة: أي رسالة قصيرة تشير إلى اسم مكان مع كلمة "توصيل" أو "مين" أو "فاضي" أو "قريب" تعتبر (YES) فوراً.
 
 [الصنف الثاني: إعلان سائق/مندوب أو سبام -> أجب بـ NO]
@@ -110,15 +107,13 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=6)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية والفلترة]: '{text[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل النية]: '{text[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-        else:
-            print(f"⚠️ خطأ API ({res.status_code}): {res.text}", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        pass
 
     return False
 
@@ -131,15 +126,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        # 1. التجاهل التام لرسائل الخاص
         if message.chat.type == ChatType.PRIVATE:
             return
 
-        # 2. التجاهل التام للردود على الرسائل (Replies)
         if message.reply_to_message_id or message.reply_to_message:
             return
 
-        # 3. استبعاد رسائل الحساب نفسه
         if message.from_user and message.from_user.is_self:
             return
 
@@ -149,7 +141,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(clean_text) < 2:
             return
 
-        # منع التكرار
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
@@ -166,7 +157,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب عميل مقبول بناءً على النية]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -216,6 +207,35 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
+# ULTRA FAST 35 GROUPS SCANNER (سحب فوري مخصص)
+# =========================================================
+
+async def fast_35_groups_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
+    # 1. جلب آيديات كل القروبات الـ 35 التي ينتمي إليها الحساب مرة واحدة
+    group_ids = []
+    try:
+        async for dialog in userbot.get_dialogs():
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                group_ids.append(dialog.chat.id)
+        print(f"📌 تم اكتشاف {len(group_ids)} قروب في الحساب! سيبدأ المسح الفوري...", flush=True)
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء قراءة القائمة: {e}", flush=True)
+
+    # 2. حلقة مسح فائقة السرعة للقروبات الـ 35 فقط
+    while True:
+        for cid in group_ids:
+            try:
+                # جلب أحدث 3 رسائل نزلوا في القروب
+                async for msg in userbot.get_chat_history(chat_id=cid, limit=3):
+                    asyncio.create_task(process_live_message(userbot, bot, msg))
+            except Exception:
+                continue
+        # انتظر ثانية واحدة فقط ثم أعد الدورة
+        await asyncio.sleep(1)
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -242,14 +262,17 @@ async def main():
             )
             await bot.start()
         except Exception as e:
-            print(f"⚠️ لم يتم بدء البوت المساعد: {e}", flush=True)
+            pass
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالكامل بنظام الاستماع اللحظي الفوري ومستقر 100%!", flush=True)
+    print("🚀 تم التحديث: ماسح فوري مخصص للـ 35 قروب يعمل الآن بأعلى سرعة!", flush=True)
+
+    # تشغيل الفاحص الصاروخي للقروبات الـ 35
+    asyncio.create_task(fast_35_groups_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
