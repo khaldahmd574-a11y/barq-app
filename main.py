@@ -45,75 +45,39 @@ PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
 # =========================================================
-# HARD REGEX FILTERS (حظر صارم لإعلانات السائقين والأرقام)
+# PURE INTENT AI ENGINE (الاعتماد الكامل على تحليل النية)
 # =========================================================
 
-def is_hard_driver_advertisement(text: str) -> bool:
+def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
-
-    # 1. حظر مباشر لأي رقم جوال
-    has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', clean)
-    if has_phone:
-        print(f"🚫 [فلتر رقم جوال]: تم الرفض لاحتوائها على رقم تواصل: {clean[:30]}...", flush=True)
-        return True
-
-    # 2. حظر عبارات تقديم الخدمات والعروض والتواصل
-    driver_phrases = [
-        "يتواصل بي", "يتواصل معي", "تواصل معي", "تواصل بي", "تواصل خاص", "تواصل ع الخاص",
-        "الواتس", "واتس", "موجود", "موحود", "فاضي", "جاهز", "متواجد", "خدمات توصيل",
-        "نقبل دوامات", "نوفر لكم", "اي مشوار", "اي مشور", "خاص مفتوح"
-    ]
-
-    for phrase in driver_phrases:
-        if phrase in clean:
-            print(f"🚫 [فلتر عرض سائق]: تم رفض عبارة سائق/تواصل: {clean[:30]}...", flush=True)
-            return True
-
-    return False
-
-# =========================================================
-# PURE INTENT AI ANALYSIS ENGINE
-# =========================================================
-
-def analyze_with_pure_ai(text: str) -> bool:
-    clean = text.strip()
-
-    # تطبيق الفلتر الصارم أولاً قبل الذكاء الاصطناعي
-    if is_hard_driver_advertisement(clean):
+    
+    if not clean or len(clean) < 2:
         return False
 
-    # قائمة كلمات الطلب (تتضمن صيغ المؤنث والاشتراكات الشهرية)
-    request_keywords = [
-        "توصيل", "مشوار", "مشور", "سواق", "سواقه", "سواقات", "سائقة", "سائقات", 
-        "باص", "رايح", "طالع", "مندوب", "ابي", "ابغى", "احتاج", "شهري", "شهريا", "دوام"
-    ]
-
-    # منع التحيات العابرة والكلمات القليلة ما لم تحتوي على كلمة طلب
-    greetings = ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]
-    if clean.lower() in greetings or len(clean) < 8:
-        if not any(kw in clean for kw in request_keywords):
-            return False
+    # استبعاد التحيات العابرة المنفردة تماماً لمنع الإزعاج
+    if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
+        return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (خاصة منطقة جازان والجنوب).
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف متخصص في فهم نيات النصوص لقروبات التوصيل والمشاوير بالسعودية (منطقة جازان والجنوب).
 
-مهمتك الأساسية: تحديد "دور الكاتب" بدقة متناهية هل هو (زبون يطلب خدمة/توصيلة/طرد/سائق شهري) أم (سائق/مندوب يعرض خدمة):
+مهمتك الوحيدة: تحليل "نية الكاتب" الحقيقية والتمييز بدقة فائقة بين الزبون والسائق:
 
-[الصنف الأول: طلب عميل/زبون فقط -> أجب بـ YES]
-يكون الكاتب زبوناً ويجب قبول رسالته (YES) فقط إذا كان يُعبر عن احتياجه أو يبحث عن توصيلة أو سائق/سائقة:
-1. "في سواقات شهري ؟؟" -> YES (استفسار زبون يبحث عن سائقات).
-2. "ابي مندوب يوصل من الخارش" -> YES.
-3. "احتاج سواقه او سواق لمدرسة..." -> YES.
-4. "مين في ابوعريش وفاضي الحين؟" -> YES.
+[الصنف الأول: زبون/عميل يبحث أو يطلب -> أجب بـ YES]
+قبول أي نص يُفهم منه أن الكاتب زبون يبحث عن خدمة/سائق/مندوب/توصيلة أو يستفسر عن توفر موصل:
+1. طلبات موجزة ومباشرة: "مندوب في ضمد"، "توصيل ضمد"، "سواق صامطة"، "ابي مندوب".
+2. استفسارات واسئلة: "في سواقات شهري ؟؟"، "مين فاضي الحين؟"، "حد طالع جازان؟".
+3. مشاوير ودوامات: "ابغا مشوار من صبيا"، "احتاج سواقه لمدرسة".
 
-[الصنف الثاني: إعلان سائق/عرض توفر/رقم تواصل -> أجب بـ NO]
-أرفض فوراً بـ (NO):
-1. أي شخص يضع رقم جواله أو يطلب التواصل معه ع الخاص أو الواتس.
-2. أي سائق/سائقة يعرض توفره لنقل الآخرين ("موجود"، "فاضي"، "متواجد").
+[الصنف الثاني: سائق يعرض خدمته أو إعلان أو سلام مجرد -> أجب بـ NO]
+رفض أي نص يُفهم منه أن الكاتب سائق يقدم خدمة للناس أو يعلن عن نفسه:
+1. إعلانات التوفر: "موجود في صامطه اي مشوار خاص"، "أنا فاضي"، "متواجد"، "متحرك".
+2. نصوص تحتوي على أرقام جوال أو دعوة للتواصل: "تواصل خاص"، "الواتس"، "055XXXXXXX".
+3. سلام عابر بدون أي طلب.
 
-الرسالة المراد تحليلها:
+الرسالة المراد تحليل نيتها:
 "{clean}"
 
 الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
@@ -134,10 +98,10 @@ def analyze_with_pure_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [نية الرسالة]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -180,11 +144,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
+        # إرسال النص مباشرة للذكاء الاصطناعي لتحليل النية
         loop = asyncio.get_running_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
+        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب عميل مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون حقيقي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -291,7 +256,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم التحديث لدعم طلبات السائقات والدوامات الشهرية!", flush=True)
+    print("🚀 تم تشغيل البوت بنظام تحليل النية الصافي 100%!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
