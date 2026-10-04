@@ -3,7 +3,7 @@ import re
 import time
 import asyncio
 import hashlib
-import requests
+import httpx
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -46,28 +46,29 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
-# ذاكرة لتتبع جميع طلبات كل مستخدم {user_id: [{'text': ..., 'time': ...}]}
+# ذاكرة تتبع طلبات العضو لمنع التكرار (10 دقائق)
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني (600 ثانية)
-SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي (65% فأكثر تُعتبر نفس الطلب)
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق (600 ثانية)
+SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي 65%
+
+# عميل الاتصال بالسيرفر مع زيادة زمن المهلة إلى 6 ثوانٍ لضمان عدم ضياع الطلبات
+HTTP_CLIENT = httpx.AsyncClient(timeout=6.0)
 
 # =========================================================
 # HELPER: SMART TEXT SIMILARITY
 # =========================================================
 
 def is_similar_text(text1: str, text2: str) -> bool:
-    """مقارنة التشابه بين نصين لتحديد هل الطلب مكرر مع تغيير بسيط بالصيغة أم لا"""
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    
     ratio = SequenceMatcher(None, clean1, clean2).ratio()
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE INTENT AI ENGINE (تحليل نية الرسالة)
+# ASYNC AI ENGINE (تحليل النية الشامل)
 # =========================================================
 
-def analyze_intent_with_ai(text: str) -> bool:
+async def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
     
     if not clean or len(clean) < 2:
@@ -84,13 +85,14 @@ def analyze_intent_with_ai(text: str) -> bool:
 مهمتك الوحيدة: تحليل "نية الكاتب" الحقيقية والتمييز بدقة فائقة بين الزبون والسائق:
 
 [الصنف الأول: زبون/عميل يبحث أو يطلب -> أجب بـ YES]
-قبول أي نص يُفهم منه أن الكاتب زبون يبحث عن خدمة/سائق/مندوب/توصيلة، حتى لو طلب التواصل على الخاص:
-1. الأسئلة والاستفسارات: "مين فاضي الان في جيزان؟ يتواصل معايا خاص" -> YES.
-2. الطلبات الموجزة: "مندوب في ضمد"، "توصيل ضمد"، "سواق صامطة"، "ابي مندوب"، "في سواقات شهري ؟؟".
-3. مشاوير ودوامات: "ابغا مشوار من صبيا"، "احتاج سواقه لمدرسة".
+قبول أي نص يُفهم منه أن الكاتب زبون يبحث عن خدمة/سائق/مندوب/توصيلة/نقل أغراض أو طلبيات:
+1. طلبات توصيل الطلبيات والأغراض: "ابغا مندوب ثقه ياخذ طلبيتي من ابوعريش للعارضه وبسعر كويس" -> YES.
+2. الأسئلة والاستفسارات: "مين فاضي الان في جيزان؟ يتواصل معايا خاص" -> YES.
+3. الطلبات الموجزة: "مندوب في ضمد"، "توصيل ضمد"، "سواق صامطة"، "ابي مندوب"، "في سواقات شهري ؟؟".
+4. مشاوير ودوامات: "ابغا مشوار من صبيا"، "احتاج سواقه لمدرسة".
 
 [الصنف الثاني: سائق يعرض خدمته وتوفره -> أجب بـ NO]
-رفض أي نص يُفهم منه أن الكاتب هو السائق الذي يعلن عن توفره لنقل الناس:
+رفض أي نص يُفهم منه أن الكاتب هو السائق الذي يعلن عن توفره لنقل الناس أو البضائع:
 1. إعلانات التوفر من السائق: "موجود في صامطه اي مشوار خاص"، "أنا فاضي جاهز للمشاوير"، "متواجد"، "متحرك".
 2. نصوص تحتوي على أرقام جوال أو تسويق خدمات: "توصيل دوامات 055XXXXXXX".
 3. سلام عابر بدون طلب.
@@ -106,17 +108,18 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+        "max_tokens": 2
+    }
+
     try:
-        payload = {
-            "model": "openai/gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 2
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        res = await HTTP_CLIENT.post(url, headers=headers, json=payload)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [نية الرسالة]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [استجابة النية]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -150,7 +153,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(clean_text) < 2:
             return
 
-        # 1. منع تكرار المعالجة لنفس الرسالة المباشرة
+        # 1. منع تكرار نفس الرسالة المباشرة
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
@@ -160,44 +163,31 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         current_time = time.time()
         user_id = message.from_user.id if message.from_user else None
 
-        # -----------------------------------------------------
-        # 2. نظام التكرار الذكي: حظر التكرار المفتوح (إلا بعد 10 دقائق)
-        # -----------------------------------------------------
+        # 2. فحص التكرار الذكي (10 دقائق)
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
-                # إذا وجدنا رسالة تشبه الرسالة الحالية لنفس المستخدم
                 if is_similar_text(clean_text, past_request['text']):
                     time_diff = current_time - past_request['time']
-                    
-                    # إذا لم تمر 10 دقائق على الرسالة الأولى -> ارفض السحب
                     if time_diff < MIN_TIME_BETWEEN_REPEATS:
-                        minutes_left = int((MIN_TIME_BETWEEN_REPEATS - time_diff) / 60)
-                        print(f"🛑 [تكرار مرفوض]: العضو كرر طلبه قبل مرو 10 دقائق. متبقي {minutes_left} دقائق. النص: {clean_text[:25]}...", flush=True)
                         return
 
-        # إضافة المعرفات للسجل المؤقت
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # -----------------------------------------------------
-        # 3. تحليل النية بالذكاء الاصطناعي
-        # -----------------------------------------------------
-        loop = asyncio.get_running_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
+        # 3. التحليل بالذكاء الاصطناعي
+        is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
-            # تسجيل الطلب في السجل للتحقق منه عند أي إعادت إرسال قادمة
             if user_id:
                 if user_id not in USER_REQUEST_HISTORY:
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون جديد مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم السحب بنجاح]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -247,12 +237,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# TARGETED GROUP HISTORY SCANNER (0.5s Fast Polling)
+# BACKGROUND SCANNER (ماسح احتياطي آمن)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
     await asyncio.sleep(2)
-    
     try:
         async for dialog in userbot.get_dialogs(limit=50):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
@@ -268,7 +257,7 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -304,7 +293,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام: منع تكرار الطلبات نهائياً إلا بعد مرور 10 دقائق كاملة!", flush=True)
+    print("🚀 تم تشغيل النظام المحدث مع دعم كامل لطلبات نقل الطلبيات والأغراض!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
