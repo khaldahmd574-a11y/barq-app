@@ -46,10 +46,9 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
-# ذاكرة تتبع الطلبات لمنع التكرار (10 دقائق)
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق (600 ثانية)
-SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه 65%
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
+SIMILARITY_THRESHOLD = 0.65       
 
 # =========================================================
 # HELPER: SMART TEXT SIMILARITY
@@ -63,11 +62,10 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# SMART INTENT AI ENGINE (تحليل الذكاء العالي)
+# ADVANCED SMART INTENT AI ENGINE
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
-    # دمج الأسطر والمسافات الزائدة لضمان قراءة الرسالة كاملة
     clean = " ".join(text.split()).strip()
     
     if not clean or len(clean) < 2:
@@ -76,27 +74,28 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف فائق الذكاء، متخصص في فهم وتفسير نيات الرسائل لقروبات التوصيل والمشاوير بالسعودية (منطقة جازان والجنوب).
+    prompt = f"""أنت عقل ذكاء اصطناعي فائق الدقة محترف في فهم نيات النصوص لقروبات التوصيل والمشاوير بالسعودية (منطقة جازان والجنوب).
 
-مهمتك الأساسية: تحليل "النية الحقيقية والضمنية للكاتب" والتمييز بين الزبون والسائق:
+مهمتك الوحيدة: التمييز بذكاء بين "الزبون الذي يبحث عن خدمة" و"السائق الذي يعلن عن نفسه":
 
-[الصنف الأول: زبون/عميل يبحث أو يطلب أو يستفسر -> أجب بـ YES]
-قبول أي نص يُفهم منه أن الكاتب زبون يحتاج سائق/مندوب/توصيلة/سواقة/نقل بضائع أو أغراض، أو يسأل عن توفر سائق في مكان معين:
-1. الاستفسارات والأسئلة الضمنية والمباشرة عن القرب أو التوفر:
-   - "السلام عليكم فيه احد قريب من أنوش جيزان ؟" -> YES.
+[الصنف الأول: زبون/عميل يبحث أو يطلب سريعا -> أجب بـ YES]
+قبول أي نص يبحث فيه الكاتب عن سائق أو مندوب أو مشوار، أو يطلب من السائقين مراسلته على الخاص:
+1. طلبات السائقين والدوامات الصريحة والضمنية:
+   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES (هذا زبون يطلب سائقاً لدوامه ويطلب منه القدوم للخاص).
+   - "مطلوب سواق لدوام" -> YES.
+   - "احتاج سواقه لمدرسة" -> YES.
+   - "ابي سواق يودي نخلان" -> YES.
+2. طلبات الاستفسار والقرب والمحلات:
+   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
    - "مين فاضي الان في جيزان؟" -> YES.
-   - "فيه احد متواجد في ابو عريش؟" -> YES.
-2. طلبات نقل الطلبيات والأغراض والكراتين:
+3. طلبات الطلبيات والأغراض:
    - "ابغا مندوب ثقه ياخذ طلبيتي من ابوعريش للعارضه" -> YES.
-   - "مين يقدر يحرك لي كرتون من صبيا؟" -> YES.
-3. الطلبات القصيرة والشهري والدوامات:
-   - "مندوب في ضمد"، "توصيل ضمد"، "سواق صامطة"، "ابي مندوب"، "في سواقات شهري ؟؟"، "ابغا مشوار".
 
-[الصنف الثاني: سائق يعرض خدمته وسيارته -> أجب بـ NO]
-رفض أي نص يُفهم منه أن الكاتب هو السائق الذي يعلن عن توفره لنقل الناس أو البضائع:
-1. إعلانات التوفر من السائق: "موجود في صامطه اي مشوار خاص"، "أنا فاضي جاهز للمشاوير"، "متواجد"، "متحرك".
-2. إعلانات مع أرقام جوال أو تسويق خدمات: "توصيل دوامات 055XXXXXXX".
-3. تحية عابرة فقط بدون أي طلب أو سؤال (مثال: "السلام عليكم" فقط بدون أي كلام بعدها).
+[الصنف الثاني: سائق يعلن عن توفره أو خدماته -> أجب بـ NO]
+رفض النص فقط إذا كان الكاتب هو السائق نفسه يعرض سيارته أو خدماته:
+1. إعلانات التوفر من السائق: "أنا سواق موجود جاهز للمشاوير"، "متواجد في جيزان"، "طالع صبيا الي يبغى يراسلني".
+2. إعلانات الدوامات التي توضح تقديم الخدمة مع أرقام جوال: "نوفر توصيل دوامات 055XXXXXXX".
+3. تحية عابرة بدون أي طلب.
 
 الرسالة المراد تحليل نيتها:
 "{clean}"
@@ -119,7 +118,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل الذكاء]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل النية المتقدم]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -153,7 +152,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(clean_text) < 2:
             return
 
-        # 1. منع تكرار المعالجة لنفس الرسالة المباشرة
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
@@ -163,7 +161,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         current_time = time.time()
         user_id = message.from_user.id if message.from_user else None
 
-        # 2. نظام التكرار الذكي (10 دقائق)
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
 
@@ -179,7 +176,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # 3. تحليل النية المباشر بالذكاء الاصطناعي
         loop = asyncio.get_running_loop()
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
@@ -239,7 +235,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# HIGH-SPEED SCANNER (سحب فائق السرعة 0.1 ثانية)
+# HIGH-SPEED SCANNER (0.1s)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
@@ -296,7 +292,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🧠 تم تشغيل النظام الذكي المتقدم بنجاح 100%!", flush=True)
+    print("🧠 تم تحديث ذكاء النظام لمعالجة صيغ طلبات الدوامات ونخلان بنجاح!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
