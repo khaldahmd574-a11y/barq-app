@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Smart AI System Active!")
+        self.wfile.write(b"Barq Fully Dynamic System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ULTRA SMART INTENT AI ENGINE
+# FULL DYNAMIC AI ENGINE (تحليل مفتوح بدون كلمات محددة)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -74,27 +74,20 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف ومخصص لقروبات التوصيل والمشاوير بالجنوب وجازان.
+مهمتك: تحديد صاحب الرسالة بناءً على المعنى الكامل (بغض النظر عن الألفاظ المستخدمة):
 
-مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]:
+[الصنف الأول: زبون/عميل يحتاج خدمة -> أجب بـ YES]
+قبول الرسالة إذا كان الكاتب هو المحتاج للخدمة بأي صيغة كانت:
+- طلب مشوار، نقل أغراض، دوام، سواق، مندوب، توصيل.
+- سؤال أو استفسار عن توفر شخص أو سيارة في موقع معين.
+- زبون يضع رقم جواله ليتواصل معه السائقون.
+- أي عبارة غير صريحة لكن يفهم منها أن القائل يبحث عن توصيلة.
 
-[الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
-قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
-1. الأسئلة عن القرب والتواجد في المدن/القرى:
-   - "في حد في ضمد" -> YES (هذا زبون يسأل عن توفر سائق بضمد).
-   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
-   - "مين في العارضة؟" -> YES.
-   - "أحد في صامطة؟" -> YES.
-2. طلبات المشاوير والطلبيات والدوامات والخدمات:
-   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES.
-   - "ابغا مندوب ثقه" -> YES.
-   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
-
-[الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
-رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
-1. "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
-2. الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
-3. سلام أو تحية مجردة بدون أي مكان أو طلب بعده.
+[الصنف الثاني: سائق/مندوب يعرض خدمته -> أجب بـ NO]
+رفض الرسالة فقط إذا كان الكاتب هو من يملك السيارة/الوقت ويعلن عن توفره للناس:
+- أي إعلان عن توفر السيارة أو التواجد في مكان أو طريق معين.
+- قوائم خدمات التوصيل والأسعار وعروض الدوامات المزودة بأرقام تواصل.
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -107,20 +100,23 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    try:
-        payload = {
-            "model": "openai/gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 2
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
-            return "YES" in answer
-    except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+    models_to_try = ["deepseek/deepseek-chat", "openai/gpt-4o-mini"]
+
+    for model_name in models_to_try:
+        try:
+            payload = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 2
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=3)
+            if res.status_code == 200:
+                answer = res.json()['choices'][0]['message']['content'].strip().upper()
+                print(f"🤖 [{model_name}]: '{clean[:30]}...' -> {answer}", flush=True)
+                return "YES" in answer
+        except Exception:
+            continue
 
     return False
 
@@ -184,7 +180,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -291,7 +287,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🧠 تم تحديث ذكاء النظام لمعالجة الاستفسارات القصيرة وأسماء القرى بمرونة كاملة!", flush=True)
+    print("🚀 تم تفعيل التحليل الذكي المفتوح للنية بدون أي شروط أو كلمات محددة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
