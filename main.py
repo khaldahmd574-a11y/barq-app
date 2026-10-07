@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Fully Dynamic System Active!")
+        self.wfile.write(b"Barq Ultimate Clean AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# FULL DYNAMIC AI ENGINE (تحليل مفتوح بدون كلمات محددة)
+# FULL PURE AI ENGINE (معالجة وتصنيف النية بالذكاء)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -72,22 +72,20 @@ def analyze_intent_with_ai(text: str) -> bool:
         return False
 
     if not OPENROUTER_API_KEY:
-        return False
+        return True # احتياطي في حال غياب المفتاح
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف ومخصص لقروبات التوصيل والمشاوير بالجنوب وجازان.
-مهمتك: تحديد صاحب الرسالة بناءً على المعنى الكامل (بغض النظر عن الألفاظ المستخدمة):
+    prompt = f"""أنت خبير ذكاء اصطناعي محترف متفرغ لقروبات التوصيل والمشاوير بالجنوب وجازان.
+مهمتك: تحديد صاحب الرسالة بناءً على المعنى الكامل للرسالة:
 
 [الصنف الأول: زبون/عميل يحتاج خدمة -> أجب بـ YES]
-قبول الرسالة إذا كان الكاتب هو المحتاج للخدمة بأي صيغة كانت:
-- طلب مشوار، نقل أغراض، دوام، سواق، مندوب، توصيل.
-- سؤال أو استفسار عن توفر شخص أو سيارة في موقع معين.
-- زبون يضع رقم جواله ليتواصل معه السائقون.
-- أي عبارة غير صريحة لكن يفهم منها أن القائل يبحث عن توصيلة.
+قبول أي رسالة من شخص يحتاج خدمة أو يستفسر أو يذكر مسار توصيل:
+- طلبات المشاوير، نقل أغراض، دوامات، سواق، مندوب، توصيل، استفسار عن توفر شخص بالقرى أو المدن.
+- أمثلة مقبولة: "مين يوصل من جيزان لضمد وبكم؟"، "ابغا مندوب ينفعني ابوعريش"، "مندوب في ابوعريش يوصل بيش"، "دقو اتصال معندي نت 0530177247".
+- إن كانت الرسالة قصيرة أو حاف ومحتملة للزبون والسائق، ترجح دائماً كـ (YES) لضمان عدم تفويته.
 
-[الصنف الثاني: سائق/مندوب يعرض خدمته -> أجب بـ NO]
-رفض الرسالة فقط إذا كان الكاتب هو من يملك السيارة/الوقت ويعلن عن توفره للناس:
-- أي إعلان عن توفر السيارة أو التواجد في مكان أو طريق معين.
-- قوائم خدمات التوصيل والأسعار وعروض الدوامات المزودة بأرقام تواصل.
+[الصنف الثاني: سائق/مندوب يعلن عن توفره -> أجب بـ NO]
+رفض الرسالة فقط إذا كان القائل هو السائق الذي يملك سيارة ويعلن عن توفره للناس:
+- أي إعلان يحتوي على عبارات العرض مثل: ("أنا فاضي"، "متوفر حالياً"، "توصيل طلبات وأكل"، "خدمتكم هدفنا"، قوائم الأسعار والدوامات المرفقة بأرقام تواصل للسائقين).
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -113,15 +111,15 @@ def analyze_intent_with_ai(text: str) -> bool:
             res = requests.post(url, headers=headers, json=payload, timeout=3)
             if res.status_code == 200:
                 answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [{model_name}]: '{clean[:30]}...' -> {answer}", flush=True)
+                print(f"🤖 [{model_name}]: '{clean[:35]}...' -> {answer}", flush=True)
                 return "YES" in answer
         except Exception:
             continue
 
-    return False
+    return True # احتياطياً يسحب الرسالة لعدم تفويتها عند وجود انقطاع
 
 # =========================================================
-# MESSAGE PROCESSOR
+# MESSAGE PROCESSOR (مع الفلترة المسبقة للضحك والدردشة)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -143,9 +141,26 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
+        clean_lower = clean_text.lower()
         
-        if len(clean_text) < 2:
+        # ---------------------------------------------------------
+        # فلترة فورية لمنع الضحك والسوالف والكلمات العشوائية
+        # ---------------------------------------------------------
+        
+        # 1. تصفية الضحكات والتفاعلات المباشرة
+        if re.search(r'^(ه{2,}|خ{2,}|هههه|ههههه|هههههه)$', clean_lower):
             return
+
+        # 2. تصفية التعليقات والسوالف الحانبية المشهورة
+        junk_phrases = ["دايم يطنشونا", "يطنشون", "اطنش", "هههه", "شكرا", "يسلمو", "تمام"]
+        if any(junk in clean_lower for junk in junk_phrases):
+            return
+
+        # 3. تصفية الكلمات المفردة المجردة القليلة (أقل من 4 حروف إذا لم تكن استفساراً)
+        if len(clean_text) < 4 and not any(q in clean_lower for q in ["مين", "حد", "في"]):
+            return
+
+        # ---------------------------------------------------------
 
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
@@ -180,7 +195,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -218,80 +233,4 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
                 if not sent:
                     try:
-                        await userbot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-# =========================================================
-# HIGH-SPEED SCANNER (0.1s)
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-        await asyncio.sleep(0.1)
-
-# =========================================================
-# MAIN ENTRYPOINT
-# =========================================================
-
-async def main():
-    threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    userbot = Client(
-        "my_userbot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        in_memory=True
-    )
-
-    bot = None
-    if BOT_TOKEN:
-        try:
-            bot = Client(
-                "helper_bot",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                bot_token=BOT_TOKEN,
-                in_memory=True
-            )
-            await bot.start()
-        except Exception:
-            pass
-
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_live_message(client, bot, message))
-
-    await userbot.start()
-    print("🚀 تم تفعيل التحليل الذكي المفتوح للنية بدون أي شروط أو كلمات محددة!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
-
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+                        await user
