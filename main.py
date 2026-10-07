@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Smart AI System Active!")
+        self.wfile.write(b"Barq Ultra Fast AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ADVANCED PURE AI ENGINE (استبعاد السكليف والإعلانات التجاريّة)
+# ULTRA FAST INTENT AI ENGINE (تمييز طلب الزبون عن إعلان السائق)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -74,20 +74,23 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف متفرغ حصرياً لفلترة وتصنيف رسائل قروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف لفحص رسائل قروبات التوصيل والمشاوير بالمملكة.
 
-المطلوب: هل الكاتب [زبون يحتاج توصيلة/مشوار حقيقي] أم [إعلان تجاري/سكليف/إعلان سائق/رد عادي]؟
+المطلوب: تمييز هل الكاتب [زبون يبحث عن خدمة] أم [سائق/مقدم خدمة يعلن عن نفسه]؟
 
-[أجب بـ YES فقط إذا كانت الرسالة طلب توصيل فعلي من زبون]:
-- زبون يطلب مشوار، توصيلة، مندوب، نقل أغراض، أو يستفسر عن أسعار ومسارات (مثل: "ابي توصيل من بطحان"، "من ابوعريش لضمد بكم"، "ابغى اروح شارع المطاعم"، "مين في حي الصفا").
-- زبون يطلب توصيلة ويضع رقم جواله للتواصل معه (مثل: "محتاج سواق لصبيا وهذا رقمي 050xxx"، "دقو علي معندي نت 0530177247").
+[أجب بـ YES فقط إذا كانت الرسالة من زبون/عميل ينادي أو يطلب]:
+1. طلبات المشاوير والسيارات والدوامات والمندوبين:
+   - "ابغى/مطلوب/محتاج مندوب متحرك يوصل لضمد" -> YES (هذا زبون يطلب مندوباً متوفراً حالياً).
+   - "ابي سياره توصل من جازان لبيش" -> YES.
+   - "ابغا سواقه او سواق من ديحمه" -> YES.
+   - "في حد في ضمد؟"، "مين في العارضة؟"، "محتاج مندوب".
 
-[أجب بـ NO فوراً وبدون تردد إذا كانت الرسالة أي نوع من أنواع الإعلانات أو السوالف التالية]:
-1. إعلانات السكليف، الإجازات المرضية، التقارير الطبية، صحتي، الخدمات العامة، التعقيب والتسديد التجاري (مثل: "تطلع سكليف إجازة مرضية"، "تقارير طبية"، "خدمات تعقيب"، "تسديد قروض").
-2. إعلان تجاري أو تسويقي أو بيع وشراء منتجات/خدمات غير المشاوير والتوصيل.
-3. إعلان من سائق/مندوب يعرض خدماته أو سيارته حتى لو وضع رقمه (مثل: "العارضة بطحان فاضي اي مشوار تواصل خاص او واتس 050xxx"، "متوفر حالياً للطلبات"، "سيارة حديثة جاهزة").
-4. زبون اعتذر أو ألغى الطلب أو اخبر أنه وجد توصيلة (مثل: "حصلت الله يسعدكم"، "تكنسل"، "خلاص لقينا"، "استغنيت").
-5. نداءات عامة أو كلمات مجردة أو تعليقات وضحك (مثل: "مساعدة"، "وين فعلين الخير"، "سوالف"، "ههههه").
+[أجب بـ NO فوراً إذا كانت الرسالة إعلان من سائق أو خدمة تجارية]:
+1. السائق الذي يعلن أنه سيتحرك بنفسه أو يعرض سيارته للناس (بدون صيغة طلب مثل أبغى/مطلوب):
+   - "متحرك من جازان ل ضمد" -> NO (سائق يعلن عن رحلته بنفسه).
+   - "محرك من جازان" -> NO.
+   - "بعد صلاه الضهر ماشي من جازان ل ابها" -> NO.
+   - "طالع صبيا الي يبغى يتواصل"، "أنا فاضي"، "متوفر حالياً"، "إعلانات السكليف والتعقيب والخدمات التجارية".
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -100,23 +103,20 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    models_to_try = ["deepseek/deepseek-chat", "openai/gpt-4o-mini"]
-
-    for model_name in models_to_try:
-        try:
-            payload = {
-                "model": model_name,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0,
-                "max_tokens": 2
-            }
-            res = requests.post(url, headers=headers, json=payload, timeout=3)
-            if res.status_code == 200:
-                answer = res.json()['choices'][0]['message']['content'].strip().upper()
-                print(f"🤖 [{model_name}]: '{clean[:35]}...' -> {answer}", flush=True)
-                return "YES" in answer
-        except Exception:
-            continue
+    try:
+        payload = {
+            "model": "openai/gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 2
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -287,7 +287,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🧠 تم تفعيل النظام المطور لحظر إعلانات السكليف والتجارة بنجاح!", flush=True)
+    print("⚡ تم تشغيل الكود القديم السريع بنجاح وتحديث معايير الزبائن والمندوبين!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
