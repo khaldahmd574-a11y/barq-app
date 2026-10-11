@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Direct System Active!")
+        self.wfile.write(b"Barq Ultra Smart AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,19 +41,66 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USER = "abood1317"
-PROCESSED_KEYS = set()
+# الحساب المستهدف الوحيد كما طلبت
+TARGET_USERS = ["abood1317"]
 
-# فلترة بالذكاء الاصطناعي
+PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
+USER_REQUEST_HISTORY = {} 
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
+SIMILARITY_THRESHOLD = 0.65       
+
+# =========================================================
+# HELPER: SMART TEXT SIMILARITY
+# =========================================================
+
+def is_similar_text(text1: str, text2: str) -> bool:
+    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
+    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
+    
+    ratio = SequenceMatcher(None, clean1, clean2).ratio()
+    return ratio >= SIMILARITY_THRESHOLD
+
+# =========================================================
+# ULTRA SMART INTENT AI ENGINE
+# =========================================================
+
 def analyze_intent_with_ai(text: str) -> bool:
     clean = " ".join(text.split()).strip()
-    if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
-        return True # لو مافي مفتاح ذكاء اصطناعي، مررها مؤقتاً للتأكد من السحب
+    
+    if not clean or len(clean) < 2:
+        return False
 
-    prompt = f"""أنت ذكاء اصطناعي مخصص لقروبات التوصيل والمشاوير. هل الرسالة من [زبون يبحث عن توصيل/سائق/مندوب] أم [سائق يعلن عن نفسه]؟
-أجب بكلمة واحدة فقط: (YES) للزبون، أو (NO) للسائق الملعن.
-الرسالة: "{clean}"
-الجواب:"""
+    if not OPENROUTER_API_KEY:
+        return False
+
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+
+مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]:
+
+[الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
+قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
+1. الأسئلة عن القرب والتواجد في المدن/القرى:
+   - "في حد في ضمد" -> YES (هذا زبون يسأل عن توفر سائق بضمد).
+   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
+   - "مين في العارضة؟" -> YES.
+   - "أحد في صامطة؟" -> YES.
+2. طلبات المشاوير والطلبيات والدوامات والخدمات:
+   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES.
+   - "ابغا مندوب ثقه" -> YES.
+   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
+
+[الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
+رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
+1. "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
+2. الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
+3. سلام أو تحية مجردة بدون أي مكان أو طلب بعده.
+
+الرسالة المراد تحليلها:
+"{clean}"
+
+الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -63,7 +110,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "openai/gpt-4o",
+            "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
@@ -71,101 +118,86 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [AI]: '{clean[:20]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
-    return True
+    return False
 
-# معالجة الرسائل المباشرة بدون شروط معقدة
-async def process_message(userbot: Client, bot: Client, message: Message):
+# =========================================================
+# MESSAGE PROCESSOR
+# =========================================================
+
+async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
-        if not message or not message.text:
-            return
-        
-        # التأكد أنها مجموعة وليست محادثة خاصة
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        if not message or not message.id or not message.chat:
             return
 
-        text = message.text.strip()
-        if len(text) < 2:
+        if message.chat.type == ChatType.PRIVATE:
+            return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
+
+        if message.reply_to_message_id or message.reply_to_message:
+            return
+
+        if message.from_user and message.from_user.is_self:
+            return
+
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        
+        if len(clean_text) < 2:
             return
 
         msg_key = f"{message.chat.id}_{message.id}"
-        if msg_key in PROCESSED_KEYS:
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+        
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
-        PROCESSED_KEYS.add(msg_key)
 
-        if len(PROCESSED_KEYS) > 5000:
+        current_time = time.time()
+        user_id = message.from_user.id if message.from_user else None
+
+        if user_id and user_id in USER_REQUEST_HISTORY:
+            user_history = USER_REQUEST_HISTORY[user_id]
+
+            for past_request in user_history:
+                if is_similar_text(clean_text, past_request['text']):
+                    time_diff = current_time - past_request['time']
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                        return
+
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
+
+        if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # فحص الذكاء الاصطناعي
         loop = asyncio.get_running_loop()
-        is_client = await loop.run_in_executor(None, analyze_intent_with_ai, text)
+        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
-        if is_client:
-            print(f"✅ [تم السحب بنجاح]: {text[:30]}", flush=True)
+        if is_client_request:
+            if user_id:
+                if user_id not in USER_REQUEST_HISTORY:
+                    USER_REQUEST_HISTORY[user_id] = []
+                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            # تجهيز الأزرار
+            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+
             buttons = []
-            if message.from_user and message.from_user.username:
-                buttons.append([InlineKeyboardButton("💬 فتح المحادثة", url=f"https://t.me/{message.from_user.username}")])
-            elif message.link:
-                buttons.append([InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link)])
+            row = []
+            
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
 
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
-
-            # الإرسال للبوت المساعد لكي يرسلها لك
-            if bot:
-                await bot.send_message(
-                    chat_id=TARGET_USER,
-                    text=f"📥 طلب جديد:\n\n{text}",
-                    reply_markup=reply_markup,
-                    disable_web_page_preview=True
-                )
-    except Exception as e:
-        print(f"⚠️ خطأ معالجة: {e}", flush=True)
-
-async def main():
-    threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    userbot = Client(
-        "barq_simple_bot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING
-    )
-
-    bot = None
-    if BOT_TOKEN:
-        try:
-            bot = Client(
-                "barq_simple_helper",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                bot_token=BOT_TOKEN
-            )
-            await bot.start()
-            print("🤖 [البوت المساعد متصل]", flush=True)
-        except Exception as e:
-            print(f"⚠️ خطأ البوت المساعد: {e}", flush=True)
-
-    @userbot.on_message()
-    async def listener(client: Client, message: Message):
-        asyncio.create_task(process_message(client, bot, message))
-
-    await userbot.start()
-    print("🚀 [النظام المبسط يعمل الآن ويسحب من كل القروبات]...", flush=True)
-
-    # مزامنة سريعة للقروبات لضمان استقبال الأحداث
-    try:
-        async for _ in userbot.get_dialogs(limit=30):
-            pass
-    except Exception:
-        pass
-
-    await asyncio.Event().wait()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link
