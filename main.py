@@ -3,7 +3,7 @@ import re
 import time
 import asyncio
 import hashlib
-import requests
+import requestsjaja
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
