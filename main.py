@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Active!")
+        self.wfile.write(b"Barq Polling System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,6 +44,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار الطلب
 SIMILARITY_THRESHOLD = 0.65       
@@ -59,7 +60,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت ذكاء اصطناعي مخصص لقروبات التوصيل والمشاوير بجازان والجنوب.
+    prompt = f"""أنت ذكاء اصطناعي محترف مخصص لقروبات التوصيل والمشاوير بجازان والجنوب.
 مهمتك: هل الرسالة من [زبون يبحث عن سائق/مندوب/توصيل/أغراض] أم [سائق يعلن عن نفسه]؟
 
 [زبون/عميل يبحث أو يستفسر -> YES]
@@ -95,15 +96,12 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     return False
 
-async def process_live_message(userbot: Client, bot: Client, message: Message):
+async def process_and_send(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id or not message.chat:
             return
-        
-        # السماح بالرسائل في المجموعات والمجموعات الخارقة فقط
         if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
-
         if message.reply_to_message_id or message.reply_to_message:
             return
         if message.from_user and message.from_user.is_self:
@@ -143,7 +141,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [تم سحب طلب زبون وإرساله للبوت المساعد]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم سحب وإرسال طلب زبون]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -172,17 +170,38 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             reply_markup=reply_markup, 
                             disable_web_page_preview=True
                         )
-                    except Exception as e:
-                        print(f"⚠️ خطأ إرسال البوت المساعد: {e}", flush=True)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+# فحص دوري ذكي وآمن يسحب أحدث الرسائل من كافة القروبات بدون حظر
+async def smart_polling_loop(userbot: Client, bot: Client):
+    await asyncio.sleep(3)
+    try:
+        async for dialog in userbot.get_dialogs(limit=60):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+        print(f"🔄 [تم جلب {len(KNOWN_CHAT_IDS)} قروب ومجموعة للمراقبة بنجاح]", flush=True)
     except Exception as e:
-        print(f"⚠️ خطأ في المعالجة: {e}", flush=True)
+        print(f"⚠️ خطأ في جلب القروبات: {e}", flush=True)
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=3):
+                        await process_and_send(userbot, bot, msg)
+                    await asyncio.sleep(0.5) # فاصل زمني لمنع أي ضغط أو حظر
+                except Exception:
+                    continue
+        await asyncio.sleep(5) # دورة فحص شاملة لكل القروبات كل 5 ثوانٍ
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # استخدام وضع الذاكرة الطبيعي لضمان تفاعل اليوزربوت مع كافة الدردشات
     userbot = Client(
-        "barq_userbot_v2", 
+        "barq_polling_userbot", 
         api_id=API_ID, 
         api_hash=API_HASH, 
         session_string=SESSION_STRING
@@ -192,7 +211,7 @@ async def main():
     if BOT_TOKEN:
         try:
             bot = Client(
-                "barq_helper_bot_v2", 
+                "barq_polling_helper", 
                 api_id=API_ID, 
                 api_hash=API_HASH, 
                 bot_token=BOT_TOKEN
@@ -202,21 +221,10 @@ async def main():
         except Exception as e:
             print(f"⚠️ خطأ تشغيل البوت المساعد: {e}", flush=True)
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_live_message(client, bot, message))
-
     await userbot.start()
-    
-    # جلب المحادثات النشطة فوراً لإجبار تيليجرام على مزامنة قنوات الإشعارات والقروبات مع الحساب
-    try:
-        async for _ in userbot.get_dialogs(limit=30):
-            pass
-        print("🔄 [تم مزامنة القروبات والدردشات بنجاح]", flush=True)
-    except Exception:
-        pass
+    print("🚀 [نظام برق الفعال يعمل]: بدء الفحص الذكي للقروبات...", flush=True)
 
-    print("🚀 [برق الشامل يعمل بكل قوة]: يراقب جميع القروبات بدون استثناء!", flush=True)
+    asyncio.create_task(smart_polling_loop(userbot, bot))
 
     await asyncio.Event().wait()
 
