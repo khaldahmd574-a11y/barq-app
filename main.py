@@ -8,13 +8,13 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
-# سيرفر البنقز للبقاء نشطاً على Render 24/7
+# سيرفر الويب للبقاء نشطاً على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Render Safe Active!")
+        self.wfile.write(b"Barq System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -65,12 +65,10 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 async def main():
-    # تشغيل سيرفر الويب الوهمي في الخلفية
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # استخدام وضع الذاكرة (in_memory=True) لتخفيف الضغط على رندر وسرعة الاستجابة
     userbot = Client(
-        "barq_render_safe_bot",
+        "barq_render_final_bot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
@@ -78,7 +76,7 @@ async def main():
     )
 
     bot = Client(
-        "barq_render_helper_bot",
+        "barq_render_final_helper",
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN,
@@ -143,8 +141,11 @@ async def main():
 
     await bot.start()
     await userbot.start()
-    print("🚀 [نظام برق يعمل الآن بثبات تام على رندر]...", flush=True)
-    asyncio.Event().wait()
+    print("🚀 [نظام برق يعمل الآن بثبات تام وبدون أخطاء]...", flush=True)
+    
+    # استخدام طريقة صحيحة وثابتة لإبقاء البوت شغالاً دون أخطاء coroutine
+    stop_event = asyncio.Event()
+    await stop_event.wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
