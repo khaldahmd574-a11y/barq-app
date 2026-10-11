@@ -41,7 +41,8 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
+# تم الحذف وتخصيص المستقبل لحسابك فقط
+TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
@@ -62,7 +63,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ULTRA SMART INTENT AI ENGINE
+# ULTRA SMART INTENT AI ENGINE (فلترة الإعلانات والسواقين)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -74,27 +75,19 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص حصرياً لقراءة نيات الرسائل لقروبات التوصيل والمشاوير بجازان والجنوب[span_3](start_span)[span_3](end_span).
 
-مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]:
+مهمتك: تحديد ما إذا كانت الرسالة من [زبون حقيقي يبحث عن سائق/مندوب/توصيل/أغراض] أم [سائق يعلن عن نفسه أو إعلان ترويجي]:
 
 [الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
-قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
-1. الأسئلة عن القرب والتواجد في المدن/القرى:
-   - "في حد في ضمد" -> YES (هذا زبون يسأل عن توفر سائق بضمد).
-   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
-   - "مين في العارضة؟" -> YES.
-   - "أحد في صامطة؟" -> YES.
-2. طلبات المشاوير والطلبيات والدوامات والخدمات:
-   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES.
-   - "ابغا مندوب ثقه" -> YES.
-   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
+قبول أي نص قصير أو طويل يتساءل فيه العميل أو يطلب خدمة أو مشوار أو مندوب أو يسأل عن التواجد:
+- الأسئلة عن القرب والتواجد في المدن/القرى: "في حد في ضمد"، "فيه احد قريب من أنوش جيزان ؟"، "مين في العارضة؟" -> YES[span_4](start_span)[span_4](end_span).
+- طلبات المشاوير والطلبيات والدوامات والخدمات: "سواق يوصل لنخلان دوام كل يوم"، "ابغا مندوب ثقه" -> YES[span_5](start_span)[span_5](end_span).
 
-[الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
-رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
-1. "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
-2. الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
-3. سلام أو تحية مجردة بدون أي مكان أو طلب بعده.
+[الصنف الثاني: سائق يعرض توفره وسيارته (إعلانات السواقين) -> أجب بـ NO]
+رفض النص فوراً إذا كان الكاتب هو سائق يعلن عن سيارته أو خدماته أو رقمه:
+- "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "فاضي ف جازان مندوب..." -> NO[span_6](start_span)[span_6](end_span).
+- الإعلانات التي تحتوي على أرقام جوالات للتوصيل أو عروض السائقين -> NO[span_7](start_span)[span_7](end_span).
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -117,7 +110,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [فلترة الذكاء الاصطناعي]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -184,7 +177,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون حصرياً]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -206,6 +199,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+            # الإرسال حصرياً لحسابك @abood1317
             for user in TARGET_USERS:
                 sent = False
                 if bot:
@@ -234,7 +228,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# HIGH-SPEED SCANNER (0.1s)
+# HIGH-SPEED SCANNER
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
@@ -291,7 +285,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🧠 تم تحديث ذكاء النظام لمعالجة الاستفسارات القصيرة وأسماء القرى بمرونة كاملة!", flush=True)
+    print("🚀 [برق الذكي نشط]: يراقب طلبات الزبائن فقط ويستبعد الإعلانات لحساب @abood1317...", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
