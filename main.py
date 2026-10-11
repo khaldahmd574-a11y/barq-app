@@ -41,12 +41,11 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# حسابك المستهدف الذي سيستقبل الرسائل من البوت المساعد
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار نفس الطلب
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار الطلب
 SIMILARITY_THRESHOLD = 0.65       
 
 def is_similar_text(text1: str, text2: str) -> bool:
@@ -60,7 +59,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت ذكاء اصطناعي محترف مخصص لقروبات التوصيل والمشاوير بجازان والجنوب.
+    prompt = f"""أنت ذكاء اصطناعي مخصص لقروبات التوصيل والمشاوير بجازان والجنوب.
 مهمتك: هل الرسالة من [زبون يبحث عن سائق/مندوب/توصيل/أغراض] أم [سائق يعلن عن نفسه]؟
 
 [زبون/عميل يبحث أو يستفسر -> YES]
@@ -100,8 +99,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id or not message.chat:
             return
-        if message.chat.type == ChatType.PRIVATE:
+        
+        # السماح بالرسائل في المجموعات والمجموعات الخارقة فقط
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
+
         if message.reply_to_message_id or message.reply_to_message:
             return
         if message.from_user and message.from_user.is_self:
@@ -161,7 +163,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            # إرسال الطلب عبر البوت المساعد (Bot Token) إلى حسابك
             if bot:
                 for user in TARGET_USERS:
                     try:
@@ -173,18 +174,29 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception as e:
                         print(f"⚠️ خطأ إرسال البوت المساعد: {e}", flush=True)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في المعالجة: {e}", flush=True)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    userbot = Client("barq_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
+    # استخدام وضع الذاكرة الطبيعي لضمان تفاعل اليوزربوت مع كافة الدردشات
+    userbot = Client(
+        "barq_userbot_v2", 
+        api_id=API_ID, 
+        api_hash=API_HASH, 
+        session_string=SESSION_STRING
+    )
     
     bot = None
     if BOT_TOKEN:
         try:
-            bot = Client("barq_helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
+            bot = Client(
+                "barq_helper_bot_v2", 
+                api_id=API_ID, 
+                api_hash=API_HASH, 
+                bot_token=BOT_TOKEN
+            )
             await bot.start()
             print("🤖 [البوت المساعد متصل بنجاح]", flush=True)
         except Exception as e:
@@ -195,7 +207,16 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [برق الشامل يعمل]: اليوزربوت يراقب القروبات ويسحب، والبوت المساعد يوصلك الطلبات!", flush=True)
+    
+    # جلب المحادثات النشطة فوراً لإجبار تيليجرام على مزامنة قنوات الإشعارات والقروبات مع الحساب
+    try:
+        async for _ in userbot.get_dialogs(limit=30):
+            pass
+        print("🔄 [تم مزامنة القروبات والدردشات بنجاح]", flush=True)
+    except Exception:
+        pass
+
+    print("🚀 [برق الشامل يعمل بكل قوة]: يراقب جميع القروبات بدون استثناء!", flush=True)
 
     await asyncio.Event().wait()
 
