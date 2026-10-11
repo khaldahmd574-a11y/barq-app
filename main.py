@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import asyncio
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -9,15 +8,13 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
-# =========================================================
-# KEEP ALIVE SERVER (لإبقاء رندر مستيقظاً 24/7)
-# =========================================================
+# سيرفر البنقز للبقاء نشطاً على Render
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Live Bot Active!")
+        self.wfile.write(b"Barq Clean Live Bot Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -28,9 +25,6 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# =========================================================
-# CONFIGURATION
-# =========================================================
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
@@ -38,9 +32,8 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USER = "abood1317"
-PROCESSED_MESSAGES = set()
+PROCESSED_KEYS = set()
 
-# دالة تحليل الذكاء الاصطناعي السريعة والمضمونة
 def analyze_intent_with_ai(text: str) -> bool:
     clean = " ".join(text.split()).strip()
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
@@ -72,31 +65,27 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 async def main():
-    # بدء سيرفر البنقز الخلفي
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # تشغيل حساب المندوب
     userbot = Client(
-        "barq_render_userbot",
+        "barq_pure_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING
     )
 
-    # تشغيل البوت المساعد لإرسال التنبيهات
     bot = Client(
-        "barq_render_bot",
+        "barq_pure_helper",
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN
     )
 
     @userbot.on_message()
-    async def handle_incoming_messages(client: Client, message: Message):
+    async def on_new_message(client: Client, message: Message):
         try:
             if not message or not message.chat:
                 return
-            # التأكد أن الرسالة من مجموعة أو مجموعة خارقة فقط
             if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 return
             if message.from_user and message.from_user.is_self:
@@ -108,25 +97,21 @@ async def main():
             if len(text) < 2:
                 return
 
-            # منع تكرار معالجة نفس الرسالة
-            msg_id_key = f"{message.chat.id}_{message.id}"
-            if msg_id_key in PROCESSED_MESSAGES:
+            msg_key = f"{message.chat.id}_{message.id}"
+            if msg_key in PROCESSED_KEYS:
                 return
-            PROCESSED_AGES = PROCESSED_MESSAGES
-            PROCESSED_AGES.add(msg_id_key)
-            if len(PROCESSED_AGES) > 5000:
-                PROCESSED_AGES.clear()
+            PROCESSED_KEYS.add(msg_key)
+            if len(PROCESSED_KEYS) > 5000:
+                PROCESSED_KEYS.clear()
 
-            # الفحص بالذكاء الاصطناعي
             loop = asyncio.get_running_loop()
             is_client = await loop.run_in_executor(None, analyze_intent_with_ai, text)
 
             if not is_client:
                 return
 
-            print(f"✅ [تم التقاط طلب زبون بنجاح]: {text[:30]}", flush=True)
+            print(f"✅ [طلب زبون حقيقي جديد]: {text[:35]}", flush=True)
 
-            # تجهيز الأزرار التفاعلية
             row = []
             if message.from_user:
                 if message.from_user.username:
@@ -142,7 +127,6 @@ async def main():
 
             reply_markup = InlineKeyboardMarkup([row]) if row else None
 
-            # الإرسال لحسابك الشخصي abood1317
             await bot.send_message(
                 chat_id=TARGET_USER,
                 text=f"📥 طلب جديد:\n\n{text}",
@@ -151,11 +135,11 @@ async def main():
             )
 
         except Exception as e:
-            print(f"Error in handler: {e}", flush=True)
+            print(f"Error: {e}", flush=True)
 
     await bot.start()
     await userbot.start()
-    print("🚀 [نظام برق متصل وجاهز للاستماع الفوري على Render]...", flush=True)
+    print("🚀 [نظام برق الصافي يعمل الآن بالاستماع الحي الفوري]...", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
