@@ -41,14 +41,14 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# حسابك المستهدف الوحيد لتلقي الطلبات
+# الحساب المستهدف الوحيد
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       
 
 # =========================================================
@@ -137,6 +137,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.chat.type == ChatType.PRIVATE:
             return
 
+        # تسجيل القناة/المجموعة فور ورود أي حدث منها
         if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
             KNOWN_CHAT_IDS.add(message.chat.id)
 
@@ -155,15 +156,16 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
+        # منع التكرار الحرفي
         if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
 
         current_time = time.time()
         user_id = message.from_user.id if message.from_user else None
 
+        # منع تكرار طلبات الزبون المتشابهة خلال 10 دقائق
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
                     time_diff = current_time - past_request['time']
@@ -196,7 +198,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = "💬 فتح المحادثة"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
@@ -207,6 +209,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
+            # إرسال الرسالة الصافية فقط لـ abood1317 بدون كلمة طلب جديد
             for user in TARGET_USERS:
                 sent = False
                 if bot:
@@ -235,18 +238,20 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# HIGH-SPEED SCANNER (0.1s) - السحب الشامل والفعال من جميع القروبات
+# HIGH-SPEED SCANNER (دالة المسح الشامل لكل القروبات)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
     await asyncio.sleep(1)
     
+    # جلب كافة القروبات والمجموعات التي ينتمي لها الحساب بدون استثناء (بدون حد 50)
     try:
-        async for dialog in userbot.get_dialogs(limit=100):
+        async for dialog in userbot.get_dialogs():
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
+        print(f"🔄 [تم اكتشاف ومزامنة {len(KNOWN_CHAT_IDS)} قروب ومجموعة بنجاح]", flush=True)
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء جلب الديالوجات: {e}", flush=True)
 
     while True:
         if KNOWN_CHAT_IDS:
@@ -292,7 +297,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [برق الشامل يعمل بكامل قوة السحب لكل القروبات]: جاهز للعمل!", flush=True)
+    print("🧠 تم تشغيل النظام بالسحب الشامل والسرعة الفائقة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
