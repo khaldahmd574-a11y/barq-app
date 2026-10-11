@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq System Active!")
+        self.wfile.write(b"Barq Safe Live System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,8 +44,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       
@@ -141,7 +139,7 @@ async def process_message_logic(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [تم سحب وإرسال طلب]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم سحب وإرسال طلب زبون]: {clean_text[:30]}...", flush=True)
 
             row = []
             if message.from_user:
@@ -175,47 +173,15 @@ async def process_message_logic(userbot: Client, bot: Client, message: Message):
                             disable_web_page_preview=True
                         )
                 except Exception as e:
-                    print(f"⚠️ خطأ في الإرسال للمستلم: {e}", flush=True)
+                    print(f"⚠️ خطأ في الإرسال: {e}", flush=True)
     except Exception as e:
         print(f"⚠️ خطأ في المعالجة: {e}", flush=True)
-
-# حلقة سحب شاملة ومضمونة تفحص كافة المجموعات والقروبات المسجلة والجديدة
-async def robust_global_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
-    
-    # محاولة جلب المجموعات عبر الاستعلام المباشر من الـ Dialogs
-    try:
-        async for dialog in userbot.get_dialogs():
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-        print(f"🔄 [تم جلب وتحميل {len(KNOWN_CHAT_IDS)} قروب ومجموعة بنجاح تام]", flush=True)
-    except Exception as e:
-        print(f"⚠️ تحذير في جلب المحادثات: {e}", flush=True)
-
-    while True:
-        try:
-            # تحديث دوري للقروبات كل فترة لضمان عدم تفويت أي قروب جديد
-            async for dialog in userbot.get_dialogs(limit=150):
-                if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                    KNOWN_CHAT_IDS.add(dialog.chat.id)
-        except Exception:
-            pass
-
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=3):
-                        await process_message_logic(userbot, bot, msg)
-                    await asyncio.sleep(0.05)
-                except Exception:
-                    continue
-        await asyncio.sleep(2)
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
-        "barq_fixed_bot",
+        "barq_safe_bot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING
@@ -225,24 +191,22 @@ async def main():
     if BOT_TOKEN:
         try:
             bot = Client(
-                "barq_fixed_helper",
+                "barq_safe_helper",
                 api_id=API_ID,
                 api_hash=API_HASH,
                 bot_token=BOT_TOKEN
             )
             await bot.start()
-            print("🤖 [البوت المساعد يعمل بنجاح]", flush=True)
+            print("🤖 [البوت المساعد متصل بنجاح]", flush=True)
         except Exception as e:
-            print(f"⚠️ خطأ في البوت المساعد: {e}", flush=True)
+            print(f"⚠️ خطأ البوت المساعد: {e}", flush=True)
 
     @userbot.on_message()
     async def live_event_handler(client: Client, message: Message):
-        asyncio.create_task(process_message_logic(client, bot, message))
+        asyncio.create_action = asyncio.create_task(process_message_logic(client, bot, message))
 
     await userbot.start()
-    print("🚀 [نظام برق يعمل الآن بكامل طاقته لسحب جميع القروبات]...", flush=True)
-
-    asyncio.create_task(robust_global_scanner(userbot, bot))
+    print("🚀 [نظام برق الآمن يعمل الآن - استماع مباشر بدون حظر]...", flush=True)
 
     await asyncio.Event().wait()
 
