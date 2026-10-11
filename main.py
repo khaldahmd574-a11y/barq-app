@@ -5,8 +5,8 @@ import logging
 import hashlib
 import time
 import json
-
 from collections import OrderedDict
+from urllib.parse import quote
 
 import aiohttp
 from hydrogram import Client, filters, idle
@@ -14,289 +14,363 @@ from hydrogram.enums import ChatType
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors import FloodWait, RPCError
 
-# =========================
-# Logging
-# =========================
+# =====================================================
+# BARQ JAZAN - Hydrogram + OpenRouter
+# =====================================================
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
 )
-log = logging.getLogger("Barq")
+log = logging.getLogger("BARQ")
 
-# =========================
-# Environment
-# =========================
+def env_required(*names):
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    raise RuntimeError("Missing environment variable: " + " / ".join(names))
 
-def required_env(name):
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"متغير البيئة مفقود: {name}")
-    return value
+API_ID = int(env_required("TELEGRAM_API_ID", "API_ID"))
+API_HASH = env_required("TELEGRAM_API_HASH", "API_HASH")
+SESSION_STRING = env_required("SESSION_STRING")
+BOT_TOKEN = env_required("BOT_TOKEN")
+OPENROUTER_API_KEY = env_required("OPENROUTER_API_KEY")
 
+TARGET = os.getenv("TARGET_USERNAME", "abood1317").lstrip("@")
+MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
-API_ID = int(required_env("API_ID"))
-API_HASH = required_env("API_HASH")
-SESSION_STRING = required_env("SESSION_STRING")
-BOT_TOKEN = required_env("BOT_TOKEN")
-OPENROUTER_API_KEY = required_env("OPENROUTER_API_KEY")
-
-# معرّف حساب المستلم
-TARGET_USERNAME = "abood1317"
-
-MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "openai/gpt-4o-mini"
-)
-
-# =========================
-# Clients
-# =========================
+# ضع WORKER فقط في Render Background Worker.
+# لا تستخدم نسختين من هذا البرنامج في الوقت نفسه بنفس الجلسة.
 
 userbot = Client(
-    name="barq_user",
+    "barq_user",
     api_id=API_ID,
     api_hash=API_HASH,
     session_string=SESSION_STRING,
     no_updates=False,
+    workers=8,
 )
 
 bot = Client(
-    name="barq_helper",
+    "barq_helper",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
+    no_updates=False,
+    workers=4,
 )
 
-# =========================
+# =====================================================
 # Deduplication
-# =========================
+# =====================================================
 
 seen = OrderedDict()
 SEEN_TTL = 6 * 60 * 60
-MAX_SEEN = 20000
+SEEN_MAX = 30000
 
-
-def is_duplicate(key):
+def seen_before(key):
     now = time.time()
 
     while seen:
-        first_key, first_time = next(iter(seen.items()))
-        if now - first_time <= SEEN_TTL:
+        _, ts = next(iter(seen.items()))
+        if now - ts < SEEN_TTL:
             break
-        seen.pop(first_key, None)
+        seen.popitem(last=False)
 
     if key in seen:
-        seen.move_to_end(key)
         return True
 
     seen[key] = now
 
-    while len(seen) > MAX_SEEN:
+    while len(seen) > SEEN_MAX:
         seen.popitem(last=False)
 
     return False
 
+def message_key(message):
+    # هوية الرسالة الأصلية: تمنع التكرار عند ظهورها
+    # في أكثر من مجموعة إذا كانت الرسالة معاد توجيهها.
+    if message.forward_date and message.forward_from_chat:
+        return (
+            f"fwd:{message.forward_from_chat.id}:"
+            f"{message.forward_from_message_id}"
+        )
 
-def fingerprint(message):
-    # إزالة التكرار عبر المجموعات اعتمادًا على نص الرسالة
     text = (message.text or message.caption or "").strip()
     if not text:
         return None
 
+    # النص المتطابق يُعالج مرة واحدة خلال مدة الاحتفاظ.
     normalized = " ".join(text.lower().split())
-    return hashlib.sha256(
-        normalized.encode("utf-8")
-    ).hexdigest()
+    digest = hashlib.sha256(normalized.encode()).hexdigest()
+    return "text:" + digest
 
+# =====================================================
+# Message queue
+# =====================================================
 
-# =========================
-# AI classification
-# =========================
+queue = asyncio.Queue(maxsize=1000)
+http_session = None
 
-async def classify_request(text):
-    url = "https://openrouter.ai/api/v1/chat/completions"
+# =====================================================
+# Original message link
+# =====================================================
 
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://barq.example",
-        "X-Title": "Barq Jazan Requests",
-    }
+def original_url(message):
+    chat = message.chat
+    msg_id = message.id
+
+    if chat.username:
+        return f"https://t.me/{chat.username}/{msg_id}"
+
+    # روابط المجموعات الخاصة قد تعمل فقط للأعضاء
+    # الذين يملكون صلاحية الوصول إلى المجموعة.
+    chat_id = str(chat.id)
+    if chat_id.startswith("-100"):
+        internal_id = chat_id[4:]
+        return f"https://t.me/c/{internal_id}/{msg_id}"
+
+    return None
+
+# =====================================================
+# OpenRouter classification
+# =====================================================
+
+async def classify(text):
+    global http_session
 
     payload = {
         "model": MODEL,
         "temperature": 0,
-        "max_tokens": 10,
+        "max_tokens": 8,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "أنت مصنف رسائل لمجموعة طلبات توصيل ومشاوير "
-                    "في جازان وجنوب السعودية. "
-                    "أجب YES فقط إذا كانت الرسالة من عميل يطلب "
-                    "توصيلة أو مشواراً أو مندوب توصيل لطلب فعلي. "
-                    "أجب NO إذا كانت إعلان سائق أو مندوب يبحث عن "
-                    "عمل، أو إعلاناً تجارياً، أو رسالة عادية، "
-                    "أو إعادة نشر لطلب غير واضح. "
-                    "افهم المعنى والسياق، ولا تعتمد على وجود "
-                    "رقم هاتف وحده. أجب بكلمة YES أو NO فقط."
+                    "صنّف الرسالة إلى طلب عميل حقيقي أو غير ذلك. "
+                    "YES فقط إذا كان شخص يطلب توصيلًا أو مشوارًا "
+                    "أو مندوبًا لنقل شيء. يشمل الطلبات باللهجة "
+                    "السعودية وجازان. "
+                    "NO للإعلانات التي ينشرها السائقون أو المناديب "
+                    "للبحث عن عمل، والعروض التجارية، والمحادثات "
+                    "العادية، والرسائل غير الواضحة. "
+                    "لا تعتبر وجود رقم هاتف وحده دليلًا على طلب. "
+                    "أخرج YES أو NO فقط."
                 ),
             },
             {"role": "user", "content": text[:6000]},
         ],
     }
 
-    timeout = aiohttp.ClientTimeout(total=35)
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "X-Title": "Barq Jazan",
+    }
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            url, headers=headers, json=payload
-        ) as response:
-            body = await response.text()
+    async with http_session.post(
+        url, headers=headers, json=payload
+    ) as response:
+        raw = await response.text()
 
-            if response.status != 200:
-                log.error(
-                    "OpenRouter HTTP %s: %s",
-                    response.status, body[:500]
-                )
-                return False
+        if response.status != 200:
+            log.error("OpenRouter HTTP %s: %s", response.status, raw[:700])
+            return False
 
-            data = json.loads(body)
-            result = (
-                data["choices"][0]["message"]["content"]
-                .strip()
-                .upper()
-            )
+        try:
+            data = json.loads(raw)
+            answer = data["choices"][0]["message"]["content"]
+            answer = answer.strip().upper()
+            log.info("AI result: %s", answer[:30])
+            return answer.startswith("YES")
+        except (ValueError, KeyError, IndexError, TypeError):
+            log.exception("Invalid OpenRouter response")
+            return False
 
-            log.info("AI classification: %s", result[:30])
-            return result.startswith("YES")
+# =====================================================
+# Listener: log immediately, then enqueue
+# =====================================================
 
-
-# =========================
-# Receive messages
-# =========================
-
-@userbot.on_message(filters.group)
-async def monitor_groups(client, message):
+@userbot.on_message(filters.group, group=0)
+async def group_listener(client, message):
     try:
         chat = message.chat
 
-        if chat.type not in (
-            ChatType.GROUP,
-            ChatType.SUPERGROUP,
-        ):
+        if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
             return
 
         text = (message.text or message.caption or "").strip()
         if not text:
+            log.info(
+                "GROUP MESSAGE WITHOUT TEXT | chat_id=%s | message_id=%s",
+                chat.id, message.id
+            )
             return
 
-        # لا تعالج رسائل المجموعات الفارغة
         log.info(
-            "MESSAGE RECEIVED | chat_id=%s | type=%s | chars=%s",
-            chat.id, chat.type, len(text)
+            "MESSAGE RECEIVED | chat_id=%s | type=%s | message_id=%s",
+            chat.id, chat.type, message.id
         )
 
-        key = fingerprint(message)
+        key = message_key(message)
         if not key:
             return
 
-        if is_duplicate(key):
-            log.info("Duplicate skipped")
+        if seen_before(key):
+            log.info("DUPLICATE SKIPPED | message_id=%s", message.id)
             return
+
+        item = {
+            "text": text,
+            "key": key,
+            "message": message,
+        }
 
         try:
-            matched = await classify_request(text)
-        except asyncio.TimeoutError:
-            log.warning("OpenRouter request timed out")
-            return
-        except Exception:
-            log.exception("AI classification failed")
-            return
+            queue.put_nowait(item)
+            log.info("QUEUED | queue_size=%s", queue.qsize())
+        except asyncio.QueueFull:
+            log.error("QUEUE FULL: message not queued")
 
-        if not matched:
-            log.info("Not a customer request")
-            return
+    except Exception:
+        log.exception("GROUP LISTENER FAILED")
 
-        # لا تعرض اسم المجموعة أو رابطها في الرسالة المرسلة
-        original = text[:3900]
+# =====================================================
+# Worker: AI + delivery
+# =====================================================
 
-        keyboard = InlineKeyboardMarkup([
-            [
+async def process_queue():
+    while True:
+        item = await queue.get()
+
+        try:
+            text = item["text"]
+            message = item["message"]
+
+            log.info("AI START | message_id=%s", message.id)
+
+            try:
+                matched = await asyncio.wait_for(
+                    classify(text), timeout=45
+                )
+            except asyncio.TimeoutError:
+                log.error("AI TIMEOUT | message_id=%s", message.id)
+                continue
+            except Exception:
+                log.exception("AI REQUEST FAILED")
+                continue
+
+            if not matched:
+                log.info("IGNORED BY AI | message_id=%s", message.id)
+                continue
+
+            buttons = []
+            url = original_url(message)
+
+            if url:
+                buttons.append(
+                    InlineKeyboardButton(
+                        "📩 الرسالة الأصلية",
+                        url=url,
+                    )
+                )
+
+            buttons.append(
                 InlineKeyboardButton(
                     "💬 فتح المحادثة",
-                    url="https://t.me/" + TARGET_USERNAME
+                    url=f"https://t.me/{TARGET}",
                 )
-            ]
-        ])
+            )
 
-        await bot.send_message(
-            chat_id=TARGET_USERNAME,
-            text="📦 طلب توصيل أو مشوار جديد\n\n" + original,
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
+            keyboard = InlineKeyboardMarkup([buttons])
 
-        log.info("Forwarded to @%s", TARGET_USERNAME)
+            await bot.send_message(
+                chat_id=TARGET,
+                text="📦 طلب توصيل أو مشوار جديد\n\n" + text[:3800],
+                reply_markup=keyboard,
+                disable_web_page_preview=True,
+            )
 
-    except FloodWait as e:
-        log.warning("FloodWait: %s seconds", e.value)
-        await asyncio.sleep(e.value)
-    except RPCError:
-        log.exception("Telegram RPC error")
-    except Exception:
-        log.exception("Unhandled message handler error")
+            log.info(
+                "DELIVERED | target=@%s | message_id=%s",
+                TARGET, message.id
+            )
 
+        except FloodWait as e:
+            delay = int(getattr(e, "value", 10))
+            log.warning("FloodWait: waiting %s seconds", delay)
+            await asyncio.sleep(delay)
 
-# =========================
+        except RPCError:
+            log.exception("TELEGRAM RPC ERROR")
+
+        except Exception:
+            log.exception("QUEUE PROCESSING FAILED")
+
+        finally:
+            queue.task_done()
+
+# =====================================================
 # Startup
-# =========================
+# =====================================================
 
 async def main():
-    log.info("Starting Barq clients...")
+    global http_session
+
+    log.info("Starting Barq...")
+
+    timeout = aiohttp.ClientTimeout(total=40)
+    http_session = aiohttp.ClientSession(timeout=timeout)
 
     await userbot.start()
     log.info("USERBOT STARTED")
 
+    me = await userbot.get_me()
+    log.info(
+        "USERBOT AUTHENTICATED | id=%s | username=%s",
+        me.id, me.username
+    )
+
+    await bot.start()
+    log.info("HELPER BOT STARTED")
+
+    bot_me = await bot.get_me()
+    log.info("HELPER BOT AUTHENTICATED | id=%s", bot_me.id)
+
+    # فحص الإرسال للمستلم
     try:
-        me = await userbot.get_me()
-        log.info(
-            "USERBOT AUTHENTICATED | id=%s | username=%s",
-            me.id, me.username
+        await bot.send_message(
+            TARGET,
+            "✅ برق جازان: اختبار تشغيل البوت المساعد."
+        )
+        log.info("RECIPIENT TEST SENT")
+    except Exception:
+        log.exception(
+            "RECIPIENT TEST FAILED: open the helper bot first "
+            "and press Start"
         )
 
-        await bot.start()
-        log.info("HELPER BOT STARTED")
+    worker_task = asyncio.create_task(process_queue())
 
-        bot_me = await bot.get_me()
-        log.info("HELPER BOT ID=%s", bot_me.id)
+    log.info(
+        "MONITOR READY | groups=%s | AI=%s",
+        "GROUP + SUPERGROUP", MODEL
+    )
 
-        # اختبار إمكانية إرسال رسالة إلى المستلم
-        try:
-            await bot.send_message(
-                TARGET_USERNAME,
-                "✅ برق: اختبار تشغيل البوت المساعد. "
-                "إذا وصلتك هذه الرسالة، فالإرسال يعمل."
-            )
-            log.info("Recipient test message sent")
-        except Exception:
-            log.exception(
-                "Cannot message recipient. "
-                "Make sure @abood1317 has opened the helper bot."
-            )
-
-        log.info(
-            "MONITOR READY: waiting for group messages"
-        )
-
+    try:
         await idle()
-
     finally:
+        worker_task.cancel()
+        await asyncio.gather(worker_task, return_exceptions=True)
+
+        if http_session and not http_session.closed:
+            await http_session.close()
+
         await bot.stop()
         await userbot.stop()
-        log.info("Clients stopped")
-
+        log.info("BARQ STOPPED")
 
 if __name__ == "__main__":
     asyncio.run(main())
