@@ -1,156 +1,302 @@
+
 import os
-import re
-import time
 import asyncio
+import logging
 import hashlib
-import requests
-from difflib import SequenceMatcher
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-from hydrogram import Client
-from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+import time
+import json
+
+from collections import OrderedDict
+
+import aiohttp
+from hydrogram import Client, filters, idle
 from hydrogram.enums import ChatType
+from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.errors import FloodWait, RPCError
 
-# =========================================================
-# KEEP ALIVE SERVER 24/7
-# =========================================================
-class DummyServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(b"Barq Clean Active!")
+# =========================
+# Logging
+# =========================
 
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+log = logging.getLogger("Barq")
 
-def run_dummy_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), DummyServer)
-    server.serve_forever()
+# =========================
+# Environment
+# =========================
 
-# =========================================================
-# CONFIGURATION
-# =========================================================
-SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
-API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+def required_env(name):
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"متغير البيئة مفقود: {name}")
+    return value
 
-TARGET_USER = "abood1317"
-PROCESSED_KEYS = set()
 
-def analyze_intent_with_ai(text: str) -> bool:
-    clean = " ".join(text.split()).strip()
-    if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
-        return False
+API_ID = int(required_env("API_ID"))
+API_HASH = required_env("API_HASH")
+SESSION_STRING = required_env("SESSION_STRING")
+BOT_TOKEN = required_env("BOT_TOKEN")
+OPENROUTER_API_KEY = required_env("OPENROUTER_API_KEY")
 
-    prompt = f"""أنت ذكاء اصطناعي لقروبات التوصيل والمشاوير بجازان. هل الرسالة من زبون يبحث عن توصيل/سواق (YES) أم سائق يعلن عن نفسه (NO)؟
-الرسالة: "{clean}"
-الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
+# معرّف حساب المستلم
+TARGET_USERNAME = "abood1317"
 
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
+MODEL = os.getenv(
+    "OPENROUTER_MODEL",
+    "openai/gpt-4o-mini"
+)
 
-    try:
-        payload = {
-            "model": "openai/gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 2
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            return "YES" in answer
-    except Exception:
-        pass
+# =========================
+# Clients
+# =========================
+
+userbot = Client(
+    name="barq_user",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    session_string=SESSION_STRING,
+    no_updates=False,
+)
+
+bot = Client(
+    name="barq_helper",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+)
+
+# =========================
+# Deduplication
+# =========================
+
+seen = OrderedDict()
+SEEN_TTL = 6 * 60 * 60
+MAX_SEEN = 20000
+
+
+def is_duplicate(key):
+    now = time.time()
+
+    while seen:
+        first_key, first_time = next(iter(seen.items()))
+        if now - first_time <= SEEN_TTL:
+            break
+        seen.pop(first_key, None)
+
+    if key in seen:
+        seen.move_to_end(key)
+        return True
+
+    seen[key] = now
+
+    while len(seen) > MAX_SEEN:
+        seen.popitem(last=False)
+
     return False
 
-async def main():
-    threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    userbot = Client(
-        "barq_userbot_final",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING
-    )
+def fingerprint(message):
+    # إزالة التكرار عبر المجموعات اعتمادًا على نص الرسالة
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return None
 
-    bot = Client(
-        "barq_helper_final",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN
-    )
+    normalized = " ".join(text.lower().split())
+    return hashlib.sha256(
+        normalized.encode("utf-8")
+    ).hexdigest()
 
-    @userbot.on_message()
-    async def handle_all_messages(client: Client, message: Message):
-        try:
-            if not message or not message.chat:
-                return
-            if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                return
-            
-            if message.from_user and message.from_user.is_self:
-                return
-            if message.reply_to_message_id or message.reply_to_message:
-                return
 
-            text = message.text or message.caption or ""
-            text = text.strip()
-            if len(text) < 2:
-                return
+# =========================
+# AI classification
+# =========================
 
-            msg_key = f"{message.chat.id}_{message.id}"
-            if msg_key in PROCESSED_KEYS:
-                return
-            PROCESSED_KEYS.add(msg_key)
-            if len(PROCESSED_KEYS) > 5000:
-                PROCESSED_KEYS.clear()
+async def classify_request(text):
+    url = "https://openrouter.ai/api/v1/chat/completions"
 
-            loop = asyncio.get_running_loop()
-            is_client = await loop.run_in_executor(None, analyze_intent_with_ai, text)
-            
-            if not is_client:
-                return
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://barq.example",
+        "X-Title": "Barq Jazan Requests",
+    }
 
-            print(f"✅ [تم سحب الطلب بنجاح]: {text[:30]}", flush=True)
+    payload = {
+        "model": MODEL,
+        "temperature": 0,
+        "max_tokens": 10,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "أنت مصنف رسائل لمجموعة طلبات توصيل ومشاوير "
+                    "في جازان وجنوب السعودية. "
+                    "أجب YES فقط إذا كانت الرسالة من عميل يطلب "
+                    "توصيلة أو مشواراً أو مندوب توصيل لطلب فعلي. "
+                    "أجب NO إذا كانت إعلان سائق أو مندوب يبحث عن "
+                    "عمل، أو إعلاناً تجارياً، أو رسالة عادية، "
+                    "أو إعادة نشر لطلب غير واضح. "
+                    "افهم المعنى والسياق، ولا تعتمد على وجود "
+                    "رقم هاتف وحده. أجب بكلمة YES أو NO فقط."
+                ),
+            },
+            {"role": "user", "content": text[:6000]},
+        ],
+    }
 
-            row = []
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = "💬 فتح المحادثة"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
+    timeout = aiohttp.ClientTimeout(total=35)
 
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            url, headers=headers, json=payload
+        ) as response:
+            body = await response.text()
 
-            reply_markup = InlineKeyboardMarkup([row]) if row else None
+            if response.status != 200:
+                log.error(
+                    "OpenRouter HTTP %s: %s",
+                    response.status, body[:500]
+                )
+                return False
 
-            await bot.send_message(
-                chat_id=TARGET_USER,
-                text=text,
-                reply_markup=reply_markup,
-                disable_web_page_preview=True
+            data = json.loads(body)
+            result = (
+                data["choices"][0]["message"]["content"]
+                .strip()
+                .upper()
             )
 
-        except Exception as e:
-            print(f"Error: {e}", flush=True)
+            log.info("AI classification: %s", result[:30])
+            return result.startswith("YES")
 
-    await bot.start()
+
+# =========================
+# Receive messages
+# =========================
+
+@userbot.on_message(filters.group)
+async def monitor_groups(client, message):
+    try:
+        chat = message.chat
+
+        if chat.type not in (
+            ChatType.GROUP,
+            ChatType.SUPERGROUP,
+        ):
+            return
+
+        text = (message.text or message.caption or "").strip()
+        if not text:
+            return
+
+        # لا تعالج رسائل المجموعات الفارغة
+        log.info(
+            "MESSAGE RECEIVED | chat_id=%s | type=%s | chars=%s",
+            chat.id, chat.type, len(text)
+        )
+
+        key = fingerprint(message)
+        if not key:
+            return
+
+        if is_duplicate(key):
+            log.info("Duplicate skipped")
+            return
+
+        try:
+            matched = await classify_request(text)
+        except asyncio.TimeoutError:
+            log.warning("OpenRouter request timed out")
+            return
+        except Exception:
+            log.exception("AI classification failed")
+            return
+
+        if not matched:
+            log.info("Not a customer request")
+            return
+
+        # لا تعرض اسم المجموعة أو رابطها في الرسالة المرسلة
+        original = text[:3900]
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "💬 فتح المحادثة",
+                    url="https://t.me/" + TARGET_USERNAME
+                )
+            ]
+        ])
+
+        await bot.send_message(
+            chat_id=TARGET_USERNAME,
+            text="📦 طلب توصيل أو مشوار جديد\n\n" + original,
+            reply_markup=keyboard,
+            disable_web_page_preview=True,
+        )
+
+        log.info("Forwarded to @%s", TARGET_USERNAME)
+
+    except FloodWait as e:
+        log.warning("FloodWait: %s seconds", e.value)
+        await asyncio.sleep(e.value)
+    except RPCError:
+        log.exception("Telegram RPC error")
+    except Exception:
+        log.exception("Unhandled message handler error")
+
+
+# =========================
+# Startup
+# =========================
+
+async def main():
+    log.info("Starting Barq clients...")
+
     await userbot.start()
-    print("🚀 [برق يعمل الآن بشكل نظامي وسليم]...", flush=True)
-    await asyncio.Event().wait()
+    log.info("USERBOT STARTED")
+
+    try:
+        me = await userbot.get_me()
+        log.info(
+            "USERBOT AUTHENTICATED | id=%s | username=%s",
+            me.id, me.username
+        )
+
+        await bot.start()
+        log.info("HELPER BOT STARTED")
+
+        bot_me = await bot.get_me()
+        log.info("HELPER BOT ID=%s", bot_me.id)
+
+        # اختبار إمكانية إرسال رسالة إلى المستلم
+        try:
+            await bot.send_message(
+                TARGET_USERNAME,
+                "✅ برق: اختبار تشغيل البوت المساعد. "
+                "إذا وصلتك هذه الرسالة، فالإرسال يعمل."
+            )
+            log.info("Recipient test message sent")
+        except Exception:
+            log.exception(
+                "Cannot message recipient. "
+                "Make sure @abood1317 has opened the helper bot."
+            )
+
+        log.info(
+            "MONITOR READY: waiting for group messages"
+        )
+
+        await idle()
+
+    finally:
+        await bot.stop()
+        await userbot.stop()
+        log.info("Clients stopped")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
