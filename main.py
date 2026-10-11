@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Stable System Active!")
+        self.wfile.write(b"Barq Ultra Smart AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,8 +44,10 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار نفس الزبون
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
 SIMILARITY_THRESHOLD = 0.65       
 
 # =========================================================
@@ -72,12 +74,12 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القصيرة جداً لقروبات التوصيل والمشاوير بجازان والجنوب.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
 
-مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب/توصيل/أغراض] أم [سائق يعلن عن نفسه]:
+مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب/أغراض] أم [سائق يعلن عن نفسه]:
 
 [الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
-قبول أي نص قصير أو طويل يسأل فيه العميل عن توفر شخص أو سائق أو مندوب أو خدمة:
+قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق أو مندوب في منطقة أو مدينة:
 1. الأسئلة عن القرب والتواجد في المدن/القرى:
    - "في حد في ضمد" -> YES
    - "فيه احد قريب من أنوش جيزان ؟" -> YES
@@ -87,7 +89,7 @@ def analyze_intent_with_ai(text: str) -> bool:
    - "احتاج مندوب الان احتاج اغراض انا في حي الرحاب" -> YES
    - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES
    - "ابغا مندوب ثقه" -> YES
-   - "توصيل", "أغراض", "مشوار", "مندوب".
+   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
 
 [الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
 رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
@@ -124,7 +126,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR (REAL-TIME LISTENER)
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -134,6 +136,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -158,6 +163,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
+
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
                     time_diff = current_time - past_request['time']
@@ -225,8 +231,32 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception:
                         pass
-    except Exception as e:
-        print(f"⚠️ خطأ في معالجة الرسالة: {e}", flush=True)
+    except Exception:
+        pass
+
+# =========================================================
+# HIGH-SPEED SCANNER (0.1s)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(1)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+        await asyncio.sleep(0.1)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -259,12 +289,12 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
-        # سطر تشخيصي لمعرفة هل اليوزر بوت يستقبل أي رسالة من الأساس
-        print(f"📥 [فحص وصول رسالة]: الشات ID={message.chat.id if message.chat else 'None'} | النص={message.text or message.caption or 'بدون نص'}", flush=True)
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [برق التشخيصي نشط]: يراقب الرسائل الفورية الآن...", flush=True)
+    print("🧠 تم تحديث ذكاء النظام لمعالجة الاستفسارات القصيرة وأسماء القرى بمرونة كاملة!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
