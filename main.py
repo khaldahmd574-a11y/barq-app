@@ -225,8 +225,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception:
                         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -259,10 +259,12 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
+        # سطر تشخيصي لمعرفة هل اليوزر بوت يستقبل أي رسالة من الأساس
+        print(f"📥 [فحص وصول رسالة]: الشات ID={message.chat.id if message.chat else 'None'} | النص={message.text or message.caption or 'بدون نص'}", flush=True)
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [برق مستقر وصاروخي]: نظام الاستماع المباشر يعمل بكفاءة تامة بدون أي حظر!", flush=True)
+    print("🚀 [برق التشخيصي نشط]: يراقب الرسائل الفورية الآن...", flush=True)
 
     await asyncio.Event().wait()
 
