@@ -12,7 +12,7 @@ from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
 # =========================================================
-# KEEP ALIVE SERVER (لإبقاء الـ Web Service نشطة عبر أداة البنقز)
+# KEEP ALIVE SERVER
 # =========================================================
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -42,7 +42,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USER = "abood1317"
 PROCESSED_KEYS = set()
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
+MIN_TIME_BETWEEN_REPEATS = 600   
 SIMILARITY_THRESHOLD = 0.65       
 
 def is_similar_text(text1: str, text2: str) -> bool:
@@ -51,7 +51,6 @@ def is_similar_text(text1: str, text2: str) -> bool:
     ratio = SequenceMatcher(None, clean1, clean2).ratio()
     return ratio >= SIMILARITY_THRESHOLD
 
-# دالة فحص النية بالذكاء الاصطناعي
 def analyze_intent_with_ai(text: str) -> bool:
     clean = " ".join(text.split()).strip()
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
@@ -85,18 +84,14 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [AI]: '{clean[:25]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception as e:
-        print(f"⚠️ AI Error: {e}", flush=True)
-
+    except Exception:
+        pass
     return False
 
 async def main():
-    # تشغيل سيرفر الويب الوهمي في الخلفية ليظل الرابط مستجيباً لأداة البنقز
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # تشغيل حساب المندوب
     userbot = Client(
         "barq_ai_userbot",
         api_id=API_ID,
@@ -104,7 +99,6 @@ async def main():
         session_string=SESSION_STRING
     )
 
-    # تشغيل البوت المساعد لإرسال الرسائل لك
     bot = Client(
         "barq_ai_helper",
         api_id=API_ID,
@@ -150,7 +144,6 @@ async def main():
             if len(PROCESSED_KEYS) > 10000:
                 PROCESSED_KEYS.clear()
 
-            # فحص النية بالذكاء الاصطناعي بشكل غير متزامن
             loop = asyncio.get_running_loop()
             is_client = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
             
@@ -159,4 +152,40 @@ async def main():
 
             if user_id:
                 if user_id not in USER_REQUEST_HISTORY:
-                    
+                    USER_REQUEST_HISTORY[user_id] = []
+                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
+
+            print(f"✅ [طلب زبون حقيقي]: {clean_text[:35]}...", flush=True)
+
+            row = []
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                else:
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = "💬 فتح المحادثة"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
+
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+
+            reply_markup = InlineKeyboardMarkup([row]) if row else None
+
+            await bot.send_message(
+                chat_id=TARGET_USER,
+                text=clean_text,
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+
+        except Exception as e:
+            print(f"⚠️ Error: {e}", flush=True)
+
+    await bot.start()
+    await userbot.start()
+    print("🚀 [نظام برق للذكاء الاصطناعي يعمل الآن بنجاح تام]...", flush=True)
+    asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
