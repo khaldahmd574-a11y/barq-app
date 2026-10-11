@@ -41,6 +41,7 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
+# حسابك المستهدف الذي سيستقبل الرسائل من البوت المساعد
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
@@ -140,7 +141,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [تم سحب طلب زبون بنجاح]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم سحب طلب زبون وإرساله للبوت المساعد]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -160,40 +161,41 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            for user in TARGET_USERS:
-                sent = False
-                if bot:
+            # إرسال الطلب عبر البوت المساعد (Bot Token) إلى حسابك
+            if bot:
+                for user in TARGET_USERS:
                     try:
-                        await bot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
-                        sent = True
-                    except Exception:
-                        pass
-                if not sent:
-                    try:
-                        await userbot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
-                    except Exception:
-                        pass
+                        await bot.send_message(
+                            chat_id=user, 
+                            text=f"📥 طلب جديد:\n\n{clean_text}", 
+                            reply_markup=reply_markup, 
+                            disable_web_page_preview=True
+                        )
+                    except Exception as e:
+                        print(f"⚠️ خطأ إرسال البوت المساعد: {e}", flush=True)
     except Exception:
         pass
 
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    userbot = Client("barq_bot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
+    userbot = Client("barq_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
+    
     bot = None
     if BOT_TOKEN:
         try:
-            bot = Client("barq_helper", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
+            bot = Client("barq_helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
             await bot.start()
-        except Exception:
-            pass
+            print("🤖 [البوت المساعد متصل بنجاح]", flush=True)
+        except Exception as e:
+            print(f"⚠️ خطأ تشغيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [برق الشامل جاهز]: يراقب جميع القروبات والجروب التجريبي ويسحب طلبات الزبائن لحساب @abood1317...", flush=True)
+    print("🚀 [برق الشامل يعمل]: اليوزربوت يراقب القروبات ويسحب، والبوت المساعد يوصلك الطلبات!", flush=True)
 
     await asyncio.Event().wait()
 
