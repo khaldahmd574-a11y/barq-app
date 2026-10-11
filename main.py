@@ -19,7 +19,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Simple Active!")
+        self.wfile.write(b"Barq Clean Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,14 +42,14 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USER = "abood1317"
 
 PROCESSED_KEYS = set()
-USER_REQUEST_HISTORY = {} 
 
+# دالة فحص النية بالذكاء الاصطناعي (GPT-4o-mini عبر OpenRouter)
 def analyze_intent_with_ai(text: str) -> bool:
     clean = " ".join(text.split()).strip()
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت ذكاء اصطناعي لقروبات التوصيل بجازان. هل الرسالة من زبون يبحث عن توصيل/سواق (YES) أم سائق يعلن عن نفسه (NO)؟
+    prompt = f"""أنت ذكاء اصطناعي لقروبات التوصيل والمشاوير بجازان. هل الرسالة من زبون يبحث عن توصيل/سواق (YES) أم سائق يعلن عن نفسه (NO)؟
 الرسالة: "{clean}"
 الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
 
@@ -69,17 +69,19 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [AI Result]: {clean[:20]} -> {answer}", flush=True)
             return "YES" in answer
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"AI Error: {e}", flush=True)
     return False
 
 async def main():
+    # تشغيل سيرفر الحفاظ على البوت نشطاً 24/7 على Render
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # تشغيل حساب المندوب
+    # تشغيل حساب المندوب (Userbot)
     userbot = Client(
-        "my_simple_userbot",
+        "barq_userbot_v1",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING
@@ -87,36 +89,49 @@ async def main():
 
     # تشغيل البوت المساعد لإرسال الرسائل لك
     bot = Client(
-        "my_simple_bot",
+        "barq_helper_bot_v1",
         api_id=API_ID,
         api_hash=API_HASH,
         bot_token=BOT_TOKEN
     )
 
-    @userbot.on_message(filters=~filters.private)
-    async def handle_group_messages(client: Client, message: Message):
+    # مستمع الأحداث المباشر (بدون فلاتر معقدة لتجنب أي إيقاف)
+    @userbot.on_message()
+    async def handle_all_messages(client: Client, message: Message):
         try:
-            if not message or not message.text:
+            # نتأكد أن الرسالة من قروب أو مجموعة وليست محادثة خاصة
+            if not message or not message.chat:
+                return
+            if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 return
             
+            # نتأكد أنها ليست رسالة من حسابك الشخصي أو رد على رسالة
             if message.from_user and message.from_user.is_self:
                 return
+            if message.reply_to_message_id or message.reply_to_message:
+                return
 
-            text = message.text.strip()
+            text = message.text or message.caption or ""
+            text = text.strip()
             if len(text) < 2:
                 return
 
+            # منع التكرار
             msg_key = f"{message.chat.id}_{message.id}"
             if msg_key in PROCESSED_KEYS:
                 return
             PROCESSED_KEYS.add(msg_key)
+            if len(PROCESSED_KEYS) > 5000:
+                PROCESSED_KEYS.clear()
 
-            # فحص النية بالذكاء الاصطناعي
-            is_client = analyze_intent_with_ai(text)
+            # التحقق بالذكاء الاصطناعي
+            loop = asyncio.get_running_loop()
+            is_client = await loop.run_in_executor(None, analyze_intent_with_ai, text)
+            
             if not is_client:
                 return
 
-            print(f"✅ تم التقاط طلب: {text[:30]}", flush=True)
+            print(f"✅ [تم سحب الطلب بنجاح]: {text[:30]}", flush=True)
 
             # تجهيز الأزرار (فتح المحادثة + الرسالة الأصلية)
             row = []
@@ -134,7 +149,7 @@ async def main():
 
             reply_markup = InlineKeyboardMarkup([row]) if row else None
 
-            # الإرسال المباشر لحسابك abood1317 عبر البوت المساعد
+            # الإرسال لحسابك عبر البوت المساعد
             await bot.send_message(
                 chat_id=TARGET_USER,
                 text=text,
@@ -143,11 +158,11 @@ async def main():
             )
 
         except Exception as e:
-            print(f"Error: {e}", flush=True)
+            print(f"Message Handler Error: {e}", flush=True)
 
     await bot.start()
     await userbot.start()
-    print("🚀 البوت يعمل الآن باستماع مباشر وصريح...", flush=True)
+    print("🚀 [النظام يعمل الآن بنجاح تام وبدون أي أخطاء]...", flush=True)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
