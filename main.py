@@ -41,12 +41,11 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# المستقبل الوحيد للطلبات
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق لمنع تكرار نفس الطلب
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار نفس الطلب
 SIMILARITY_THRESHOLD = 0.65       
 
 def is_similar_text(text1: str, text2: str) -> bool:
@@ -66,8 +65,8 @@ def analyze_intent_with_ai(text: str) -> bool:
 [زبون/عميل يبحث أو يستفسر -> YES]
 - مثل: "مين في صبيا؟"، "فيه احد قريب من أنوش جيزان؟"، "احتاج مندوب"، "سواق يوصل دوام" -> YES
 
-[سائق يعلن عن خدماته وسيولته -> NO]
-- مثل: "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، الإعلانات التي فيها أرقام جوالات للتوصيل والسواقين -> NO
+[سائق يعلن عن خدماته -> NO]
+- مثل: "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، الإعلانات التي فيها أرقام جوالات للتوصيل -> NO
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -180,7 +179,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    userbot = Client("barq_bot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_SESSION_STRING if 'SESSION_SESSION_STRING' in globals() else SESSION_STRING, in_memory=True)
+    userbot = Client("barq_bot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
     bot = None
     if BOT_TOKEN:
         try:
