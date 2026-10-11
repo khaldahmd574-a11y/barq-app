@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Complete System Active!")
+        self.wfile.write(b"Barq Ultra Smart AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,6 +41,7 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
+# حسابك المستهدف الوحيد لتلقي الطلبات
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
@@ -103,6 +104,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.chat.type == ChatType.PRIVATE:
             return
 
+        # تسجيل الكروب في قائمة المراقبة الشاملة لأي رسالة جديدة تصل
         if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
             KNOWN_CHAT_IDS.add(message.chat.id)
 
@@ -145,9 +147,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون بنجاح]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون]: {clean_text[:30]}...", flush=True)
 
-            # تجهيز الأزرار الشاملة والمنظمة جنباً إلى جنب
+            # تنسيق الأزرار جنباً إلى جنب (فتح المحادثة + الرسالة الأصلية) مثل طلبك تماماً
             row = []
             if message.from_user:
                 if message.from_user.username:
@@ -155,7 +157,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                    user_label = "💬 فتح المحادثة"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
@@ -163,7 +165,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
             reply_markup = InlineKeyboardMarkup([row]) if row else None
 
-            # إرسال الرسالة الصافية تماماً بدون أي إضافات نصية
+            # إرسال الطلب لحسابك abood1317 عبر البوت المساعد (بدون كلمة طلب جديد)
             for user in TARGET_USERS:
                 sent = False
                 if bot:
@@ -190,6 +192,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
     except Exception:
         pass
 
+# الماسح الشامل لجلب جميع القروبات التي انضم إليها الحساب دون استثناء
 async def comprehensive_chat_scanner(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     try:
@@ -240,7 +243,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [النظام الكامل الشامل جاهز ويعمل الآن]...", flush=True)
+    print("🚀 [برق الشامل يعمل]: مراقبة جميع القروبات والتوجيه لحساب abood1317...", flush=True)
 
     asyncio.create_task(comprehensive_chat_scanner(userbot, bot))
 
