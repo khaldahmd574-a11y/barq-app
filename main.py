@@ -1,25 +1,20 @@
 import os
 import re
-import time
 import asyncio
-import hashlib
 import requests
-from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
-# =========================================================
-# KEEP ALIVE SERVER (لإبقاء رندر نشطاً ولا ينام أبداً)
-# =========================================================
+# سيرفر البنقز للبقاء نشطاً على Render 24/7
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Render Master System Active!")
+        self.wfile.write(b"Barq Render Safe Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -30,42 +25,21 @@ def run_dummy_server():
     server = HTTPServer(("0.0.0.0", port), DummyServer)
     server.serve_forever()
 
-# =========================================================
-# CONFIGURATION
-# =========================================================
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317"]
-
+TARGET_USER = "abood1317"
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
-SIMILARITY_THRESHOLD = 0.65       
-
-def is_similar_text(text1: str, text2: str) -> bool:
-    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
-    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 def analyze_intent_with_ai(text: str) -> bool:
     clean = " ".join(text.split()).strip()
     if not clean or len(clean) < 2 or not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف، مخصص لقراءة نيات الرسائل لقروبات التوصيل والمشاوير بجازان والجنوب.
-هل الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]؟
-
-[زبون/عميل يبحث أو يستفسر -> YES]
-- مثل: "في حد في ضمد؟"، "فيه احد قريب من أنوش جيزان؟"، "مين في العارضة؟"، "سواق يوصل دوام" -> YES
-
-[سائق يعلن عن خدماته -> NO]
-- مثل: "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، الأرقام والإعلانات المباشرة -> NO
-
+    prompt = f"""أنت ذكاء اصطناعي لقروبات التوصيل والمشاوير بجازان. هل هذه الرسالة من زبون يبحث عن توصيل/مشوار/سواق (YES) أم سائق يعلن عن خدماته أو شخص آخر (NO)؟
 الرسالة: "{clean}"
 الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
 
@@ -82,7 +56,7 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
@@ -90,56 +64,57 @@ def analyze_intent_with_ai(text: str) -> bool:
         pass
     return False
 
-async def process_live_message(userbot: Client, bot: Client, message: Message):
-    try:
-        if not message or not message.id or not message.chat:
-            return
-        if message.chat.type == ChatType.PRIVATE:
-            return
+async def main():
+    # تشغيل سيرفر الويب الوهمي في الخلفية
+    threading.Thread(target=run_dummy_server, daemon=True).start()
 
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
+    # استخدام وضع الذاكرة (in_memory=True) لتخفيف الضغط على رندر وسرعة الاستجابة
+    userbot = Client(
+        "barq_render_safe_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
 
-        if message.reply_to_message_id or message.reply_to_message:
-            return
-        if message.from_user and message.from_user.is_self:
-            return
+    bot = Client(
+        "barq_render_helper_bot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        bot_token=BOT_TOKEN,
+        in_memory=True
+    )
 
-        raw_text = message.text or message.caption or ""
-        clean_text = raw_text.strip()
-        if len(clean_text) < 2:
-            return
+    @userbot.on_message()
+    async def on_new_message(client: Client, message: Message):
+        try:
+            if not message or not message.chat:
+                return
+            if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                return
+            if message.from_user and message.from_user.is_self:
+                return
+            if message.reply_to_message_id:
+                return
 
-        msg_key = f"{message.chat.id}_{message.id}"
-        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-        
-        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-            return
+            text = (message.text or message.caption or "").strip()
+            if len(text) < 2:
+                return
 
-        current_time = time.time()
-        user_id = message.from_user.id if message.from_user else None
+            msg_key = f"{message.chat.id}_{message.id}"
+            if msg_key in PROCESSED_KEYS:
+                return
+            PROCESSED_KEYS.add(msg_key)
+            if len(PROCESSED_KEYS) > 5000:
+                PROCESSED_KEYS.clear()
 
-        if user_id and user_id in USER_REQUEST_HISTORY:
-            for past in USER_REQUEST_HISTORY[user_id]:
-                if is_similar_text(clean_text, past['text']):
-                    if (current_time - past['time']) < MIN_TIME_BETWEEN_REPEATS:
-                        return
+            loop = asyncio.get_running_loop()
+            is_client = await loop.run_in_executor(None, analyze_intent_with_ai, text)
 
-        PROCESSED_KEYS.add(msg_key)
-        PROCESSED_KEYS.add(text_hash)
-        if len(PROCESSED_KEYS) > 10000:
-            PROCESSED_KEYS.clear()
+            if not is_client:
+                return
 
-        loop = asyncio.get_running_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
-
-        if is_client_request:
-            if user_id:
-                if user_id not in USER_REQUEST_HISTORY:
-                    USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
-
-            print(f"✅ [تم العثور على طلب زبون حقيقي]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم التقاط الطلب بنجاح]: {text[:30]}", flush=True)
 
             row = []
             if message.from_user:
@@ -156,87 +131,19 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
             reply_markup = InlineKeyboardMarkup([row]) if row else None
 
-            for user in TARGET_USERS:
-                sent = False
-                if bot:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=f"📥 طلب جديد:\n\n{clean_text}",
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                        sent = True
-                    except Exception:
-                        pass
-                if not sent:
-                    try:
-                        await userbot.send_message(
-                            chat_id=user,
-                            text=f"📥 طلب جديد:\n\n{clean_text}",
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except Exception:
-                        pass
-    except Exception:
-        pass
-
-async def safe_chat_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(3)
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-        print(f"🔄 [تم جلب {len(KNOWN_CHAT_IDS)} قروب للمراقبة بنجاح]", flush=True)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                    await asyncio.sleep(1) # فاصل زمني آمن لمنع FloodWait ولإجبار رندر على العمل باستقرار
-                except Exception:
-                    continue
-        await asyncio.sleep(5)
-
-async def main():
-    threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    userbot = Client(
-        "barq_render_master",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        in_memory=True
-    )
-
-    bot = None
-    if BOT_TOKEN:
-        try:
-            bot = Client(
-                "barq_render_helper",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                bot_token=BOT_TOKEN,
-                in_memory=True
+            await bot.send_message(
+                chat_id=TARGET_USER,
+                text=f"📥 طلب جديد:\n\n{text}",
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
             )
-            await bot.start()
-        except Exception:
-            pass
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_live_message(client, bot, message))
+        except Exception as e:
+            print(f"Error: {e}", flush=True)
 
+    await bot.start()
     await userbot.start()
-    print("🚀 [نظام برق الرئيسي يعمل الآن على Render بكفاءة تامة]...", flush=True)
-
-    asyncio.create_task(safe_chat_scanner(userbot, bot))
-
+    print("🚀 [نظام برق يعمل الآن بثبات تام على رندر]...", flush=True)
     asyncio.Event().wait()
 
 if __name__ == "__main__":
