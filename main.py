@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Fast AI System Active!")
+        self.wfile.write(b"Barq Ultra Stable System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,9 +44,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع تكرار نفس الزبون
 SIMILARITY_THRESHOLD = 0.65       
 
 # =========================================================
@@ -73,12 +72,12 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القصيرة جداً لقروبات التوصيل والمشاوير بجازان والجنوب.
 
-مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب/أغراض] أم [سائق يعلن عن نفسه]:
+مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب/توصيل/أغراض] أم [سائق يعلن عن نفسه]:
 
 [الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
-قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق أو مندوب في منطقة أو مدينة:
+قبول أي نص قصير أو طويل يسأل فيه العميل عن توفر شخص أو سائق أو مندوب أو خدمة:
 1. الأسئلة عن القرب والتواجد في المدن/القرى:
    - "في حد في ضمد" -> YES
    - "فيه احد قريب من أنوش جيزان ؟" -> YES
@@ -88,7 +87,7 @@ def analyze_intent_with_ai(text: str) -> bool:
    - "احتاج مندوب الان احتاج اغراض انا في حي الرحاب" -> YES
    - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES
    - "ابغا مندوب ثقه" -> YES
-   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
+   - "توصيل", "أغراض", "مشوار", "مندوب".
 
 [الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
 رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
@@ -125,7 +124,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# MESSAGE PROCESSOR (REAL-TIME LISTENER)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -159,7 +158,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
                     time_diff = current_time - past_request['time']
@@ -264,7 +262,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("⚡ تم تشغيل الاستماع المباشر الفوري بدون فحص مكرر!", flush=True)
+    print("🚀 [برق مستقر وصاروخي]: نظام الاستماع المباشر يعمل بكفاءة تامة بدون أي حظر!", flush=True)
 
     await asyncio.Event().wait()
 
