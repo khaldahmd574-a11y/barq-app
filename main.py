@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Strict AI System Active!")
+        self.wfile.write(b"Barq Ultra Strict AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -63,7 +63,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# STRICT INTENT AI ENGINE (فلترة صارمة للمشاوير والطلبات فقط)
+# ULTRA STRICT INTENT AI ENGINE (منع إعلانات السائقين والمناديب نهائياً)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -75,19 +75,19 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً، مخصص حصرياً لطلبات ومغازي [المشاوير، التوصيل، المناديب، ونقل الركاب] بجازان والجنوب.
+    prompt = f"""أنت عقل ذكاء اصطناعي صارم جداً، مخصص حصرياً لالتقاط [طلبات الزبائن الحقيقيين فقط] الذين يحتاجون إلى توصيل أو مشوار أو مندوب لأنفسهم.
 
-قاعدتك الحديدية: اقرأ الرسالة بتركيز تام. اعتبر المنشور (YES) فقط إذا كان متعلقاً بطلب **مشوار شخصي، توصيل أغراض، سفر، طالبات، أو مندوب**. وأي شيء آخر يعتبر مرفوضاً تماماً (NO).
+قاعدتك الحديدية: يجب التفرقة بصرامة بين [زبون يطلب خدمة] و[سائق أو معلن يعرض خدمة].
 
-[الصنف الأول: طلبات المشاوير، التوصيل، والمناديب فقط -> أجب بـ YES]
-- طلبات نقل الركاب، المطار، الدوامات، الطالبات، والتنقل بين المدن/القرى.
-- طلبات المناديب وتوصيل الأغراض والطلبات الاستهلاكية.
-- الاستفسارات أو البحث عن سائق، مندوب، أو شخص فاضي لتوصيل مشوار أو أغراض.
+[الصنف الأول: زبون حقيقي يطلب توصيل أو مشوار لنفسه -> أجب بـ YES فقط]
+- شخص يقول: "أبي حد يوديني"، "محتاج مشوار"، "فيه سواق يوصلني"، "أبي مندوب".
+- طلبات نقل شخصية، طالبات يطلبن باص لدوامهن، أو شخص يسأل عن توفر أحد لنقله.
 
-[الصنف الثاني: أي شي آخر غير المشاوير والتوصيل -> أجب بـ NO قطعي]
-- التحيات المجردة أو الترحيب المنفصل (مثل: "مرحبا"، "السلام عليكم" وحدها بدون طلب).
-- **الإعلانات أو الاستفسارات عن الوظائف والعمل والتوظيف** (مثل: "مين يعرف مكان يحتاج موظفين"، "أبي وظيفة"، "أدور شغل").
-- السوالف العامة، الإعلانات التجارية غير المتعلقة بالنقل، أو الأسئلة العشوائية.
+[الصنف الثاني: إعلانات السائقين والمناديب ومقدمي الخدمات -> أجب بـ NO قطعي]
+- أي إعلان لـ "مندوب توصيل طلبات - مشاوير...[span_6](start_span)"[span_6](end_span).
+- أي إعلان لـ "نوفر نقل الطالبات (باصات)... للتواصل...[span_7](start_span)"[span_7](end_span).
+- أي إعلان لـ "توصيل معلمات إلى... للتواصل...[span_8](start_span)"[span_8](end_span).
+- أي شخص يقول "أنا فاضي في... لأي طلب أو مشوار يكلمني" أو يعرض رقم جواله لتقديم الخدمة[span_9](start_span)[span_9](end_span).
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -110,7 +110,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فلترة صارمة]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [فلترة دقيقة جداً]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -177,7 +177,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب مشوار حقيقي]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون حقيقي فقط]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -289,7 +289,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق الصارم للمشاوير فقط يعمل بكفاءة (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق بالفلترة الصارمة جداً للزبائن فقط يعمل (ID: {MY_USER_ID})!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
