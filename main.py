@@ -44,8 +44,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
 SIMILARITY_THRESHOLD = 0.65       
@@ -63,7 +61,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ULTRA SMART INTENT AI ENGINE (مُحدث لمنع إعلانات السائقين بدقة)
+# ULTRA SMART INTENT AI ENGINE
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -121,7 +119,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# INSTANT MESSAGE PROCESSOR (اللقط الفوري الآمن)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -131,9 +129,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -171,6 +166,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
+        # تحليل فوري للرسالة فور وصولها دون انتظار فترات سكون
         loop = asyncio.get_running_loop()
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
@@ -180,7 +176,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"⚡ [لقط فوري لطلب زبون]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -230,32 +226,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# ULTRA-FAST SCANNER (تم تقليل الانتظار ليكون شبه لحظي)
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(0.5)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-        # تقليص الوقت هنا إلى أقل حد ممكن لتسريع الاستجابة الفورية
-        await asyncio.sleep(0.5)
-
-# =========================================================
-# MAIN ENTRYPOINT
+# MAIN ENTRYPOINT (استماع فوري مباشر 100%)
 # =========================================================
 
 async def main():
@@ -274,7 +245,7 @@ async def main():
     if BOT_TOKEN:
         try:
             bot = Client(
-                "helper_bot",
+                "helper_beta",
                 api_id=API_ID,
                 api_hash=API_HASH,
                 bot_token=BOT_TOKEN,
@@ -284,17 +255,16 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع الفوري واللحظي لأي رسالة جديدة في أي مجموعة يشارك فيها اليوزربوت
     @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
+    async def global_instant_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 تم تشغيل نظام برق بسرعة فائقة على حسابك (ID: {MY_USER_ID})!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print(f"🚀 تم تفعيل اللقط الفوري الحقيقي بنجاح على حسابك (ID: {MY_USER_ID})!", flush=True)
 
     await asyncio.Event().wait()
 
