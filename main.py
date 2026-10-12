@@ -44,6 +44,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
 SIMILARITY_THRESHOLD = 0.65       
@@ -75,20 +77,19 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل لقروبات التوصيل والمشاوير بالجنوب وجازان.
 
-مهمتك بحزم: تحديد ما إذا كانت الرسالة فعلاً من [زبون حقيقي يبحث عن سائق/مندوب لنفسه] أم [سائق يعلن أو يعرض خدماته]:
+مهمتك بحزم: تحديد ما إذا كانت الرسالة فعلاً من [زبون حقيقي يبحث عن سائق أو مندوب] أم [سائق يعلن أو يعرض خدماته]:
 
 [الصنف الأول: زبون/عميل يبحث أو يستفسر لنفسه -> أجب بـ YES]
-قبول الطلبات المباشرة للزبائن:
-- "في حد في ضمد"
-- "فيه احد قريب من أنوش جيزان ؟"
-- "سواق يوصل لنخلان دوام كل يوم يجي خاص"
-- "ابغا مندوب ثقه"، "توصيل دوام"
+قبول الطلبات المباشرة للزبائن مثل:
+- "ابي مندوب ب احد المسارحه" -> YES
+- "في حد في ضمد"، "فيه احد قريب من أنوش جيزان ؟"
+- "سواق يوصل لنخلان دوام"، "ابغا مندوب ثقه"
 
 [الصنف الثاني: سائق يعرض توفره أو عروض عامة -> أجب بـ NO]
-رفض قاطع لأي صيغة تعبر عن سائق أو عرض خدمة (حتى لو بدأت بـ "اي احد" أو "اللي يبي"):
-- "اي احد يبي مشوار من ابو عريش لجازان خاص" -> NO (هذا سائق يعرض سيارته للخدمة).
-- "اللي يبي مشوار يكلمني"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
-- الإعلانات التي تحتوي على أرقام جوالات أو ترحيب بالخاص للتقديم.
+رفض قاطع لأي صيغة تعبر عن سائق أو عرض خدمة:
+- "اي احد يبي مشوار من ابو عريش لجازان خاص" -> NO
+- "اللي يبي مشوار يكلمني"، "متواجد بضمد حياك خاص"
+- الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -119,7 +120,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# INSTANT MESSAGE PROCESSOR (اللقط الفوري الآمن)
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -129,6 +130,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -166,7 +170,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
-        # تحليل فوري للرسالة فور وصولها دون انتظار فترات سكون
         loop = asyncio.get_running_loop()
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
@@ -176,7 +179,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"⚡ [لقط فوري لطلب زبون]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -226,7 +229,32 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# MAIN ENTRYPOINT (استماع فوري مباشر 100%)
+# BALANCED SCANNER (سرعة آمنة بدون حظر تليجرام)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(1)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+        # جعلنا وقت الانتظار 3 ثواني بدلاً من 10 ثواني، وهو وقت مثالي وسريع وفي نفس الوقت لا يسبب حظراً من تليجرام
+        await asyncio.sleep(3)
+
+# =========================================================
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
@@ -245,7 +273,7 @@ async def main():
     if BOT_TOKEN:
         try:
             bot = Client(
-                "helper_beta",
+                "helper_bot",
                 api_id=API_ID,
                 api_hash=API_HASH,
                 bot_token=BOT_TOKEN,
@@ -255,16 +283,17 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع الفوري واللحظي لأي رسالة جديدة في أي مجموعة يشارك فيها اليوزربوت
     @userbot.on_message()
-    async def global_instant_listener(client: Client, message: Message):
+    async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 تم تفعيل اللقط الفوري الحقيقي بنجاح على حسابك (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق يعمل الآن بالنسخة المستقرة الآمنة على حسابك (ID: {MY_USER_ID})!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
