@@ -18,7 +18,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq AI System Active!")
+        self.wfile.write(b"Barq Free AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -43,7 +43,7 @@ TARGET_USERS = ["abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# PURE AI INTENT ENGINE (يفهم المعنى بدقة وسرعة)
+# PURE FREE AI INTENT ENGINE (يفهم المعنى بالذكاء الاصطناعي المجاني)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -53,7 +53,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         return False
 
     if not OPENROUTER_API_KEY:
-        print("⚠️ تنبيه: مفتاح OpenRouter غير موجود في المتغيرات!", flush=True)
+        print("⚠️ تنبيه: مفتاح OpenRouter غير موجود!", flush=True)
         return False
 
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -62,34 +62,29 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    prompt = f"""أنت عقل ذكاء اصطناعي فائق الذكاء ومتخصص في تحليل رسائل قروبات التوصيل والمشاوير في جازان والجنوب.
-مهمتك بدقة: هل هذه الرسالة تعبر عن [زبون يبحث عن سائق، توصيلة، أو يستفسر عن شخص يوصله]؟
-أجب بـ (YES) إذا كان طلباً أو استفساراً من زبون.
-وأجب بـ (NO) إذا كان إعلانات سائقين، سوالف عادية، أو أي شيء آخر.
-
-الرسالة المراد تحليلها:
-"{clean}"
-
-الجواب كلمة واحدة فقط لا غير (YES أو NO):"""
+    prompt = f"""أنت ذكاء اصطناعي متخصص في تحليل رسائل قروبات التوصيل والمشاوير بالسعودية.
+مهمتك بدقة: هل الرسالة التالية من زبون يطلب توصيلة، مشوار، أو يسأل عن سائق؟
+الرسالة: "{clean}"
+أجب بكلمة واحدة فقط لا غير: (YES) إذا كانت طلباً أو استفساراً من زبون، أو (NO) لغير ذلك."""
 
     try:
         payload = {
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-chat:free",  # نموذج مجاني بالكامل لا يتطلب رصيد
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=6)
         
         if res.status_code == 200:
             result_json = res.json()
             answer = result_json['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل الذكاء الاصطناعي] النص: '{clean[:25]}' -> الجواب: {answer}", flush=True)
+            print(f"🤖 [الذكاء الاصطناعي المجاني] النص: '{clean[:25]}' -> الجواب: {answer}", flush=True)
             return "YES" in answer
         else:
-            print(f"❌ خطأ من OpenRouter API - كود الاستجابة: {res.status_code} | المحتوى: {res.text}", flush=True)
+            print(f"❌ خطأ من OpenRouter المجاني - كود: {res.status_code} | المحتوى: {res.text}", flush=True)
     except Exception as e:
-        print(f"❌ استثناء أثناء الاتصال بـ OpenRouter: {e}", flush=True)
+        print(f"❌ استثناء أثناء الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -133,7 +128,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [تم قبول وتحويل الطلب بنجاح]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم فهم الطلب وسحبه بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -213,11 +208,10 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
-        asyncio.create_thread = asyncio.create_task
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 نظام برق الذكي بالكامل (AI Only) يعمل الآن على ريندر!", flush=True)
+    print("🚀 نظام برق للذكاء الاصطناعي المجاني (DeepSeek Free) يعمل الآن على ريندر!", flush=True)
 
     await asyncio.Event().wait()
 
