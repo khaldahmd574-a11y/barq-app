@@ -9,7 +9,7 @@ from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7
+# KEEP ALIVE SERVER 24/7 (Render Binding)
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -17,7 +17,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Smart Polling Render Active!")
+        self.wfile.write(b"Barq System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -42,15 +42,46 @@ TARGET_USERS = ["abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# AI ANALYSIS ENGINE
+# HARD REGEX FILTERS (فلترة الأرقام والإعلانات الصريحة)
+# =========================================================
+
+def is_hard_driver_advertisement(text: str) -> bool:
+    has_phone = re.search(r'(05\d{8}|\+?9665\d{8}|05\d{2}\s?\d{3}\s?\d{3})', text)
+    driver_keywords = [
+        "متواجد", "كلموني", "تواصل معي", "تواصلوا", "اتصل", "رزقني", "يرزقكم", 
+        "فاضي", "سيارتي", "جاهز", "نوفر لكم", "خدمات توصيل", "حسابي", "خاص مفتوح"
+    ]
+    if has_phone:
+        for kw in driver_keywords:
+            if kw in text:
+                print(f"🚫 [فلتر الأرقام]: تم رفض إعلان سائق: {text[:30]}...", flush=True)
+                return True
+    return False
+
+# =========================================================
+# PURE INTENT AI ANALYSIS ENGINE
 # =========================================================
 
 def analyze_with_pure_ai(text: str) -> bool:
+    if is_hard_driver_advertisement(text):
+        return False
+
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت ذكاء اصطناعي لقروبات التوصيل والمشاوير بجازان. هل هذه الرسالة من زبون يبحث عن توصيل/مشوار/سواق (YES) أم سائق يعلن عن خدماته أو شخص آخر (NO)؟
-الرسالة: "{text}"
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (جازان والجنوب).
+حدد هل الكاتب (زبون يطلب خدمة توصيل/مشوار) أم (سائق يعرض خدمة):
+
+[طلب عميل/زبون -> YES]
+- أسئلة واستفسارات عن توفر سائق أو خط سير (مثل: "مين طالع من صبيا؟"، "فيه أحد رايح جازان؟").
+- طلبات الاحتياج (مثل: "ابغى سواق"، "محتاج توصيلة"، "مين يوصلني").
+
+[إعلان سائق/مندوب أو سبام -> NO]
+- يحتوي على رقم جوال أو عرض خدمة شخصية أو جاهزية للتحرك.
+
+الرسالة:
+"{text}"
+
 الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -66,12 +97,14 @@ def analyze_with_pure_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 3
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=5)
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [الذكاء الاصطناعي]: '{text[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+
     return False
 
 # =========================================================
@@ -87,7 +120,7 @@ async def process_and_send(userbot: Client, bot: Client, message: Message):
 
     raw_text = message.text or message.caption or ""
     clean_text = raw_text.strip()
-    if len(clean_text) < 3:
+    if len(clean_text) < 4:
         return
 
     msg_key = f"{message.chat.id}_{message.id}"
@@ -101,12 +134,11 @@ async def process_and_send(userbot: Client, bot: Client, message: Message):
     if len(PROCESSED_KEYS) > 10000:
         PROCESSED_KEYS.clear()
 
-    is_client_request = await asyncio.get_running_loop().run_in_executor(
-        None, analyze_with_pure_ai, clean_text
-    )
+    loop = asyncio.get_running_loop()
+    is_client_request = await loop.run_in_executor(None, analyze_with_pure_ai, clean_text)
 
     if is_client_request:
-        print(f"✅ [تم رصد طلب زبون على رندر]: {clean_text[:30]}...", flush=True)
+        print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
         row = []
         if message.from_user:
@@ -124,38 +156,51 @@ async def process_and_send(userbot: Client, bot: Client, message: Message):
         reply_markup = InlineKeyboardMarkup([row]) if row else None
 
         for user in TARGET_USERS:
-            try:
-                if bot:
-                    await bot.send_message(chat_id=user, text=f"📥 طلب جديد:\n\n{clean_text}", reply_markup=reply_markup, disable_web_page_preview=True)
-                else:
-                    await userbot.send_message(chat_id=user, text=f"📥 طلب جديد:\n\n{clean_text}", reply_markup=reply_markup, disable_web_page_preview=True)
-            except Exception:
-                pass
+            sent = False
+            if bot:
+                try:
+                    await bot.send_message(
+                        chat_id=user,
+                        text=f"📥 طلب جديد:\n\n{clean_text}",
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                    sent = True
+                except Exception:
+                    pass
+
+            if not sent:
+                try:
+                    await userbot.send_message(
+                        chat_id=user,
+                        text=f"📥 طلب جديد:\n\n{clean_text}",
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=True
+                    )
+                except Exception:
+                    pass
 
 # =========================================================
-# SMART POLLING ENGINE (الحل البديل لضمان السحب على رندر)
+# SMART POLLING ENGINE
 # =========================================================
 
 async def smart_polling_loop(userbot: Client, bot: Client):
-    await asyncio.sleep(10)
-    print("🔄 [بدء محرك السحب الذكي المخصص لـ Render]...", flush=True)
-    
+    await asyncio.sleep(8)
+    print("🔄 [محرك السحب النشط يعمل الآن]...", flush=True)
     while True:
         try:
-            # فحص أحدث الحوارات والمجموعات المشترك فيها الحساب
-            async for dialog in userbot.get_dialogs(limit=25):
+            async for dialog in userbot.get_dialogs(limit=30):
                 if dialog.chat and dialog.chat.type in ["group", "supergroup"]:
                     try:
                         async for msg in userbot.get_chat_history(chat_id=dialog.chat.id, limit=3):
                             await process_and_send(userbot, bot, msg)
                     except Exception:
                         pass
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
         except Exception as e:
-            print(f"⚠️ تنبيه في حلقة السحب: {e}", flush=True)
+            print(f"⚠️ خطأ في حلقة السحب: {e}", flush=True)
             
-        # الانتظار قليلًا قبل دورة الفحص التالية لتجنب أي حظر
-        await asyncio.sleep(15)
+        await asyncio.sleep(12)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -165,7 +210,7 @@ async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
-        "barq_render_polling",
+        "barq_final_userbot",
         api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
@@ -176,20 +221,23 @@ async def main():
     if BOT_TOKEN:
         try:
             bot = Client(
-                "barq_render_helper_polling",
+                "barq_final_helper",
                 api_id=API_ID,
                 api_hash=API_HASH,
                 bot_token=BOT_TOKEN,
                 in_memory=True
             )
             await bot.start()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ البوت المساعد لم يبدأ: {e}", flush=True)
+
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        await process_and_send(client, bot, message)
 
     await userbot.start()
-    print("🚀 [نظام برق يعمل الآن بوضع الفحص الذكي على Render]...", flush=True)
+    print("🚀 [نظام برق جاهز ومرتبط بالحساب الجديد ويراقب المجموعات]...", flush=True)
 
-    # تشغيل محرك السحب الذكي في الخلفية
     asyncio.create_task(smart_polling_loop(userbot, bot))
 
     await asyncio.Event().wait()
