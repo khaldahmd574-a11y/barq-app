@@ -1,8 +1,10 @@
 import os
 import re
+import time
 import asyncio
 import hashlib
 import requests
+from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -10,7 +12,7 @@ from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7 (للعمل المستمر على ريندر)
+# KEEP ALIVE SERVER 24/7
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -18,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Free AI System Active!")
+        self.wfile.write(b"Barq Ultra Smart AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -39,11 +41,28 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317"]
+TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
+
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
+USER_REQUEST_HISTORY = {} 
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
+SIMILARITY_THRESHOLD = 0.65       
 
 # =========================================================
-# PURE FREE AI INTENT ENGINE (يفهم المعنى بالذكاء الاصطناعي المجاني)
+# HELPER: SMART TEXT SIMILARITY
+# =========================================================
+
+def is_similar_text(text1: str, text2: str) -> bool:
+    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
+    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
+    
+    ratio = SequenceMatcher(None, clean1, clean2).ratio()
+    return ratio >= SIMILARITY_THRESHOLD
+
+# =========================================================
+# ULTRA SMART INTENT AI ENGINE
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -53,8 +72,34 @@ def analyze_intent_with_ai(text: str) -> bool:
         return False
 
     if not OPENROUTER_API_KEY:
-        print("⚠️ تنبيه: مفتاح OpenRouter غير موجود!", flush=True)
         return False
+
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+
+مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]:
+
+[الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
+قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
+1. الأسئلة عن القرب والتواجد في المدن/القرى:
+   - "في حد في ضمد" -> YES (هذا زبون يسأل عن توفر سائق بضمد).
+   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
+   - "مين في العارضة؟" -> YES.
+   - "أحد في صامطة؟" -> YES.
+2. طلبات المشاوير والطلبيات والدوامات والخدمات:
+   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES.
+   - "ابغا مندوب ثقه" -> YES.
+   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
+
+[الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
+رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
+1. "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
+2. الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
+3. سلام أو تحية مجردة بدون أي مكان أو طلب بعده.
+
+الرسالة المراد تحليلها:
+"{clean}"
+
+الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -62,29 +107,20 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    prompt = f"""أنت ذكاء اصطناعي متخصص في تحليل رسائل قروبات التوصيل والمشاوير بالسعودية.
-مهمتك بدقة: هل الرسالة التالية من زبون يطلب توصيلة، مشوار، أو يسأل عن سائق؟
-الرسالة: "{clean}"
-أجب بكلمة واحدة فقط لا غير: (YES) إذا كانت طلباً أو استفساراً من زبون، أو (NO) لغير ذلك."""
-
     try:
         payload = {
-            "model": "deepseek/deepseek-chat:free",  # نموذج مجاني بالكامل لا يتطلب رصيد
+            "model": "openai/gpt-4o-mini",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=6)
-        
+        res = requests.post(url, headers=headers, json=payload, timeout=4)
         if res.status_code == 200:
-            result_json = res.json()
-            answer = result_json['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [الذكاء الاصطناعي المجاني] النص: '{clean[:25]}' -> الجواب: {answer}", flush=True)
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-        else:
-            print(f"❌ خطأ من OpenRouter المجاني - كود: {res.status_code} | المحتوى: {res.text}", flush=True)
     except Exception as e:
-        print(f"❌ استثناء أثناء الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -99,6 +135,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -118,6 +157,18 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
 
+        current_time = time.time()
+        user_id = message.from_user.id if message.from_user else None
+
+        if user_id and user_id in USER_REQUEST_HISTORY:
+            user_history = USER_REQUEST_HISTORY[user_id]
+
+            for past_request in user_history:
+                if is_similar_text(clean_text, past_request['text']):
+                    time_diff = current_time - past_request['time']
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                        return
+
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
@@ -128,7 +179,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [تم فهم الطلب وسحبه بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+            if user_id:
+                if user_id not in USER_REQUEST_HISTORY:
+                    USER_REQUEST_HISTORY[user_id] = []
+                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
+
+            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -139,7 +195,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = "💬 فتح المحادثة"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
@@ -178,6 +234,30 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
+# HIGH-SPEED SCANNER (0.1s)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(1)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+        await asyncio.sleep(0.1)
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -211,7 +291,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 نظام برق للذكاء الاصطناعي المجاني (DeepSeek Free) يعمل الآن على ريندر!", flush=True)
+    print("🧠 تم تحديث ذكاء النظام لمعالجة الاستفسارات القصيرة وأسماء القرى بمرونة كاملة!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
