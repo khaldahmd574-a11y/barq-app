@@ -18,7 +18,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Smart AI System Active!")
+        self.wfile.write(b"Barq AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -43,7 +43,7 @@ TARGET_USERS = ["abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# INTENT ENGINE + LOCAL FALLBACK
+# PURE AI INTENT ENGINE (يفهم المعنى بدقة وسرعة)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -52,39 +52,25 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not clean or len(clean) < 2:
         return False
 
-    # الفلتر الاحتياطي المحلي المباشر (يعمل حتى لو انقطع رصيد أو توقف OpenRouter)
-    local_keywords = [
-        "ابغى", "أبغى", "ابي", "أبي", "محتاج", "محتاجه", "مين يوصل", "من يوصل", 
-        "أحد رايح", "احد رايح", "في حد", "فيه احد", "توصيلة", "توصيله", 
-        "سواق", "مشوار", "دوام", "منداوب", "مندوب", "ضروري"
-    ]
-    
-    # إذا لم يكن هناك مفتاح أو فشل الاتصال، نعتمد على الكلمات المفتاحية فوراً
-    is_local_match = any(k in clean for k in local_keywords)
-
     if not OPENROUTER_API_KEY:
-        return is_local_match
-
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (جازان والجنوب).
-حدد هل الكاتب (زبون يطلب خدمة توصيل/مشوار شخصي) أم (سائق يعرض خدمة):
-
-[طلب عميل/زبون -> YES]
-- أسئلة واستفسارات عن توفر سائق أو خط سير (مثل: "في حد في ضمد؟"، "مين طالع صبيا؟"، "أحد رايح جازان؟").
-- طلبات الاحتياج (مثل: "ابغى سواق"، "محتاج توصيلة", "مين يوصلني").
-
-[إعلان سائق أو غير ذلك -> NO]
-- إعلانات السائقين، المندوبين، أرقام الجوال للتوصيل، أو أي مواضيع أخرى.
-
-الرسالة:
-"{clean}"
-
-الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
+        print("⚠️ تنبيه: مفتاح OpenRouter غير موجود في المتغيرات!", flush=True)
+        return False
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    prompt = f"""أنت عقل ذكاء اصطناعي فائق الذكاء ومتخصص في تحليل رسائل قروبات التوصيل والمشاوير في جازان والجنوب.
+مهمتك بدقة: هل هذه الرسالة تعبر عن [زبون يبحث عن سائق، توصيلة، أو يستفسر عن شخص يوصله]؟
+أجب بـ (YES) إذا كان طلباً أو استفساراً من زبون.
+وأجب بـ (NO) إذا كان إعلانات سائقين، سوالف عادية، أو أي شيء آخر.
+
+الرسالة المراد تحليلها:
+"{clean}"
+
+الجواب كلمة واحدة فقط لا غير (YES أو NO):"""
 
     try:
         payload = {
@@ -93,15 +79,19 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        
         if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            result_json = res.json()
+            answer = result_json['choices'][0]['message']['content'].strip().upper()
+            print(f"🤖 [تحليل الذكاء الاصطناعي] النص: '{clean[:25]}' -> الجواب: {answer}", flush=True)
             return "YES" in answer
-    except Exception:
-        pass
+        else:
+            print(f"❌ خطأ من OpenRouter API - كود الاستجابة: {res.status_code} | المحتوى: {res.text}", flush=True)
+    except Exception as e:
+        print(f"❌ استثناء أثناء الاتصال بـ OpenRouter: {e}", flush=True)
 
-    # في حال حدوث أي خطأ في اتصال الـ API، نعود للفلتر المحلي لضمان عدم ضياع أي طلب
-    return is_local_match
+    return False
 
 # =========================================================
 # MESSAGE PROCESSOR
@@ -143,7 +133,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [تم التقاط وسحب الطلب]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم قبول وتحويل الطلب بنجاح]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -223,10 +213,11 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
+        asyncio.create_thread = asyncio.create_task
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 نظام برق يعمل الآن بقوة (الذكاء الاصطناعي + نظام الحماية الاحتياطي المحلي)!", flush=True)
+    print("🚀 نظام برق الذكي بالكامل (AI Only) يعمل الآن على ريندر!", flush=True)
 
     await asyncio.Event().wait()
 
