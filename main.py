@@ -1,10 +1,8 @@
 import os
 import re
-import time
 import asyncio
 import hashlib
 import requests
-from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from hydrogram import Client
@@ -32,7 +30,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION (تسحب البيانات بأمان من ريندر فقط)
+# CONFIGURATION
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -42,24 +40,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["abood1317"]
-
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
-USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
-SIMILARITY_THRESHOLD = 0.65       
-
-# =========================================================
-# HELPER: SMART TEXT SIMILARITY
-# =========================================================
-
-def is_similar_text(text1: str, text2: str) -> bool:
-    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
-    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    
-    ratio = SequenceMatcher(None, clean1, clean2).ratio()
-    return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
 # ULTRA SMART INTENT AI ENGINE
@@ -81,13 +62,13 @@ def analyze_intent_with_ai(text: str) -> bool:
 [الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
 قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
 1. الأسئلة عن القرب والتواجد في المدن/القرى:
-   - "في حد في ضمد" -> YES (هذا زبون يسأل عن توفر سائق بضمد).
-   - "فيه احد قريب من أنوش جيزان ؟" -> YES.
-   - "مين في العارضة؟" -> YES.
-   - "أحد في صامطة؟" -> YES.
+   - "في حد في ضمد" -> YES
+   - "فيه احد قريب من أنوش جيزان ؟" -> YES
+   - "مين في العارضة؟" -> YES
+   - "أحد في صامطة؟" -> YES
 2. طلبات المشاوير والطلبيات والدوامات والخدمات:
-   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES.
-   - "ابغا مندوب ثقه" -> YES.
+   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES
+   - "ابغا مندوب ثقه" -> YES
    - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
 
 [الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
@@ -135,9 +116,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.chat.type == ChatType.PRIVATE:
             return
 
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
-
         if message.reply_to_message_id or message.reply_to_message:
             return
 
@@ -156,18 +134,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
 
-        current_time = time.time()
-        user_id = message.from_user.id if message.from_user else None
-
-        if user_id and user_id in USER_REQUEST_HISTORY:
-            user_history = USER_REQUEST_HISTORY[user_id]
-
-            for past_request in user_history:
-                if is_similar_text(clean_text, past_request['text']):
-                    time_diff = current_time - past_request['time']
-                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
-                        return
-
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
@@ -178,10 +144,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            if user_id:
-                if user_id not in USER_REQUEST_HISTORY:
-                    USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
+            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -231,30 +194,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# HIGH-SPEED SCANNER
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-        await asyncio.sleep(0.5)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -288,9 +227,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 نظام برق Ultra Smart AI يعمل بكامل طاقتة على سيرفر ريندر المستمر!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print("🚀 نظام برق Ultra Smart AI يعمل بكامل طاقتة وبدون أي انتظار أو حظر!", flush=True)
 
     await asyncio.Event().wait()
 
