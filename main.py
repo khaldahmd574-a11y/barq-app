@@ -43,7 +43,7 @@ TARGET_USERS = ["abood1317"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# ULTRA SMART INTENT AI ENGINE
+# INTENT ENGINE + LOCAL FALLBACK
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -52,35 +52,33 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not clean or len(clean) < 2:
         return False
 
+    # الفلتر الاحتياطي المحلي المباشر (يعمل حتى لو انقطع رصيد أو توقف OpenRouter)
+    local_keywords = [
+        "ابغى", "أبغى", "ابي", "أبي", "محتاج", "محتاجه", "مين يوصل", "من يوصل", 
+        "أحد رايح", "احد رايح", "في حد", "فيه احد", "توصيلة", "توصيله", 
+        "سواق", "مشوار", "دوام", "منداوب", "مندوب", "ضروري"
+    ]
+    
+    # إذا لم يكن هناك مفتاح أو فشل الاتصال، نعتمد على الكلمات المفتاحية فوراً
+    is_local_match = any(k in clean for k in local_keywords)
+
     if not OPENROUTER_API_KEY:
-        return False
+        return is_local_match
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل القليلة والقصيرة جداً لقروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف لمهمة تصنيف نصوص قروبات المشاوير والتوصيل بالسعودية (جازان والجنوب).
+حدد هل الكاتب (زبون يطلب خدمة توصيل/مشوار شخصي) أم (سائق يعرض خدمة):
 
-مهمتك: تحديد ما إذا كانت الرسالة من [زبون يبحث عن سائق/مندوب] أم [سائق يعلن عن نفسه]:
+[طلب عميل/زبون -> YES]
+- أسئلة واستفسارات عن توفر سائق أو خط سير (مثل: "في حد في ضمد؟"، "مين طالع صبيا؟"، "أحد رايح جازان؟").
+- طلبات الاحتياج (مثل: "ابغى سواق"، "محتاج توصيلة", "مين يوصلني").
 
-[الصنف الأول: زبون/عميل يبحث أو يستفسر -> أجب بـ YES]
-قبول أي نص قصير أو طويل يتساءل فيه العميل عن توفر شخص أو سائق في منطقة أو مدينة:
-1. الأسئلة عن القرب والتواجد في المدن/القرى:
-   - "في حد في ضمد" -> YES
-   - "فيه احد قريب من أنوش جيزان ؟" -> YES
-   - "مين في العارضة؟" -> YES
-   - "أحد في صامطة؟" -> YES
-2. طلبات المشاوير والطلبيات والدوامات والخدمات:
-   - "سواق يوصل لنخلان دوام كل يوم يجي خاص" -> YES
-   - "ابغا مندوب ثقه" -> YES
-   - "مندوب في ضمد"، "توصيل دوام"، "سواقة مدرسة".
+[إعلان سائق أو غير ذلك -> NO]
+- إعلانات السائقين، المندوبين، أرقام الجوال للتوصيل، أو أي مواضيع أخرى.
 
-[الصنف الثاني: سائق يعرض توفره وسيارته -> أجب بـ NO]
-رفض النص فقط إذا كان الكاتب هو السائق الذي يعلن بوضوح أنه فاضي أو يملك سيارة:
-1. "أنا فاضي جاهز للمشاوير"، "متواجد بضمد حياك خاص"، "طالع صبيا الي يبغى يراسلني".
-2. الإعلانات التي تحتوي على أرقام جوالات للتوصيل.
-3. سلام أو تحية مجردة بدون أي مكان أو طلب بعده.
-
-الرسالة المراد تحليلها:
+الرسالة:
 "{clean}"
 
-الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
+الجواب بكلمة واحدة فقط: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -95,14 +93,15 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             return "YES" in answer
     except Exception:
         pass
 
-    return False
+    # في حال حدوث أي خطأ في اتصال الـ API، نعود للفلتر المحلي لضمان عدم ضياع أي طلب
+    return is_local_match
 
 # =========================================================
 # MESSAGE PROCESSOR
@@ -144,7 +143,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [تم التقاط وسحب الطلب]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -227,7 +226,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 نظام برق Ultra Smart AI يعمل بكامل طاقتة وبدون أي انتظار أو حظر!", flush=True)
+    print("🚀 نظام برق يعمل الآن بقوة (الذكاء الاصطناعي + نظام الحماية الاحتياطي المحلي)!", flush=True)
 
     await asyncio.Event().wait()
 
