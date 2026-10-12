@@ -229,11 +229,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# BALANCED SCANNER (سرعة آمنة بدون حظر تليجرام)
+# SMART CONTROLLED SCANNER (فحص دوري ذكي وآمن بدون حظر)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     
     try:
         async for dialog in userbot.get_dialogs(limit=50):
@@ -248,10 +248,12 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                 try:
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
+                    # فاصل زمني بسيط جداً وموزع بين كل جروب والثاني لمنع تليجرام من إعطاء خطأ FloodWait
+                    await asyncio.sleep(1)
                 except Exception:
                     continue
-        # جعلنا وقت الانتظار 3 ثواني بدلاً من 10 ثواني، وهو وقت مثالي وسريع وفي نفس الوقت لا يسبب حظراً من تليجرام
-        await asyncio.sleep(3)
+        # فترة راحة قصيرة وذكية بين الدورات الكاملة لتظل السرعة ممتازة وبدون أي تحذيرات
+        await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -291,7 +293,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق يعمل الآن بالنسخة المستقرة الآمنة على حسابك (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق يعمل الآن بأفضل معدل فحص ذكي وسريع على حسابك (ID: {MY_USER_ID})!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
