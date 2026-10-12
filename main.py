@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Fingerprint System Active!")
+        self.wfile.write(b"Barq Pure AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,14 +41,13 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم قصر الوجهة على حسابك فقط
 TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
 MY_USER_ID = None
 
 # =========================================================
-# INTENT AI ENGINE (الذكاء الاصطناعي لفلترة الطلبات)
+# PURE AI INTENT ENGINE (تحليل ذكي عميق للمحتوى والهدف)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -60,21 +59,18 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت نظام ذكاء اصطناعي دقيق جداً لمراقبة طلبات العملاء فقط. هدفك السماح فقط لطلبات الزبائن الشخصية، وحظر أي سائق أو معلن قطعياً.
+    prompt = f"""أنت محلل ذكاء اصطناعي عبقري ومتخصص حصرياً في التفرقة بين "العميل الباحث عن خدمة" و"مقدم الخدمة المعلن".
 
-قم بتحليل المنشور بدقة:
+اقرأ الرسالة التالية بعمق وحدد الهدف الأساسي لكاتبها:
 
-[أجب بـ YES فقط في هذه الحالة:]
-- زبون حقيقي يطلب توصيل لنفسه أو لدوامه أو لأغراضه (مثال: "أبي مشوار"، "محتاج سواق يوصلني"، "مين يوديني المطار").
+1. إذا كان الكاتب **مواطناً أو عميلاً أو طالباً يحتاج إلى وسيلة نقل، أو توصيل مشوار، أو توصيل طلب لنفسه** (مثل شخص يطلب سيارة توديه، أو يسأل عن سائق يوصله لدوامه، أو يبي مندوب يجيب له أغراض) -> فهذا طلب حقيقي واكتب: **YES**
 
-[أجب بـ NO قطعي في هذه الحالة (رفض فوري):]
-- أي شخص يعرض خدمة، أو يفتح باب استقبال الطلبات (مثال: "توصيل طلبات مشاوير لي يبي الان خاص"، "جاهز لأي مشوار"، "متواجد في...").
-- إعلانات السائقين، الباصات، توصيل المعلمات أو الطالبات، ومناديب التوصيل.
+2. إذا كان الكاتب **سائقاً، أو صاحب سيارة، أو باص، أو مندوباً، أو شركة، أو فرداً يعرض خدماته على الآخرين، أو يضع إعلاناً ترويجياً عاماً، أو يطلب التواصل الخاص لتقديم خدمة** -> فهذا إعلان مرفوض واكتب: **NO**
 
-المنشور المراد تحليله:
+النص المراد تحليله:
 "{clean}"
 
-الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
+الرد يجب أن يكون كلمة واحدة فقط لا غير: (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -92,7 +88,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فلترة البصمة]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [التحليل الذكي النقي]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -100,7 +96,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR (نظام البصمة الأولى للتكرار)
+# MESSAGE PROCESSOR (نظام البصمة الأولى)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -137,7 +133,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب زبون جديد - بصمة مقبولة]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب عميل معتمد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -224,7 +220,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق مخصص لك وحدك يعمل الآن (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام الذكاء الاصطناعي النقي يعمل الآن (ID: {MY_USER_ID})!", flush=True)
 
     await asyncio.Event().wait()
 
