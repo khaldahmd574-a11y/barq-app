@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Strict AI System Active!")
+        self.wfile.write(b"Barq Clean Smart System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -63,7 +63,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ULTRA STRICT INTENT AI ENGINE (منع إعلانات السائقين والمناديب نهائياً)
+# CLEAN & SMART INTENT AI ENGINE
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -75,19 +75,11 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي صارم جداً، مخصص حصرياً لالتقاط [طلبات الزبائن الحقيقيين فقط] الذين يحتاجون إلى توصيل أو مشوار أو مندوب لأنفسهم.
+    prompt = f"""أنت مساعد ذكي ومحترف لفلترة رسائل قروبات التوصيل والمشاوير. مهمتك هي تحديد ما إذا كان كاتب الرسالة [زبوناً حقيقياً يطلب خدمة توصيل لنفسه] أم [سائقاً أو معلناً يعرض خدماته].
 
-قاعدتك الحديدية: يجب التفرقة بصرامة بين [زبون يطلب خدمة] و[سائق أو معلن يعرض خدمة].
-
-[الصنف الأول: زبون حقيقي يطلب توصيل أو مشوار لنفسه -> أجب بـ YES فقط]
-- شخص يقول: "أبي حد يوديني"، "محتاج مشوار"، "فيه سواق يوصلني"، "أبي مندوب".
-- طلبات نقل شخصية، طالبات يطلبن باص لدوامهن، أو شخص يسأل عن توفر أحد لنقله.
-
-[الصنف الثاني: إعلانات السائقين والمناديب ومقدمي الخدمات -> أجب بـ NO قطعي]
-- أي إعلان لـ "مندوب توصيل طلبات - مشاوير...[span_6](start_span)"[span_6](end_span).
-- أي إعلان لـ "نوفر نقل الطالبات (باصات)... للتواصل...[span_7](start_span)"[span_7](end_span).
-- أي إعلان لـ "توصيل معلمات إلى... للتواصل...[span_8](start_span)"[span_8](end_span).
-- أي شخص يقول "أنا فاضي في... لأي طلب أو مشوار يكلمني" أو يعرض رقم جواله لتقديم الخدمة[span_9](start_span)[span_9](end_span).
+القواعد بوضوح تام:
+1. أجب بـ (YES) فقط إذا كان النص عبارة عن شخص يطلب توصيل، سفر، دوام، جامعة، مطار، أو مندوب لنفسه (مثل: "ابي سواق يداوم بي"، "ابغا احد يوديني"، "محتاج مشوار").
+2. أجب بـ (NO) لكل ما عدا ذلك، ويشمل ذلك: إعلانات السائقين، عروض نقل المعلمات أو الطالبات، المناديب الذين يعرضون أرقامهم للخدمة، التحيات المجردة، وإعلانات الوظائف.
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -110,7 +102,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فلترة دقيقة جداً]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [فلترة نظيفة]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -177,7 +169,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون حقيقي فقط]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون معتمد]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -227,7 +219,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# FAST CONTROLLED SCANNER
+# CONTROLLED SCANNER
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
@@ -289,7 +281,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق بالفلترة الصارمة جداً للزبائن فقط يعمل (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق المنظم يعمل بكفاءة تامة (ID: {MY_USER_ID})!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
