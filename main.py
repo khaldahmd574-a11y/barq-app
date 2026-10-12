@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultra Smart AI System Active!")
+        self.wfile.write(b"Barq Balanced AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -63,7 +63,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# ULTRA SMART INTENT AI ENGINE (النسخة المطورة والشاملة)
+# ULTRA SMART INTENT AI ENGINE (قراءة واضحة وكاملة للمنشور)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -75,22 +75,20 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وفائق الذكاء، مخصص لقراءة نيات الرسائل لقروبات التوصيل والمشاوير بالجنوب وجازان.
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف، مخصص لتحليل رسائل قروبات التوصيل والمشاوير بالجنوب وجازان.
 
-مهمتك بحزم: تحديد ما إذا كانت الرسالة فعلاً من [زبون حقيقي يبحث عن سائق، مندوب، أو شخص متواجد] أم [سائق يعلن أو يعرض خدماته]:
+قاعدتك: اقرأ الرسالة كاملة بتركيز واعرف مقصد صاحبها:
 
-[الصنف الأول: زبون/عميل يبحث أو يستفسر (تشمل التحيات والأسئلة عن الأحياء والتواجد) -> أجب بـ YES]
-قبول أي طلب أو استفسار حتى لو بدأ بـ "السلام عليكم" وتضمن سؤالاً عن تواجد شخص أو سائق أو مندوب في منطقة أو حي:
-- "السلام عليكم ورحمة الله من متواجد في حي الرحاب او السويس الأن ؟" -> YES (هذا زبون يبحث عن شخص قريب منه في الحي).
+[الصنف الأول: زبون / طالب خدمة / باحث عن توصيل أو مندوب أو شخص يسأل عن تواجد سيارة أو دوام -> أجب بـ YES]
+- "فيه سواق يوصل صبيا المجمع الاكاديمي الشمالي من ابوعريش" -> YES
+- "السلام عليكم ورحمة الله من متواجد في حي الرحاب او السويس الأن ؟" -> YES
 - "ابي مندوب ب احد المسارحه" -> YES
-- "مين في حي المطار؟"، "أحد قريب من الشاطئ؟"
-- "في حد في ضمد"، "سواق يوصل لنخلان دوام"
+- أي طلب توصيل، استفسار عن مواصلات، طالبات، دوامات، أو بحث عن شخص بالحي.
 
-[الصنف الثاني: سائق يعرض توفره أو عروض عامة وصريحة -> أجب بـ NO]
-رفض قاطع فقط للسائقين الذين يعرضون سياراتهم أو خدماتهم للآخرين:
+[الصنف الثاني: سائق يعلن عن نفسه أو يعرض خدماته للعامة -> أجب بـ NO]
 - "اي احد يبي مشوار من ابو عريش لجازان خاص" -> NO
 - "اللي يبي مشوار يكلمني"، "متواجد بضمد حياك خاص"
-- الإعلانات التي تحتوي على أرقام جوالات للتوصيل العام.
+- إعلانات السائقين العامة برقم الجوال.
 
 الرسالة المراد تحليلها:
 "{clean}"
@@ -110,10 +108,10 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=4)
+        res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [تحليل النية]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل منسق]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -180,7 +178,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [سحب طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [سحب طلب دقيق]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -230,11 +228,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# SMART CONTROLLED SCANNER
+# FAST CONTROLLED SCANNER (فحص سريع ومنظم يمنع تشويش الذكاء)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
     
     try:
         async for dialog in userbot.get_dialogs(limit=50):
@@ -249,10 +247,12 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                 try:
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
-                    await asyncio.sleep(1)
+                    # فاصل زمني فائق السرعة (0.5 ثانية فقط) لضمان سرعة القراءة بدون تشتيت
+                    await asyncio.sleep(0.5)
                 except Exception:
                     continue
-        await asyncio.sleep(5)
+        # دورة سريعة جداً كل ثانيتين
+        await asyncio.sleep(2)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -284,6 +284,7 @@ async def main():
         except Exception:
             pass
 
+    # دمجنا الاستماع المباشر أيضاً ليعمل جنباً إلى جنب مع الفحص السريع
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
@@ -292,7 +293,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق يعمل بالنسخة المطورة لأسئلة الأحياء والتواجد (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق الذكي والسريع يعمل بكفاءة عالية (ID: {MY_USER_ID})!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
