@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Clean Smart System Active!")
+        self.wfile.write(b"Barq Fingerprint System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,29 +41,14 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
+# تم قصر الوجهة على حسابك فقط
+TARGET_USERS = ["abood1317"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
-USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق
-SIMILARITY_THRESHOLD = 0.65       
 MY_USER_ID = None
 
 # =========================================================
-# HELPER: SMART TEXT SIMILARITY
-# =========================================================
-
-def is_similar_text(text1: str, text2: str) -> bool:
-    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
-    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    
-    ratio = SequenceMatcher(None, clean1, clean2).ratio()
-    return ratio >= SIMILARITY_THRESHOLD
-
-# =========================================================
-# CLEAN & SMART INTENT AI ENGINE
+# INTENT AI ENGINE (الذكاء الاصطناعي لفلترة الطلبات)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -75,13 +60,18 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت مساعد ذكي ومحترف لفلترة رسائل قروبات التوصيل والمشاوير. مهمتك هي تحديد ما إذا كان كاتب الرسالة [زبوناً حقيقياً يطلب خدمة توصيل لنفسه] أم [سائقاً أو معلناً يعرض خدماته].
+    prompt = f"""أنت نظام ذكاء اصطناعي دقيق جداً لمراقبة طلبات العملاء فقط. هدفك السماح فقط لطلبات الزبائن الشخصية، وحظر أي سائق أو معلن قطعياً.
 
-القواعد بوضوح تام:
-1. أجب بـ (YES) فقط إذا كان النص عبارة عن شخص يطلب توصيل، سفر، دوام، جامعة، مطار، أو مندوب لنفسه (مثل: "ابي سواق يداوم بي"، "ابغا احد يوديني"، "محتاج مشوار").
-2. أجب بـ (NO) لكل ما عدا ذلك، ويشمل ذلك: إعلانات السائقين، عروض نقل المعلمات أو الطالبات، المناديب الذين يعرضون أرقامهم للخدمة، التحيات المجردة، وإعلانات الوظائف.
+قم بتحليل المنشور بدقة:
 
-الرسالة المراد تحليلها:
+[أجب بـ YES فقط في هذه الحالة:]
+- زبون حقيقي يطلب توصيل لنفسه أو لدوامه أو لأغراضه (مثال: "أبي مشوار"، "محتاج سواق يوصلني"، "مين يوديني المطار").
+
+[أجب بـ NO قطعي في هذه الحالة (رفض فوري):]
+- أي شخص يعرض خدمة، أو يفتح باب استقبال الطلبات (مثال: "توصيل طلبات مشاوير لي يبي الان خاص"، "جاهز لأي مشوار"، "متواجد في...").
+- إعلانات السائقين، الباصات، توصيل المعلمات أو الطالبات، ومناديب التوصيل.
+
+المنشور المراد تحليله:
 "{clean}"
 
 الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
@@ -102,7 +92,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=3)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فلترة نظيفة]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [فلترة البصمة]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -110,7 +100,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# MESSAGE PROCESSOR (نظام البصمة الأولى للتكرار)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -120,9 +110,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -136,40 +123,21 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(clean_text) < 2:
             return
 
-        msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+        if text_hash in PROCESSED_KEYS:
             return
 
-        current_time = time.time()
-        user_id = message.from_user.id if message.from_user else None
-
-        if user_id and user_id in USER_REQUEST_HISTORY:
-            user_history = USER_REQUEST_HISTORY[user_id]
-
-            for past_request in user_history:
-                if is_similar_text(clean_text, past_request['text']):
-                    time_diff = current_time - past_request['time']
-                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
-                        return
-
-        PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
-        if len(PROCESSED_KEYS) > 10000:
+        if len(PROCESSED_KEYS) > 15000:
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_running_loop()
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            if user_id:
-                if user_id not in USER_REQUEST_HISTORY:
-                    USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
-
-            print(f"✅ [طلب زبون معتمد]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون جديد - بصمة مقبولة]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -219,31 +187,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# CONTROLLED SCANNER
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                    await asyncio.sleep(0.5)
-                except Exception:
-                    continue
-        await asyncio.sleep(2)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -281,9 +224,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام برق المنظم يعمل بكفاءة تامة (ID: {MY_USER_ID})!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print(f"🚀 نظام برق مخصص لك وحدك يعمل الآن (ID: {MY_USER_ID})!", flush=True)
 
     await asyncio.Event().wait()
 
