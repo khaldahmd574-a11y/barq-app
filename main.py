@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq DeepSeek Economic System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -47,7 +47,7 @@ PROCESSED_KEYS = set()
 MY_USER_ID = None
 
 # =========================================================
-# PURE AI INTENT ENGINE (تحليل ذكي عميق للمحتوى والهدف)
+# DEEPSEEK V3 ECONOMIC INTENT ENGINE (ذكي واقتصادي جداً)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -59,15 +59,14 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    prompt = f"""أنت محلل ذكاء اصطناعي عبقري ومتخصص حصرياً في التفرقة بين "العميل الباحث عن خدمة" و"مقدم الخدمة المعلن".
+    prompt = f"""أنت نظام ذكاء اصطناعي دقيق ومحترف في تحليل محادثات مجموعات النقل والتوصيل والمشاوير بالسعودية (جازان).
 
-اقرأ الرسالة التالية بعمق وحدد الهدف الأساسي لكاتبها:
+مهمتك: تصنيف الرسالة بدقة متناهية إلى أحد التصنيفين التاليين فقط:
 
-1. إذا كان الكاتب **مواطناً أو عميلاً أو طالباً يحتاج إلى وسيلة نقل، أو توصيل مشوار، أو توصيل طلب لنفسه** (مثل شخص يطلب سيارة توديه، أو يسأل عن سائق يوصله لدوامه، أو يبي مندوب يجيب له أغراض) -> فهذا طلب حقيقي واكتب: **YES**
+1. [YES]: إذا كان الكاتب **زبوناً يطلب خدمة توصيل لنفسه حصرياً** (مثل: شخص يقول أبي سواق يداوم بي، محتاج مشوار، أبي يوديني المطار، مين فاضي يوصلني).
+2. [NO]: إذا كان الكاتب **سائقاً، أو مندوباً، أو معلناً يعرض خدماته للآخرين** (مثل: توصيل طلبات، مناديب، نوفر نقل معلمات أو طالبات، متواجد في مكان كذا، اللي يبي مشوار يكلمني).
 
-2. إذا كان الكاتب **سائقاً، أو صاحب سيارة، أو باص، أو مندوباً، أو شركة، أو فرداً يعرض خدماته على الآخرين، أو يضع إعلاناً ترويجياً عاماً، أو يطلب التواصل الخاص لتقديم خدمة** -> فهذا إعلان مرفوض واكتب: **NO**
-
-النص المراد تحليله:
+الرسالة المراد تحليلها:
 "{clean}"
 
 الرد يجب أن يكون كلمة واحدة فقط لا غير: (YES) أو (NO):"""
@@ -80,15 +79,15 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "openai/gpt-4o-mini",
+            "model": "deepseek/deepseek-chat",  # تم التحويل إلى DeepSeek V3 الاقتصادي والسريع
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        res = requests.post(url, headers=headers, json=payload, timeout=5)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [التحليل الذكي النقي]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🤖 [DeepSeek Economic]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -133,7 +132,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
-            print(f"✅ [طلب عميل معتمد بالذكاء الاصطناعي]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب عميل مقبول عبر DeepSeek]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -220,7 +219,7 @@ async def main():
     
     me = await userbot.get_me()
     MY_USER_ID = me.id
-    print(f"🚀 نظام الذكاء الاصطناعي النقي يعمل الآن (ID: {MY_USER_ID})!", flush=True)
+    print(f"🚀 نظام برق بنموذج DeepSeek الاقتصادي يعمل الآن (ID: {MY_USER_ID})!", flush=True)
 
     await asyncio.Event().wait()
 
