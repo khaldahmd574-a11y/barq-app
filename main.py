@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI System Active!")
+        self.wfile.write(b"Barq Turbo AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,14 +41,13 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-# تم إضافة الأسماء المطلوبة مع حسابك
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني (600 ثانية)
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
 # =========================================================
@@ -63,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE INTENT AI ENGINE (تحليل ذكي سياقي متقدم)
+# PURE INTENT AI ENGINE (سريع وصارم)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -74,6 +73,14 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
+
+    # قاعدة ذهبية فورية للسرعة القصوى
+    lower_clean = clean.lower()
+    forced_keywords = ["ابي", "ابغا", "أبي", "أبغا", "محتاج", "مطلوب", "مين يوديني", "مين يوصل", "أدور", "ادور", "مين يقدر"]
+    if any(lower_clean.startswith(kw) or f" {kw} " in f" {lower_clean} " for kw in forced_keywords):
+        if not any(bad in lower_clean for bad in ["نقل معلمات", "طالبات", "طالع من", "نازل من", "اللي يحتاج نقل"]):
+            print(f"⚡ [قبول فوري فائق السرعة]: '{clean[:35]}...'", flush=True)
+            return True
 
     if not OPENROUTER_API_KEY:
         return False
@@ -86,7 +93,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 قبول الطلبات الشخصية البحتة التي يطلب فيها صاحبها من يوصله أو يقضي حاجته (حتى لو كتب رقم جواله للتواصل):
 1. "ابي سواق يداوم بي، وهذا رقمي 055..." -> YES.
 2. "محتاج مشوار للمطار"، "مين يوديني".
-3. "مندوب في ضمد"، "سواق صامطة"، "في سواقات شهري؟".
+3. "مندوب في ضمد"، "سواق صامطة"، "في سواقات شهري؟"، "ابغا مندوب من صبيا".
 
 [الصنف الثاني: سائق أو معلن يعرض خدمة أو سيارة -> أجب بـ NO قطعي]
 رفض أي رسالة يكون فيها الكاتب هو السائق أو مقدم الخدمة لغيره، مثل:
@@ -112,10 +119,10 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=3)
+        res = requests.post(url, headers=headers, json=payload, timeout=2) # تقليل المهلة للسرعة
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [نية الرسالة]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [تحليل سريع]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -183,7 +190,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون جديد مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب توربو مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -233,11 +240,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# TARGETED GROUP HISTORY SCANNER (0.5s Fast Polling)
+# TARGETED GROUP HISTORY SCANNER (Turbo Fast Polling)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
     
     try:
         async for dialog in userbot.get_dialogs(limit=50):
@@ -254,7 +261,7 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)  # تسريع حلقة الفحص لتصبح أسرع بكثير (0.1 ثانية)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -265,7 +272,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_id=API_ID,
+        api_ID=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -290,7 +297,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تحديث النظام ليتعامل بذكاء مع أرقام جوالات الزبائن الحقيقيين!", flush=True)
+    print("🚀 تم تشغيل النظام بنسخة (Turbo) فائقة السرعة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
