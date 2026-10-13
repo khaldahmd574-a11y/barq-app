@@ -62,13 +62,12 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE INTENT AI ENGINE (الاعتماد الأساسي على الذكاء الاصطناعي)
+# PURE INTENT AI ENGINE (الاعتماد على الذكاء الاصطناعي للفرز)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
     
-    # رفض قاطع للرسائل القصيرة والرموز
     if not clean or len(clean) < 4:
         return False
 
@@ -80,7 +79,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     lower_clean = clean.lower()
 
-    # 🛑 قائمة سوداء دقيقة لحظر العروض والإعلانات والسائقين المتحركين فوراً
+    # القائمة السوداء الفورية للإعلانات الواضحة
     blacklist_patterns = [
         "متحرك من", "متحركة من", "رايح من", "رايحه من", "نازلة من", "نازل من",
         "فاضي في", "فاضية في", "متوفر الان", "متوفرة الان", "موجود الان", "موجودة الان",
@@ -93,7 +92,6 @@ def analyze_intent_with_ai(text: str) -> bool:
         print(f"🛑 [حظر فوري - إعلان/سائق]: '{clean[:35]}...'", flush=True)
         return False
 
-    # 🤖 التحليل العميق بالذكاء الاصطناعي لكافة الرسائل لضمان الدقة المطلقة
     if not OPENROUTER_API_KEY:
         return False
 
@@ -110,10 +108,10 @@ def analyze_intent_with_ai(text: str) -> bool:
 - "ابي مشوار للمطار"
 
 [الصنف الثاني: سائق، سائقة، إعلان، عرض توفر، أو تحرك -> أجب بـ NO قطعي]
-أمثلة للمرفوضات (حتى لو ذكرت كلمة بنات أو مشوار):
-- "متواجده في محليه ونازله ابو عريش اي مشوار خاص 'بنات فقط'" (هذا سائق/سائقة يعرض خدمة)
-- "بنات انا بصامطه اي مشوار خاص" (عرض خدمة توصيل)
-- "متحرك من ابو عريش الى ابو جيزان الي يبغى شي خاص" (سائق يعرض تحركه)
+أمثلة للمرفوضات:
+- "متواجده في محليه ونازله ابو عريش اي مشوار خاص 'بنات فقط'"
+- "بنات انا بصامطه اي مشوار خاص"
+- "متحرك من ابو عريش الى ابو جيزان الي يبغى شي خاص"
 - إعلانات السطحات والمعلمين.
 
 الرسالة المراد تحليل نيتها بدقة تامة:
@@ -247,4 +245,77 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                             chat_id=user,
                             text=clean_text,
                             reply_markup=reply_markup,
-...
+                            disable_web_page_preview=True
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+# =========================================================
+# TARGETED GROUP HISTORY SCANNER (Safe Polling)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+                await asyncio.sleep(0.5)
+        await asyncio.sleep(2.0)
+
+# =========================================================
+# MAIN ENTRYPOINT
+# =========================================================
+
+async def main():
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot = None
+    if BOT_TOKEN:
+        try:
+            bot = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot.start()
+        except Exception:
+            pass
+
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        asyncio.create_task(process_live_message(client, bot, message))
+
+    await userbot.start()
+    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي النقي وبدون أخطاء برمجية!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
