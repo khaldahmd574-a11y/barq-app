@@ -41,7 +41,8 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317"]
+# تم إضافة الأسماء المطلوبة مع حسابك
+TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
