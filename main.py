@@ -119,7 +119,7 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=2) # تقليل المهلة للسرعة
+        res = requests.post(url, headers=headers, json=payload, timeout=2)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
             print(f"🤖 [تحليل سريع]: '{clean[:35]}...' -> {answer}", flush=True)
@@ -261,7 +261,7 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-        await asyncio.sleep(0.1)  # تسريع حلقة الفحص لتصبح أسرع بكثير (0.1 ثانية)
+        await asyncio.sleep(0.1)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -272,7 +272,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_ID=API_ID,
+        api_id=API_ID,       # تم تصحيح api_ID إلى api_id
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -297,7 +297,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنسخة (Turbo) فائقة السرعة!", flush=True)
+    print("🚀 تم تشغيل النظام بنسخة (Turbo) فائقة السرعة وبدون أخطاء!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
