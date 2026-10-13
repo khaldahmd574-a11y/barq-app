@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Strict Text AI System Active!")
+        self.wfile.write(b"Barq Mega Master AI System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -81,7 +81,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     lower_clean = clean.lower()
 
-    # 🛑 القائمة السوداء الصارمة لحظر الإعلانات والسطحات والمعلمين والرموز
+    # 🛑 القائمة السوداء الشاملة والمشددة (حظر السائقين، السائقات، المناديب، السطحات، المعلمين)
     blacklist_patterns = [
         "فاضي في", "فاضي بـ", "فاضي ب", "فاضية في", "فاضيه في", "فاضية بـ", "فاضيه بـ",
         "متوفر الان", "متوفر الآن", "متوفرة الان", "متوفره الان", "موجود الان", "موجودة الان", "موجوده الان",
@@ -104,7 +104,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         print(f"🛑 [حظر فوري - إعلان/خدمة]: '{clean[:35]}...'", flush=True)
         return False
 
-    # ✅ العبارات القاطعة لطلبات التوصيل والمناديب
+    # ✅ قاعدة بيانات ضخمة جداً (أكثر من 50+ عبارة وصيغة طلب حقيقية للمشاوير والمناديب)
     forced_phrases = [
         "ابي مندوب", "ابغا مندوب", "أبي مندوب", "أبغا مندوب", "ابغى مندوب", "أبغى مندوب", 
         "محتاج مندوب", "محتاجة مندوب", "محتاجه مندوب", "مطلوب مندوب",
@@ -154,8 +154,8 @@ def analyze_intent_with_ai(text: str) -> bool:
 
 [الصنف الأول: زبون/عميل يبحث أو يطلب توصيل أو مشوار لنفسه حصرياً -> أجب بـ YES]
 قبول أي طلب أو استفسار شخصي واضح يطلبه صاحب الرسالة لنفسه فقط:
-1. الأسئلة والاستفسارات: "في مندوب بالشقيق الحين؟"، "مين فاضي لتوصيل مشوار؟".
-2. طلبات المشاوير والمناديب المباشرة: "معايا وصفه ابغا اصرفها من صيدليه والموقع البيت صبيا"، "ابغى سواق داخل أبوعريش يوصل مشاوير"، "في مندوب يوصل من شورمر لكليه الطب؟".
+1. الأسئلة والاستفسارات: "في مندوب بالشقيق الحين؟", "مين فاضي لتوصيل مشوار؟".
+2. طلبات المشاوير والمناديب المباشرة: "معايا وصفه ابغا اصرفها من صيدليه والموقع البيت صبيا", "ابغى سواق داخل أبوعريش يوصل مشاوير", "في مندوب يوصل من شورمر لكليه الطب؟".
 
 [الصنف الثاني: رسائل رموز، نقاط، إعلانات سطحات، سائقين، معلمين -> أجب بـ NO قطعي]
 رفض قاطع لأي رسالة قصيرة غير مفهومة مثل (..) أو رموز تعبيرية فقط، أو إعلانات السائقين المعروضة.
@@ -165,7 +165,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
 الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
 
-    url = "https://openrouter.ai/ai/v1/chat/completions"
+    url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
@@ -300,11 +300,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# TARGETED GROUP HISTORY SCANNER (Turbo Fast Polling 0.1s)
+# TARGETED GROUP HISTORY SCANNER (Safe & Smooth Polling)
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
+    await asyncio.sleep(2)
     
     try:
         async for dialog in userbot.get_dialogs(limit=50):
@@ -321,7 +321,11 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-        await asyncio.sleep(0.1)
+                # تأخير آمن بين كل قروب وآخر لمنع قيود تليجرام
+                await asyncio.sleep(0.5)
+        
+        # فاصل زمني آمن بين دورات الماسح الخلفي
+        await asyncio.sleep(2.0)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -357,7 +361,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم رفع النظام مع حظر النقاط والرموز القصيرة نهائياً!", flush=True)
+    print("🚀 تم تشغيل النظام الماستر مع الحماية الكاملة من قيود الانتظار!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
