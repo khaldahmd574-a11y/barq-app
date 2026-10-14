@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Full AI Semantic Engine Active!")
+        self.wfile.write(b"Barq Ultimate Direct Intent System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# FULL AI INTENT ENGINE (فحص ذكي شامل لكل الكلمات بالذكاء الاصطناعي)
+# HYBRID INTENT ENGINE (قبول مباشر آمن + فحص ذكي)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -79,36 +79,47 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     lower_clean = clean.lower()
 
-    # 🛑 قائمة سوداء سريعة للإعلانات والخدمات الواضحة جداً
+    # 🛑 قائمة سوداء قاطعة لإعلانات السائقين والخدمات التجارية
     express_blacklist = [
         "نقل معلمات", "نقل طالبات", "سطحة", "سطحه", "تعطلت", "اتصل نصل",
-        "معلم", "معلمة", "مدرس", "تدريس خصوصي", "تأسيس ومتابعة"
+        "معلم", "معلمة", "مدرس", "تدريس خصوصي", "تأسيس ومتابعة",
+        "فاضي في", "فاضية في", "فاضيه في", "متوفر الان", "متوفرة الان", 
+        "موجود الان", "موجودة الان", "متحرك من", "متحركة من"
     ]
 
     if any(bad in lower_clean for bad in express_blacklist):
-        print(f"🛑 [حظر فوري - إعلان/خدمة]: '{clean[:35]}...'", flush=True)
-        return False
+        # استثناء ذكي: إذا كان السائل يسأل "من فاضي" فهذا استفسار زبون وليس سائق يعرض نفسه
+        if not any(q in lower_clean for q in ["من فاضي", "مين فاضي", "مين في", "من في"]):
+            print(f"🛑 [حظر فوري - إعلان/سائق]: '{clean[:35]}...'", flush=True)
+            return False
+
+    # ✅ قبول سريع وآمن لاستفسارات التوفر والمشاوير بالصيغ المحلية الشائعة
+    direct_customer_patterns = [
+        "من فاضي", "مين فاضي", "مين في", "من في", "مين بـ", "من بـ",
+        "فيه احد", "في احد", "هل فيه", "هل في", "أحد في", "احد في",
+        "ابي", "ابغى", "ابغا", "محتاج", "محتاجة", "نبغى", "نحتاج",
+        "مين يوديني", "من يوديني", "مين يوصلني", "من يوصلني"
+    ]
+    
+    # التأكد من أن الرسالة ليست عرضاً موجهاً من سائق (مثل: مين محتاج مشوار)
+    is_driver_offer = any(d in lower_clean for d in ["مين محتاج", "من محتاج", "مين يبغى", "من يبغى", "مين يبي", "من يبي"])
+
+    if any(pat in lower_clean for pat in direct_customer_patterns) and not is_driver_offer:
+        print(f"⚡ [قبول سريع - استفسار أو طلب زبون]: '{clean[:35]}...'", flush=True)
+        return True
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 الذكاء الاصطناعي الكامل لفحص كل كلمات النص والتمييز الدقيق بين الزبون والمعلن
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً ومتخصص حصرياً في تحليل نية رسائل قروبات التوصيل والمشاوير بالسعودية (منطقة جازان والجنوب).
+    # 🧠 فحص إضافي بالذكاء الاصطناعي للحالات الأخرى
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً ومتخصص في فرز رسائل قروبات التوصيل والمشاوير بالسعودية (منطقة جازان).
 
-قم بقراءة وتحليل **جميع الكلمات** في النص المرفق بدقة متناهية لتحديد هل صاحب الرسالة (زبون) أم (معلن/سائق):
+حدد هل صاحب الرسالة (زبون طالب خدمة أو مستفسر عن توفر) أم (سائق معلن):
+- إذا كان زبوناً أو مستفسراً (مثل: "من فاضي في صبيا", "مين في العيدابي"): أجب بـ YES
+- إذا كان سائقاً أو معلناً: أجب بـ NO
 
-[الصنف الأول: الزبون أو العميل (الباحث عن خدمة أو السائل عن توفر سائق/مندوب) -> أجب بـ YES]
-- يتضمن ذلك أي صيغة استفسار عن التوفر في أي منطقة (مثل: "من فاضي في صبيا", "مين في العيدابي ذحين", "من يعرف سواق").
-- يتضمن طلبات المشاوير والتوصيل والأغراض الشخصية.
-
-[الصنف الثاني: السائق أو المعلن أو مقدم الخدمة (العارض لخدمته أو توفره أو تحركه) -> أجب بـ NO قطعي]
-- يتضمن ذلك إعلانات التوفر (مثل: "فاضي في...", "موجود في...", "متحرك من...").
-- يتضمن أي شخص يعرض خدماته للآخرين أو يسأل بصيغة العرض.
-
-النص المراد تحليله وفحص كل كلماته:
-"{clean}"
-
-الجواب كلمة واحدة فقط لا غير: (YES) أو (NO):"""
+النص: "{clean}"
+الجواب كلمة واحدة (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -123,11 +134,10 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        # مهلة اتصال 10 ثواني لضمان استجابة دقيقة وسريعة للذكاء الاصطناعي
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فحص الذكاء الاصطناعي الشامل]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [فحص الذكاء الاصطناعي]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -303,7 +313,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بفحص الذكاء الاصطناعي الشامل لجميع الكلمات!", flush=True)
+    print("🚀 تم تشغيل النظام الهجين المحدث لالتقاط كافة طلبات واستفسارات الزبائن فوراً!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
