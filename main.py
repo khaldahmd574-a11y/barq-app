@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Bulletproof System Active!")
+        self.wfile.write(b"Barq Ultimate Hybrid System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,13 +62,13 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# HYBRID INTENT ENGINE (قاعدة قبول سريع محسنة وشاملة للاستفسارات القصيرة)
+# ULTIMATE HYBRID INTENT ENGINE (قواعد الكلمات + ذكاء اصطناعي خارق)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
     
-    if not clean or len(clean) < 4:
+    if not clean or len(clean) < 3:
         return False
 
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
@@ -79,16 +79,35 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     lower_clean = clean.lower()
 
-    # 🛑 1. حظر فوري لأي رسالة تحتوي على رقم جوال
+    # 1️⃣ قائمة الكلمات التي حددتها وسعناها (قبول سريع ومباشر للزبائن)
+    direct_customer_patterns = [
+        "ابغى مندوب", "احتاج مندوب", "نبغى سواق", "احتاج سواق", "في سواق", 
+        "نبغا سواق", "مين فاضي", "ابغا سواق", "فيه سواق", "مين يجيب", "مين ييجب",
+        "ابي مندوب", "ابغى سواق", "ابي سواق", "محتاج مندوب", "محتاجة مندوب",
+        "محتاج سواق", "محتاجة سواق", "في مندوب", "فيه مندوب", "محتاج سيارة",
+        "من فاضي", "مين فاضي", "منهو فاضي", "منوه فاضي", "احد ف", "أحد ف", "احد في", "أحد في",
+        "مين في", "من في", "مين بـ", "من بـ",
+        "فيه احد", "في احد", "هل فيه", "هل في",
+        "ابي", "ابغى", "ابغا", "محتاج", "محتاجة", "نبغى", "نحتاج",
+        "مين يوديني", "من يوديني", "مين يوصلني", "من يوصلني",
+        "ابغى مشوار", "ابي مشوار", "احتاج مشوار", "محتاج مشوار",
+        "فيه توصيل", "في توصيل", "مين يقدر", "من يقدر"
+    ]
+    
+    # التأكد من أن الرسالة ليست عرضاً من سائق يسأل (مثل: مين محتاج مشوار)
+    is_driver_offer_question = any(d in lower_clean for d in ["مين محتاج", "من محتاج", "مين يبغى", "من يبغى", "مين يبي", "من يبي"])
+
+    # إذا كانت الرسالة تحتوي على إحدى كلماتك للزبائن وليست عرض سائق -> إرسال فوري!
+    if any(pat in lower_clean for pat in direct_customer_patterns) and not is_driver_offer_question:
+        print(f"⚡ [قبول سريع - كلمات الطلب المحددة]: '{clean[:35]}...'", flush=True)
+        return True
+
+    # 2️⃣ حظر فوري لأرقام الجوالات والإعلانات التجارية الصريحة
     if re.search(r'(05\d{8}|\+9665\d{8}|009665\d{8})', clean):
-        print(f"🛑 [حظر فوري - يحتوي على رقم جوال]: '{clean[:35]}...'", flush=True)
+        print(f"🛑 [حظر فوري - رقم جوال سائق]: '{clean[:35]}...'", flush=True)
         return False
 
-    # 🛑 2. قائمة سوداء دقيقة للإعلانات التجارية والخدمات الطلابية
     express_blacklist = [
-        "اي طلب", "أي طلب", "اي مشوار", "أي مشوار", "مشوار خاص", "تفضل خاص", "تفضلي خاص",
-        "متواجد في", "متواجدة في", "فاضي اي", "فاضية اي", "موجود في", "موجودة في",
-        "تواصل خاص", "تعال خاص", "تعالي خاص", "تحت الطلب", "جاهز للتوصيل",
         "خدمات طلابية", "حل واجبات", "واجبات جامعية", "اسايمنت", "اساينمنت", 
         "عمل مشاريع", "مشاريع تخرج", "بحث و بحوث", "حل كويزات", "شرح كلاسات", 
         "نشر الأبحاث", "كتابه تقارير", "كتابة تقارير", "المواقع الإلكترونية", 
@@ -98,43 +117,21 @@ def analyze_intent_with_ai(text: str) -> bool:
     ]
 
     if any(bad in lower_clean for bad in express_blacklist):
-        if not any(q in lower_clean for q in ["من فاضي", "مين فاضي", "مين في", "من في", "احد في", "أحد في", "احد فـ"]):
-            print(f"🛑 [حظر فوري - إعلان/خدمة]: '{clean[:35]}...'", flush=True)
-            return False
-
-    # ✅ 3. قاعدة القبول السريع الشاملة (تشمل الاستفسارات القصيرة مثل: احد ف القمري)
-    direct_customer_patterns = [
-        "احد في", "أحد في", "احد ف", "أحد ف", "في احد", "فيه احد",
-        "ابغى مندوب", "احتاج مندوب", "نبغى سواق", "احتاج سواق", "في سواق", 
-        "نبغا سواق", "مين فاضي", "ابغا سواق", "فيه سواق", "مين يجيب", "مين ييجب",
-        "ابي مندوب", "ابغى سواق", "ابي سواق", "محتاج مندوب", "محتاجة مندوب",
-        "محتاج سواق", "محتاجة سواق", "في مندوب", "فيه مندوب", "محتاج سيارة",
-        "من فاضي", "مين فاضي", "منهو فاضي", "منوه فاضي",
-        "مين في", "من في", "مين بـ", "من بـ",
-        "ابي", "ابغى", "ابغا", "محتاج", "محتاجة", "نبغى", "نحتاج",
-        "مين يوديني", "من يوديني", "مين يوصلني", "من يوصلني",
-        "ابغى مشوار", "ابي مشوار", "احتاج مشوار", "محتاج مشوار",
-        "فيه توصيل", "في توصيل", "مين يقدر", "من يقدر"
-    ]
-    
-    is_driver_offer = any(d in lower_clean for d in ["مين محتاج", "من محتاج", "مين يبغى", "من يبغى", "مين يبي", "من يبي"])
-
-    if any(pat in lower_clean for pat in direct_customer_patterns) and not is_driver_offer:
-        print(f"⚡ [قبول سريع - طلب/استفسار زبون]: '{clean[:35]}...'", flush=True)
-        return True
+        print(f"🛑 [حظر فوري - إعلان/خدمة طلابية]: '{clean[:35]}...'", flush=True)
+        return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 4. فحص الذكاء الاصطناعي للحالات الأخرى
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً ومتخصص في قروبات التوصيل والمشاوير بالسعودية (جازان).
+    # 3️⃣ الذكاء الاصطناعي الخارق المطور كفيصل للحالات غير المباشرة
+    prompt = f"""أنت عقل ذكاء اصطناعي خارق وصارم جداً ومتخصص حصرياً في تحليل نية رسائل التوصيل والمشاوير والمناديب بالسعودية (منطقة جازان والجنوب).
 
-حدد هل صاحب الرسالة (زبون يسأل عن توفر أحد في منطقة مثل: احد ف القمري، أو طالب توصيل) أم (معلن/سائق):
-- إذا كان زبوناً يسأل أو يطلب: أجب بـ YES
-- إذا كان إعلاناً أو سائقاً يعرض خدمته: أجب بـ NO قطعي
+حدد النية من النص المرفق:
+- (YES): إذا كان الكاتب زبوناً يحتاج خدمة، توصيل، مشوار، نقل، أو مستفسراً عن توفر شخص/مندوب/سواق لخدمته.
+- (NO): إذا كان الكاتب سائقاً معلناً عن توفره/سيارته/تحركه، أو معلناً عن خدمات طلابية/سطحات/باصات.
 
 النص: "{clean}"
-الجواب كلمة واحدة فقط (YES) أو (NO):"""
+الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -152,7 +149,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 [فحص الذكاء الاصطناعي]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🤖 [الذكاء الاصطناعي الخارق]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -183,7 +180,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
         
-        if len(clean_text) < 4:
+        if len(clean_text) < 3:
             return
 
         msg_key = f"{message.chat.id}_{message.id}"
@@ -328,7 +325,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام مع دعم كامل للاستفسارات القصيرة مثل (احد في / احد فـ)!", flush=True)
+    print("🚀 تم تشغيل النظام الهجين المتكامل بين قواعد القبول الفوري والذكاء الاصطناعي الخارق!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
