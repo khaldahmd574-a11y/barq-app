@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Mega Direct Intent System Active!")
+        self.wfile.write(b"Barq Clean System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# HYBRID INTENT ENGINE (قاعدة قبول مباشر ضخمة + فحص ذكي)
+# HYBRID INTENT ENGINE (قاعدة قبول سريع ضخمة + فحص ذكي)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -98,13 +98,10 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     # ✅ قاعدة القبول السريع الشاملة (أكبر مجموعة صيغ لطلبات الزبائن والمندوبين والسائقين)
     direct_customer_patterns = [
-        # طلبات المندوبين والسائقين التي ذكرتها ووسعناها
         "ابغى مندوب", "احتاج مندوب", "نبغى سواق", "احتاج سواق", "في سواق", 
         "نبغا سواق", "مين فاضي", "ابغا سواق", "فيه سواق", "مين يجيب", "مين ييجب",
         "ابي مندوب", "ابغى سواق", "ابي سواق", "محتاج مندوب", "محتاجة مندوب",
         "محتاج سواق", "محتاجة سواق", "في مندوب", "فيه مندوب", "محتاج سيارة",
-        
-        # صيغ الاستفسار والطلب العامة بالمناطق
         "من فاضي", "مين فاضي", "منهو فاضي", "منوه فاضي",
         "مين في", "من في", "مين بـ", "من بـ",
         "فيه احد", "في احد", "هل فيه", "هل في", "أحد في", "احد في",
@@ -114,7 +111,6 @@ def analyze_intent_with_ai(text: str) -> bool:
         "فيه توصيل", "في توصيل", "مين يقدر", "من يقدر"
     ]
     
-    # التأكد من أن الرسالة ليس فيها صيغة عرض من سائق (مثل: مين محتاج مشوار)
     is_driver_offer = any(d in lower_clean for d in ["مين محتاج", "من محتاج", "مين يبغى", "من يبغى", "مين يبي", "من يبي"])
 
     if any(pat in lower_clean for pat in direct_customer_patterns) and not is_driver_offer:
@@ -326,11 +322,12 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام مع قاعدة القبول السريع الشاملة لطلبات المندوبين والسائقين!", flush=True)
+    print("🚀 تم تشغيل النظام بدون أي تحذيرات وبأعلى كفاءة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
-    asyncio.Event().wait()
+    # تم إصلاح التحذير بإضافة await هنا
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
