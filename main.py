@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Typo-Tolerant System Active!")
+        self.wfile.write(b"Barq Ultimate System Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# TYPO-TOLERANT HYBRID INTENT ENGINE (دعم الأخطاء الإملائية والكلمات الناقصة)
+# HYBRID INTENT ENGINE (حظر كامل لرسائل الترحيب والتنبيه الآلي)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -79,17 +79,26 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     lower_clean = clean.lower()
 
-    # 🛑 1. كشف قاطع لعروض السائقين (أي سائق يسأل المجموعه)
+    # 🛑 1. حظر رسائل الترحيب التلقائية وتنبيهات القروبات
+    welcome_bot_phrases = [
+        "إبراء", "ابراء", "إخلاء للمسؤولية", "اخلاء للمسؤولية", "إخلاء مسؤولية", "اخلاء مسؤولية",
+        "أهلاً بك", "اهلا بك", "لا تحول أي مبالغ", "لا تحول اي مبالغ", "عربون", "دفع مقدم",
+        "مشرف القروب", "مشرفي القروب", "اقرأ التعليمات"
+    ]
+    if any(w in lower_clean for w in welcome_bot_phrases):
+        print(f"🛑 [حظر فوري - رسالة ترحيب/تنبيه بوت آلي]: '{clean[:35]}...'", flush=True)
+        return False
+
+    # 🛑 2. كشف عروض السائقين وأرقام الجوالات الإعلانية
     driver_offer_phrases = [
         "احد يبي", "أحد يبي", "احد يبغى", "أحد يبغى", "مين يبي", "من يبي",
         "مين يبغى", "من يبغى", "مين محتاج", "من محتاج", "الي يبي", "اللي يبي",
         "الي يبغى", "اللي يبغى", "اللي يحتاج", "الي يحتاج"
     ]
     if any(d in lower_clean for d in driver_offer_phrases):
-        print(f"🛑 [حظر فوري - عرض سائق يسأل]: '{clean[:35]}...'", flush=True)
+        print(f"🛑 [حظر فوري - عرض سائق]: '{clean[:35]}...'", flush=True)
         return False
 
-    # 🛑 2. حظر أرقام الجوالات والإعلانات التجارية الصريحة
     if re.search(r'(05\d{8}|\+9665\d{8}|009665\d{8})', clean):
         print(f"🛑 [حظر فوري - رقم جوال]: '{clean[:35]}...'", flush=True)
         return False
@@ -105,7 +114,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         print(f"🛑 [حظر فوري - إعلان/خدمة/سائق]: '{clean[:35]}...'", flush=True)
         return False
 
-    # ✅ 3. قبول سريع وآمن يتضمن الأخطاء الإملائية الشائعة (مثل ابغ، ابغى، ابغا، ابي، احد، من)
+    # ✅ 3. قبول سريع لطلبات الزبائن الحقيقية (حتى مع الأخطاء الإملائية)
     direct_customer_patterns = [
         "ابغ", "ابغى", "ابغا", "ابي", "ابيها", "ابيه",
         "احتاج", "محتاج", "محتاجة", "نبغى", "نبغا", "نحتاج",
@@ -117,22 +126,20 @@ def analyze_intent_with_ai(text: str) -> bool:
         "مين يوديني", "من يوديني", "مين يوصلني", "من يوصلني"
     ]
 
-    # إذا كانت الرسالة تحتوي على دلالة طلب واضحة حتى لو كانت مختصرة أو فيها خطأ إملائي
     if any(pat in lower_clean for pat in direct_customer_patterns):
-        # التأكد أنها ليست إعلان سائق أو عرض
         if not any(off in lower_clean for off in ["عندي", "متواجد", "اوفر", "نوفر"]):
-            print(f"⚡ [قبول سريع - طلب زبون متسامح مع الأخطاء]: '{clean[:35]}...'", flush=True)
+            print(f"⚡ [قبول سريع - طلب زبون حقيقي]: '{clean[:35]}...'", flush=True)
             return True
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 4. الذكاء الاصطناعي الخارق لفلترة الحالات المعقدة
-    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً ومتخصص في قروبات التوصيل بجازان، وتفهم الأخطاء الإملائية الشائعة في العامية (مثل كتابة "ابغ" بدل "ابغى").
+    # 🧠 4. فحص الذكاء الاصطناعي للحالات الأخرى
+    prompt = f"""أنت عقل ذكاء اصطناعي محترف وصارم جداً ومتخصص في قروبات التوصيل بجازان.
 
 حدد النية من النص المرفق:
-- (YES): إذا كان الكاتب زبوناً أو مستفسراً يطلب مشواراً، توصيلة، طلباً، أو يسأل عن توفر أحد (حتى لو وُجد خطأ إملائي مثل "ابغ طلب").
-- (NO): إذا كان الكاتب سائقاً يعرض خدماته، أو معلناً عن سلف أو خدمات أخرى.
+- (YES): إذا كان الكاتب زبوناً حقيقياً يطلب مشواراً، توصيلة، طلباً، أو يسأل عن توفر أحد.
+- (NO): إذا كان الكاتب سائقاً، معلناً، أو كانت الرسالة تنبيهاً/ترحيباً آلياً من القروب.
 
 الرسالة: "{clean}"
 الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
@@ -329,7 +336,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام مع دعم الأخطاء الإملائية والكلمات المختصرة!", flush=True)
+    print("🚀 تم تشغيل النظام مع الحظر الفوري لرسائل الترحب وإخلالات المسؤولية!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
