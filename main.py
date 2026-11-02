@@ -7,7 +7,7 @@ import requests
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -44,7 +44,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
@@ -73,14 +72,12 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
-    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
     prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
 
 مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
@@ -159,11 +156,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
                     time_diff = current_time - past_request['time']
-                    
                     if time_diff < MIN_TIME_BETWEEN_REPEATS:
                         return
 
@@ -228,8 +223,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception:
                         pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في معالجة الرسالة: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -260,13 +255,13 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
+    # تسجيل الحدث بالطريقة الصحيحة لضمان استقبال جميع رسائل المجموعات فوراً
+    @userbot.on_message(filters.group | filters.supergroup)
     async def global_live_listener(client: Client, message: Message):
-        # معالجة فورية ولحظية لكل رسالة ترد في أي قروب فوراً
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام الفوري بالذكاء الاصطناعي بنجاح تام!", flush=True)
+    print("🚀 تم تشغيل النظام الفوري بالذكاء الاصطناعي بنجاح تام وبدء الاستماع للقروبات!", flush=True)
 
     await asyncio.Event().wait()
 
