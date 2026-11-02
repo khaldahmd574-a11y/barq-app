@@ -7,7 +7,7 @@ import requests
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client, filters
+from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -130,7 +130,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type == ChatType.PRIVATE:
+        # فلترة الرسائل لتكون داخل المجموعات فقط (تجاهل الخاص والقنوات برمجياً بأمان)
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
 
         if message.reply_to_message_id or message.reply_to_message:
@@ -255,13 +256,13 @@ async def main():
         except Exception:
             pass
 
-    # تسجيل الحدث بالطريقة الصحيحة لضمان استقبال جميع رسائل المجموعات فوراً
-    @userbot.on_message(filters.group | filters.supergroup)
+    # الاستماع الفوري لجميع الرسائل بدون أخطاء فلاتر
+    @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام الفوري بالذكاء الاصطناعي بنجاح تام وبدء الاستماع للقروبات!", flush=True)
+    print("🚀 تم تشغيل النظام الفوري بالذكاء الاصطناعي بنجاح تام وبدء الاستماع الفوري!", flush=True)
 
     await asyncio.Event().wait()
 
