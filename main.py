@@ -80,7 +80,6 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 ذكاء اصطناعي تحليلي بحت يحلل السياق والنية بنسبة 100% دون الحاجة لقوائم كلمات
     prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومهمتك المطلقة هي تحليل "نية الكاتب وقصده الحقيقي" في قروبات النقل والمشاوير والمناديب بجازان بالمملكة العربية السعودية.
 
 اقرأ النص التالي بعمق تام وحلل معناه بغض النظر عن الأسلوب أو اللهجة:
@@ -290,11 +289,11 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالتحليل الذكي الخارق للنيات (سرعة قصوى ودقة مطلقة)!", flush=True)
+    print("🚀 تم تشغيل النظام بالتحليل الذكي الخارق للنيات بنجاح تام!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
-    asyncio.Event().wait()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
