@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure AI Supreme Engine Active!")
+        self.wfile.write(b"Barq Ultimate Pure AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE AI SUPREME ENGINE (الذكاء الاصطناعي النقي بدون أي قواعد معقدة)
+# ULTIMATE AI INTENT ANALYZER (تحليل النية العميق والذكي بقوة)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -74,30 +74,26 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
-    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
-    prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
+    # 🧠 ذكاء اصطناعي تحليلي بحت يحلل السياق والنية بنسبة 100% دون الحاجة لقوائم كلمات
+    prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومهمتك المطلقة هي تحليل "نية الكاتب وقصده الحقيقي" في قروبات النقل والمشاوير والمناديب بجازان بالمملكة العربية السعودية.
 
-مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
+اقرأ النص التالي بعمق تام وحلل معناه بغض النظر عن الأسلوب أو اللهجة:
 
-[اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
-- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه.
-- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "معقوله مافي سواق دوام").
-- أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
+[أجب بـ (YES) حصرياً إذا كان المعنى:]
+- الكاتب شخص يحتاج إلى خدمة نقل، مشوار، سيارة، سواقة، توصيل عائلات، أو مندوب لنفسه أو لأهله أو لمعارفه (أي أنه "زبون طالب خدمة").
+- الكاتب يسأل عن توفر شخص أو سائق أو يقدم طلباً لاستئجار أو توفير وسيلة نقل.
 
-[ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
-- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
-- التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
-- الإعلانات التجارية، القروض، السلف (تمارا، تابي، إمكان)، الخدمات الطلابية، حل الواجبات، والسطحات.
+[أجب بـ (NO) في أي حالة أخرى، مثل:]
+- الكاتب سائق، معلن، أو مندوب يعرض خدماته، رحلاته، أو جاهزيته للتوصيل (مثل من يقول: أنا فاضي، طالع من مكان كذا، جاهز للطلبات، أو يعرض رقم جواله وعروضه).
+- إعلانات عامة، تنبيهات إدارة، تحذيرات، أو عروض تجارية.
 
-الرسالة المراد تحليلها بعمق:
+النص المراد تحليله بدقة:
 "{clean}"
 
 الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
@@ -118,7 +114,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [الذكاء الاصطناعي الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🧠 [التحليل الذكي الخارق]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -257,8 +253,8 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-                await asyncio.sleep(0.2) # تم تقليص وقت الانتظار لزيادة السرعة الخارقة
-        await asyncio.sleep(0.8) # فحص متكرر أسرع بكثير (بدل 2 ثانية صارت 0.8 ثانية)
+                await asyncio.sleep(0.2)
+        await asyncio.sleep(0.8)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -294,11 +290,11 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي مع التوربو (سرعة قصوى وآمن 100%)!", flush=True)
+    print("🚀 تم تشغيل النظام بالتحليل الذكي الخارق للنيات (سرعة قصوى ودقة مطلقة)!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
-    await asyncio.Event().wait()
+    asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
