@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import asyncio
 import hashlib
 import threading
@@ -9,7 +8,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import aiohttp
 from cachetools import TTLCache
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -22,7 +21,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Pure AI Engine Active!")
+        self.wfile.write(b"Barq Instant Pure AI Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -45,13 +44,10 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "anas14440"]
 
-# نظام التخزين المؤقت المتقدم (TTLCache) لمنع التكرار لمدة 3 ساعات
 seen_messages = TTLCache(maxsize=20000, ttl=10800)
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
-SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
+MIN_TIME_BETWEEN_REPEATS = 600
+SIMILARITY_THRESHOLD = 0.65
 
 ai_semaphore = asyncio.Semaphore(5)
 http_session = None
@@ -62,16 +58,10 @@ async def get_http_session():
         http_session = aiohttp.ClientSession()
     return http_session
 
-# =========================================================
-# HELPER: SMART TEXT SIMILARITY & NORMALIZATION
-# =========================================================
-
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    
-    ratio = SequenceMatcher(None, clean1, clean2).ratio()
-    return ratio >= SIMILARITY_THRESHOLD
+    return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 def get_message_text(message: Message) -> str:
     return (message.text or message.caption or "").strip()
@@ -81,40 +71,20 @@ def make_fingerprint(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 # =========================================================
-# ULTIMATE AI INTENT ANALYZER (Async with aiohttp)
+# FAST ASYNC AI INTENT ANALYZER
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
-    
-    if not clean or len(clean) < 3:
+    if not clean or len(clean) < 3 or not OPENROUTER_API_KEY:
         return False
 
-    if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
-        return False
+    prompt = f"""أنت نظام ذكاء اصطناعي فائق السرعة والدقة لاكتشاف طلبات التوصيل والمشاوير في جازان.
+أجب بـ (YES) فقط إذا كان الكاتب زبوناً حقيقيياً يطلب مشواراً أو توصيلاً لنفسه أو لغرضه.
+أجب بـ (NO) إذا كان سائقاً يعرض خدماته أو إعلاناً تجارياً.
 
-    if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
-        return False
-
-    if not OPENROUTER_API_KEY:
-        return False
-
-    prompt = f"""أنت نظام ذكاء اصطناعي فائق الدقة، مهمتك الأساسية تحليل "نية الكاتب الأساسية" في قروبات المشاوير والنقل بجازان.
-
-اقرأ الرسالة التالية بعمق وافهم سياقها بالكامل:
-
-[أجب بـ (YES) حصرياً إذا توفرت هذه الشروط]:
-- الرسالة لـ "زبون طالب خدمة" بحت، يبحث عن مشوار، سيارة، توصيل، أو سواقة لنفسه، لأسرته، أو لمعارفه.
-- أن يكون الكاتب هو المحتاج للخدمة وليس المعرض لها.
-
-[أجب بـ (NO) في أي حالة أخرى، تشمل]:
-- أي رسالة يكون فيها الكاتب هو السائق أو مقدم الخدمة أو المندوب الذي يعرض سيارته، مواصفاتها (مثل نوع السيارة كـ أكسنت وغيرها)، رحلاته، أو يطلب من الناس التواصل معه (حتى لو استخدم عبارات مخادعة في بدايتها مثل "اللي محتاجه سواق... تتواصل معي").
-- الإعلانات التجارية، العروض، التنبيهات، أو المنشورات الترويجية.
-
-النص المراد تحليله بدقة تامة:
-"{clean}"
-
-الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
+النص: "{clean}"
+الجواب بكلمة واحدة (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -133,19 +103,19 @@ async def analyze_intent_with_ai(text: str) -> bool:
     try:
         session = await get_http_session()
         async with ai_semaphore:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as res:
+            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=6)) as res:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"🧠 [التحليل الذكي المحسّن]: '{clean[:35]}...' -> {answer}", flush=True)
+                    print(f"🧠 [فحص فوري]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ AI: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR (مع تحليل الردود والسياق)
+# INSTANT EVENT HANDLER (بدون تأخير)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -153,11 +123,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type == ChatType.PRIVATE:
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.from_user and message.from_user.is_self:
             return
@@ -166,47 +133,21 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(raw_text) < 3:
             return
 
-        # تحليل الرد مع الرسالة الأصلية (سياق متكامل)
-        context_text = raw_text
-        try:
-            if message.reply_to_message:
-                parent_text = get_message_text(message.reply_to_message)
-                if parent_text:
-                    context_text = f"الرسالة الأصلية:\n{parent_text}\n\nالرد عليها:\n{raw_text}"
-        except Exception:
-            pass
-
-        # فحص البصمة لمنع التكرار عبر TTLCache
+        # تجاهل التكرار الفوري عبر البصمة
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = make_fingerprint(raw_text)
         
         if msg_key in seen_messages or text_hash in seen_messages:
             return
 
-        current_time = time.time()
-        user_id = message.from_user.id if message.from_user else None
-
-        if user_id and user_id in USER_REQUEST_HISTORY:
-            user_history = USER_REQUEST_HISTORY[user_id]
-            for past_request in user_history:
-                if is_similar_text(raw_text, past_request['text']):
-                    if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
-                        return
-
-        # تسجيل مبدئي لمنع التكرار الفوري
         seen_messages[msg_key] = True
         seen_messages[text_hash] = True
 
-        # استدعاء الذكاء الاصطناعي غير المتزامن
-        is_client_request = await analyze_intent_with_ai(context_text)
+        # تحليل فوري بالذكاء الاصطناعي
+        is_client_request = await analyze_intent_with_ai(raw_text)
 
         if is_client_request:
-            if user_id:
-                if user_id not in USER_REQUEST_HISTORY:
-                    USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': raw_text, 'time': current_time})
-
-            print(f"✅ [طلب زبون حقيقي مقبول]: {raw_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون فوري مقبول]: {raw_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -253,32 +194,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     except Exception:
                         pass
     except Exception as e:
-        print(f"Error in process_live_message: {e}", flush=True)
-
-# =========================================================
-# TARGETED GROUP HISTORY SCANNER (Turbo Speed Polling)
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-                await asyncio.sleep(0.2)
-        await asyncio.sleep(0.8)
+        print(f"Error: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -312,14 +228,13 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
+    # ⚡ استقبال لحظي فوري بدون أي حلقات فحص دورية (Polling)
+    @userbot.on_message(filters.group & (filters.text | filters.caption))
+    async def instant_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المطور بنجاح وبأعلى كفاءة وسرعة بالذكاء الاصطناعي!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print("🚀 تم تشغيل نظام برق اللحظي الفوري بدون أي تأخير!", flush=True)
 
     await asyncio.Event().wait()
 
