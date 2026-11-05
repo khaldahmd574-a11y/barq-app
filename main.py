@@ -3,13 +3,11 @@ import re
 import time
 import asyncio
 import hashlib
-import threading
+import requests
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
-
-import aiohttp
-from cachetools import TTLCache
-from hydrogram import Client, filters
+import threading
+from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -45,22 +43,15 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "anas14440"]
 
-seen_messages = TTLCache(maxsize=20000, ttl=10800)
+PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(5)
-http_session = None
-
-async def get_http_session():
-    global http_session
-    if http_session is None or http_session.closed:
-        http_session = aiohttp.ClientSession()
-    return http_session
-
 # =========================================================
-# HELPER: SMART TEXT SIMILARITY & NORMALIZATION
+# HELPER: SMART TEXT SIMILARITY
 # =========================================================
 
 def is_similar_text(text1: str, text2: str) -> bool:
@@ -70,18 +61,11 @@ def is_similar_text(text1: str, text2: str) -> bool:
     ratio = SequenceMatcher(None, clean1, clean2).ratio()
     return ratio >= SIMILARITY_THRESHOLD
 
-def get_message_text(message: Message) -> str:
-    return (message.text or message.caption or "").strip()
-
-def make_fingerprint(text: str) -> str:
-    normalized = re.sub(r"\s+", " ", text.strip()).casefold()
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
 # =========================================================
-# ULTIMATE AI INTENT ANALYZER (التعليمات العميقة الكاملة)
+# ULTIMATE AI INTENT ANALYZER (تحليل ذكي وعميق يفهم سياق العرض والطلب)
 # =========================================================
 
-async def analyze_intent_with_ai(text: str) -> bool:
+def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
     
     if not clean or len(clean) < 3:
@@ -96,7 +80,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 التعليمات الدقيقة والكاملة التي طلبتها لضمان التصفية الصافية
+    # 🧠 توجيه ذكي جداً ومطور بدقة ليميز بين طلب الزبون الحقيقي وعروض السائقين المخادعة
     prompt = f"""أنت نظام ذكاء اصطناعي فائق الدقة، مهمتك الأساسية تحليل "نية الكاتب الأساسية" في قروبات المشاوير والنقل بجازان.
 
 اقرأ الرسالة التالية بعمق وافهم سياقها بالكامل:
@@ -120,30 +104,25 @@ async def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
-    payload = {
-        "model": "openai/gpt-4o-mini",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0,
-        "max_tokens": 2,
-        "stream": False
-    }
-
     try:
-        session = await get_http_session()
-        async with ai_semaphore:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=8)) as res:
-                if res.status == 200:
-                    data = await res.json()
-                    answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"🧠 [التحليل الذكي الكامل]: '{clean[:35]}...' -> {answer}", flush=True)
-                    return "YES" in answer
+        payload = {
+            "model": "openai/gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 2
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🧠 [التحليل الذكي المحسّن]: '{clean[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR (الاستماع الفوري المباشر مع تحليل السياق)
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -151,31 +130,28 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        if message.chat.type == ChatType.PRIVATE:
+            return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
+
+        if message.reply_to_message_id or message.reply_to_message:
             return
 
         if message.from_user and message.from_user.is_self:
             return
 
-        raw_text = get_message_text(message)
-        if len(raw_text) < 3:
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        
+        if len(clean_text) < 3:
             return
 
-        # تحليل الرد مع الرسالة الأصلية (سياق متكامل)
-        context_text = raw_text
-        try:
-            if message.reply_to_message:
-                parent_text = get_message_text(message.reply_to_message)
-                if parent_text:
-                    context_text = f"الرسالة الأصلية:\n{parent_text}\n\nالرد عليها:\n{raw_text}"
-        except Exception:
-            pass
-
-        # فحص البصمة لمنع التكرار عبر TTLCache
         msg_key = f"{message.chat.id}_{message.id}"
-        text_hash = make_fingerprint(raw_text)
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-        if msg_key in seen_messages or text_hash in seen_messages:
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
 
         current_time = time.time()
@@ -183,25 +159,30 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
+
             for past_request in user_history:
-                if is_similar_text(raw_text, past_request['text']):
-                    if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
+                if is_similar_text(clean_text, past_request['text']):
+                    time_diff = current_time - past_request['time']
+                    
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
                         return
 
-        # تسجيل مبدئي لمنع التكرار الفوري
-        seen_messages[msg_key] = True
-        seen_messages[text_hash] = True
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
 
-        # استدعاء الذكاء الاصطناعي الفوري بالتعليمات الكاملة
-        is_client_request = await analyze_intent_with_ai(context_text)
+        if len(PROCESSED_KEYS) > 10000:
+            PROCESSED_KEYS.clear()
+
+        loop = asyncio.get_running_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
 
         if is_client_request:
             if user_id:
                 if user_id not in USER_REQUEST_HISTORY:
                     USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': raw_text, 'time': current_time})
+                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون حقيقي مقبول وفوري]: {raw_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون حقيقي مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -229,7 +210,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     try:
                         await bot.send_message(
                             chat_id=user,
-                            text=raw_text,
+                            text=clean_text,
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
@@ -241,24 +222,46 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     try:
                         await userbot.send_message(
                             chat_id=user,
-                            text=raw_text,
+                            text=clean_text,
                             reply_markup=reply_markup,
                             disable_web_page_preview=True
                         )
                     except Exception:
                         pass
-    except Exception as e:
-        print(f"Error in process_live_message: {e}", flush=True)
+    except Exception:
+        pass
+
+# =========================================================
+# TARGETED GROUP HISTORY SCANNER (Turbo Speed Polling)
+# =========================================================
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(1)
+    
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+                await asyncio.sleep(0.2)
+        await asyncio.sleep(0.8)
 
 # =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
-    global http_session
     threading.Thread(target=run_dummy_server, daemon=True).start()
-
-    http_session = aiohttp.ClientSession()
 
     userbot = Client(
         "my_userbot",
@@ -282,18 +285,16 @@ async def main():
         except Exception:
             pass
 
-    # ⚡ استماع فوري لحظي صاروخي بدون أي فحص دوري بطيء
-    @userbot.on_message(filters.group & (filters.text | filters.caption))
-    async def instant_listener(client: Client, message: Message):
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام برق اللحظي الفوري بالتعليمات الكاملة بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح وبأعلى كفاءة بالذكاء الاصطناعي!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
-
-    if http_session and not http_session.closed:
-        await http_session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
