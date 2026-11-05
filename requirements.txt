@@ -2,3 +2,4 @@ hydrogram
 tgcrypto
 aiohttp
 cachetools
+requests
