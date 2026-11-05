@@ -17,7 +17,7 @@ from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 # =========================
 
 API_ID = int(os.getenv("TELEGRAM_API_ID", "39120728"))
-API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+API_HASH = os.getenv("API_HASH", "")
 SESSION_STRING = os.getenv("SESSION_STRING", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
@@ -46,7 +46,7 @@ logger = logging.getLogger("Barq")
 # =========================
 
 required = {
-    "TELEGRAM_API_HASH": API_HASH,
+    "API_HASH": API_HASH,
     "SESSION_STRING": SESSION_STRING,
     "BOT_TOKEN": BOT_TOKEN,
     "OPENROUTER_API_KEY": OPENROUTER_API_KEY,
