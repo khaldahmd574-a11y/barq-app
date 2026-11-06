@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Instant Gemini Engine Active!")
+        self.wfile.write(b"Barq Instant Pure Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -48,7 +48,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(10) # السماح بتحليل عدة رسائل في نفس اللحظة لسرعة فائقة
+ai_semaphore = asyncio.Semaphore(10)
 http_session = None
 
 async def get_http_session():
@@ -56,10 +56,6 @@ async def get_http_session():
     if http_session is None or http_session.closed:
         http_session = aiohttp.ClientSession()
     return http_session
-
-# =========================================================
-# HELPER: SMART TEXT SIMILARITY
-# =========================================================
 
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
@@ -124,7 +120,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"🧠 [Gemini Flash-Lite الفوري]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ AI: {e}", flush=True)
@@ -171,10 +167,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
-        if len(PROCESSED_KEYS) > 15000:
+        if len(PROCESSED_KEYS) > 20000:
             PROCESSED_KEYS.clear()
 
-        # استدعاء غير متزامن فوري لتحليل النية بدون أي انتظار بطيء
         is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
@@ -264,13 +259,13 @@ async def main():
         except Exception:
             pass
 
-    # مستمع فوري لحظي لكل الرسائل الواردة في القروبات بدون أي مسح دوري بطيء
+    # الاستماع الفوري اللحظي الصرف لكل الرسائل الواردة في القروبات
     @userbot.on_message(filters.group & (filters.text | filters.caption))
     async def instant_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل محرك الاستماع الفوري اللحظي (Gemini Flash-Lite) بنجاح!", flush=True)
+    print("🚀 تم تشغيل محرك الاستماع الفوري الصرف (Gemini Flash-Lite) بنجاح!", flush=True)
 
     await asyncio.Event().wait()
 
