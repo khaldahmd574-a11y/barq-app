@@ -294,7 +294,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح مع محرك الاستماع الفوري والماسح المضمون!", flush=Type)
+    print("🚀 تم تشغيل النظام بنجاح مع محرك الاستماع الفوري والماسح المضمون!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
