@@ -3,11 +3,11 @@ import re
 import time
 import asyncio
 import hashlib
-import requests
+import aiohttp
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Gemini Flash-Lite Supreme Engine Active!")
+        self.wfile.write(b"Barq Instant Gemini Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,11 +44,18 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
+
+ai_semaphore = asyncio.Semaphore(10) # السماح بتحليل عدة رسائل في نفس اللحظة لسرعة فائقة
+http_session = None
+
+async def get_http_session():
+    global http_session
+    if http_session is None or http_session.closed:
+        http_session = aiohttp.ClientSession()
+    return http_session
 
 # =========================================================
 # HELPER: SMART TEXT SIMILARITY
@@ -57,15 +64,13 @@ SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    
-    ratio = SequenceMatcher(None, clean1, clean2).ratio()
-    return ratio >= SIMILARITY_THRESHOLD
+    return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE AI SUPREME ENGINE (Google Gemini 3.1 Flash-Lite)
+# ASYNC PURE AI ANALYZER (Google Gemini 3.1 Flash-Lite)
 # =========================================================
 
-def analyze_intent_with_ai(text: str) -> bool:
+async def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
     
     if not clean or len(clean) < 3:
@@ -74,28 +79,24 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
-    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
     prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
 
 مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
-- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه (بما في ذلك طلبات الشراء أو الاستفسار عن متواجدين في أماكن مثل جرير وغيرها).
-- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "فيه احد عند جرير؟").
+- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار (مثل: "مين يوديني من الحمى لين الشقيري")، نقل، أو مندوب لنفسه أو لأحد معارفه.
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "فيه احد عند جرير؟").
 - أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش", "متواجد الآن").
-- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
-- التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
-- الإعلانات التجارية، القروض، السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
+- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة والتحذيرات.
 
 الرسالة المراد تحليلها بعمق:
 "{clean}"
@@ -108,25 +109,30 @@ def analyze_intent_with_ai(text: str) -> bool:
         "Content-Type": "application/json"
     }
 
+    payload = {
+        "model": "google/gemini-3.1-flash-lite",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0,
+        "max_tokens": 2,
+        "stream": False
+    }
+
     try:
-        payload = {
-            "model": "google/gemini-3.1-flash-lite",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0,
-            "max_tokens": 2
-        }
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
-        if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
-            return "YES" in answer
+        session = await get_http_session()
+        async with ai_semaphore:
+            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as res:
+                if res.status == 200:
+                    data = await res.json()
+                    answer = data['choices'][0]['message']['content'].strip().upper()
+                    print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:30]}...' -> {answer}", flush=True)
+                    return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ AI: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# INSTANT EVENT-DRIVEN MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -134,13 +140,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type == ChatType.PRIVATE:
-            return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
-
-        if message.reply_to_message_id or message.reply_to_message:
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
 
         if message.from_user and message.from_user.is_self:
@@ -163,22 +163,19 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
-                    time_diff = current_time - past_request['time']
-                    
-                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                    if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
                         return
 
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
-        if len(PROCESSED_KEYS) > 10000:
+        if len(PROCESSED_KEYS) > 15000:
             PROCESSED_KEYS.clear()
 
-        loop = asyncio.get_running_loop()
-        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
+        # استدعاء غير متزامن فوري لتحليل النية بدون أي انتظار بطيء
+        is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
             if user_id:
@@ -186,7 +183,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون حقيقي مقبول بـ Gemini]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -232,40 +229,18 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                         )
                     except Exception:
                         pass
-    except Exception:
-        pass
-
-# =========================================================
-# TARGETED GROUP HISTORY SCANNER (Safe Polling)
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-                await asyncio.sleep(0.5)
-        await asyncio.sleep(2.0)
+    except Exception as e:
+        print(f"Error: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
+    global http_session
     threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    http_session = aiohttp.ClientSession()
 
     userbot = Client(
         "my_userbot",
@@ -289,16 +264,18 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
+    # مستمع فوري لحظي لكل الرسائل الواردة في القروبات بدون أي مسح دوري بطيء
+    @userbot.on_message(filters.group & (filters.text | filters.caption))
+    async def instant_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنموذج Google Gemini 3.1 Flash-Lite بنجاح!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print("🚀 تم تشغيل محرك الاستماع الفوري اللحظي (Gemini Flash-Lite) بنجاح!", flush=True)
 
     await asyncio.Event().wait()
+
+    if http_session and not http_session.closed:
+        await http_session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
