@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Lightning Core Active!")
+        self.wfile.write(b"Barq True Live Listener Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,8 +44,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
@@ -132,10 +130,10 @@ async def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# REAL-TIME LIVE EVENT PROCESSOR (المستمع الفوري الحقيقي)
 # =========================================================
 
-async def process_scanned_message(userbot: Client, bot: Client, message: Message):
+async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id or not message.chat:
             return
@@ -177,6 +175,7 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
         if len(PROCESSED_KEYS) > 20000:
             PROCESSED_KEYS.clear()
 
+        print(f"🔍 [مستمع حي - فحص رسالة]: {clean_text[:35]}", flush=True)
         is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
@@ -185,7 +184,7 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون مقبول]: {clean_text[:35]}...", flush=True)
+            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:35]}...", flush=True)
 
             buttons = []
             row = []
@@ -200,7 +199,7 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", message.link))
             
             if row:
                 buttons.append(row)
@@ -232,52 +231,26 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
                     except Exception:
                         pass
     except Exception as e:
-        print(f"Error: {e}", flush=True)
+        print(f"Error in live processor: {e}", flush=True)
 
 # =========================================================
-# LIGHTNING BATCHED POLLING ENGINE (سرعة فائقة ودفعات ذكية)
+# ONE-TIME WARMUP (تسخين الحوارات لمرة واحدة عند الإقلاع فقط)
 # =========================================================
 
-async def lightning_polling(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    print("🔄 جلب جرد القروبات المشترك فيها الحساب...", flush=True)
+async def warmup_dialogs_once(userbot: Client):
+    await asyncio.sleep(3)
+    print("🔄 جاري تنشيط قنوات الاتصال بالمجموعات (مرة واحدة فقط عند الإقلاع)...", flush=True)
     try:
+        count = 0
         async for dialog in userbot.get_dialogs(limit=60):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
+                # نقوم فقط بطلب معلومات الدردشة لفتح القناة لدى تليجرام بدون سحب رسائل
+                await userbot.get_chat(dialog.chat.id)
+                count += 1
+                await asyncio.sleep(0.05)
+        print(f"✅ تم تنشيط {count} مجموعة بنجاح تام! المستمع الفوري يعمل الآن بدون أي سحب دوري وبدون حظر.", flush=True)
     except Exception as e:
-        print(f"Dialogs load error: {e}", flush=True)
-
-    chat_list = list(KNOWN_CHAT_IDS)
-    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ المحرك الصاروخي السريع الآن!", flush=True)
-
-    while True:
-        if chat_list:
-            # تقسيم الـ 45 قروب إلى 3 مجموعات (كل مجموعة 15 قروب تعمل بشكل متزامن سريع)
-            batch_size = 15
-            for i in range(0, len(chat_list), batch_size):
-                batch = chat_list[i:i + batch_size]
-                
-                tasks = []
-                for chat_id in batch:
-                    async def fetch_chat(cid):
-                        try:
-                            async for msg in userbot.get_chat_history(chat_id=cid, limit=1):
-                                asyncio.create_task(process_scanned_message(userbot, bot, msg))
-                        except Exception as e:
-                            if "FLOOD_WAIT" in str(e):
-                                match = re.search(r'\d+', str(e))
-                                wait_time = int(match.group()) if match else 10
-                                print(f"⚠️ تهدئة سريعة لمدة {wait_time} ثانية...", flush=True)
-                                await asyncio.sleep(wait_time)
-                    tasks.append(fetch_chat(chat_id))
-
-                await asyncio.gather(*tasks, return_exceptions=True)
-                # فاصل زمني صغير جداً بين الدفعات لضمان السرعة المطلقة بدون حظر
-                await asyncio.sleep(0.3)
-        
-        # دورة كاملة تتجدد كل ثانيتين فقط لضمان السرعة الفورية
-        await asyncio.sleep(2.0)
+        print(f"Warmup notice: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -311,11 +284,17 @@ async def main():
         except Exception:
             pass
 
+    # ربط المستمع الفوري الحقيقي للأحداث
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        asyncio.create_task(process_live_message(client, bot, message))
+
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Lightning Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq True Live Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    asyncio.create_task(lightning_polling(userbot, bot))
+    # تشغيل التسخين لمرة واحدة فقط (بدون حلقات سحب دورية نهائياً)
+    asyncio.create_task(warmup_dialogs_once(userbot))
 
     await asyncio.Event().wait()
 
