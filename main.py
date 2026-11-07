@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Master Engine Active!")
+        self.wfile.write(b"Barq Lightning Instant Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,13 +44,11 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(15) 
+ai_semaphore = asyncio.Semaphore(20) 
 http_session = None
 
 async def get_http_session():
@@ -122,15 +120,15 @@ async def analyze_intent_with_ai(text: str) -> bool:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Gemini]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"⚡ [Gemini الفوري]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI: {e}", flush=True)
+        print(f"⚠️ خطأ AI فوري: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# PURE INSTANT MESSAGE PROCESSOR (سرعة صاروخية 0 تأخير)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -138,10 +136,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
+        # استقبال مباشر من أي مجموعة أو مجموعة خارقة يشترك فيها الحساب
         if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
-
-        KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -185,7 +182,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -235,38 +232,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# SECURE SMART GROUP PULLER (لجلب وسحب القروبات الكبيرة بدقة)
-# =========================================================
-
-async def smart_group_puller(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    try:
-        async for dialog in userbot.get_dialogs(limit=100):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception as e:
-        print(f"Dialogs error: {e}", flush=True)
-
-    # حلقة سحب متوازنة جداً تضمن عدم تفويت أي مجموعة كبيرة وتتجنب الحظر
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception as e:
-                    if "FLOOD_WAIT" in str(e):
-                        match = re.search(r'\d+', str(e))
-                        wait_time = int(match.group()) if match else 10
-                        print(f"⚠️ استراحة حماية مؤقتة لمدة {wait_time} ثانية...", flush=True)
-                        await asyncio.sleep(wait_time)
-                    else:
-                        await asyncio.sleep(0.5)
-                    continue
-                await asyncio.sleep(0.4) # فاصل زمني آمن تماماً يمنع رسائل الانتظار الطويلة ويضمن السحب المستمر
-        await asyncio.sleep(2.0)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -298,14 +263,21 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع الفوري البحت لجميع الرسائل الواردة في نفس اللحظة بدون أي فحص سجل أو تأخير
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("⚡ [Barq Master Engine] يعمل بكفاءة عالية: سحب فاعل من القروبات الكبيرة + استماع فوري!", flush=True)
+    
+    # تفاعل خفيف جداً مرة واحدة عند البدء لإجبار تيليجرام على تفعيل بث الرسائل للحساب
+    try:
+        async for _ in userbot.get_dialogs(limit=5):
+            break
+    except Exception:
+        pass
 
-    asyncio.create_task(smart_group_puller(userbot, bot))
+    print("⚡ [Barq Pure Instant] يعمل بالاستماع الفوري الحقيقي 100% وبدون أي تأخير أو انتظار!", flush=True)
 
     await asyncio.Event().wait()
 
