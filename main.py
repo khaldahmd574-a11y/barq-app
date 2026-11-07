@@ -262,12 +262,21 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع الفوري اللحظي الصرف بدون أي سحب تاريخ قديم مسبب للحظر
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
+    
+    # مزامنة سريعة لمرة واحدة فقط عند التشغيل ليتعرف البوت على القروبات
+    try:
+        print("🔄 جاري مزامنة القروبات لمرة واحدة...", flush=True)
+        async for dialog in userbot.get_dialogs(limit=50):
+            pass
+        print("✅ تمت المزامنة بنجاح، البوت يستمِع الآن للرسائل الجديدة فوراً!", flush=True)
+    except Exception as e:
+        print(f"⚠️ تنبيه المزامنة: {e}", flush=True)
+
     print("⚡ [Barq Pure Instant] تم تشغيل محرك الاستماع الفوري الصرف بنجاح وبدون حظر!", flush=True)
 
     await asyncio.Event().wait()
