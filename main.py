@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure Instant Supreme Engine Active!")
+        self.wfile.write(b"Barq Ultimate Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,6 +44,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
@@ -63,7 +65,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE ASYNC AI ANALYZER (Gemini 3.1 Flash-Lite)
+# AI ANALYZER (Gemini 3.1 Flash-Lite)
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
@@ -120,15 +122,15 @@ async def analyze_intent_with_ai(text: str) -> bool:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Gemini الفوري الصافي]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"⚡ [Gemini التحليل]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI فوري: {e}", flush=True)
+        print(f"⚠️ خطأ AI: {e}", flush=True)
 
     return False
 
 # =========================================================
-# INSTANT MESSAGE PROCESSOR
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -138,6 +140,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
+
+        KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -181,7 +185,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -231,6 +235,31 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
+# SAFE HYBRID SCANNER (جلب آخر رسالة بدون حظر FloodWait طويل)
+# =========================================================
+
+async def safe_hybrid_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    try:
+        async for dialog in userbot.get_dialogs(limit=40):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    await asyncio.sleep(3) # توقف مؤقت ذكي لتجنب أي حظر من تيليجرام
+                    continue
+                await asyncio.sleep(1.0)
+        await asyncio.sleep(3.0)
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -267,17 +296,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    
-    # مزامنة سريعة لمرة واحدة فقط عند التشغيل ليتعرف البوت على القروبات
-    try:
-        print("🔄 جاري مزامنة القروبات لمرة واحدة...", flush=True)
-        async for dialog in userbot.get_dialogs(limit=50):
-            pass
-        print("✅ تمت المزامنة بنجاح، البوت يستمِع الآن للرسائل الجديدة فوراً!", flush=True)
-    except Exception as e:
-        print(f"⚠️ تنبيه المزامنة: {e}", flush=True)
+    print("⚡ [Barq Ultimate] تم تشغيل النظام الهجين الفائق بنجاح!", flush=True)
 
-    print("⚡ [Barq Pure Instant] تم تشغيل محرك الاستماع الفوري الصرف بنجاح وبدون حظر!", flush=True)
+    asyncio.create_task(safe_hybrid_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
