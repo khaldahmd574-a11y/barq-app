@@ -50,7 +50,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(20) 
+ai_semaphore = asyncio.Semaphore(15) # السماح بتحليل عدة رسائل في نفس اللحظة بسرعة فائقة
 http_session = None
 
 async def get_http_session():
@@ -97,7 +97,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
 - أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة والتحذيرات.
 
 الرسالة المراد تحليلها بعمق:
@@ -122,7 +122,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
     try:
         session = await get_http_session()
         async with ai_semaphore:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=3)) as res:
+            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=4)) as res:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
@@ -240,13 +240,13 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# SMART SAFE HISTORY SCANNER (بدون حظر FloodWait طويل)
+# ULTRA FAST HISTORY SCANNER
 # =========================================================
 
 async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
     try:
-        async for dialog in userbot.get_dialogs(limit=40):
+        async for dialog in userbot.get_dialogs(limit=50):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
     except Exception:
@@ -259,10 +259,9 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
-                    await asyncio.sleep(2) # فترة راحة قصيرة لتفادي أي حظر
                     continue
-                await asyncio.sleep(0.5)
-        await asyncio.sleep(1.5)
+                await asyncio.sleep(0.1) # فحص فائق السرعة بدون أي تأخير ملحوظ
+        await asyncio.sleep(0.8)
 
 # =========================================================
 # MAIN ENTRYPOINT
