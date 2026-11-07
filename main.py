@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Clean Engine Active!")
+        self.wfile.write(b"Barq Lightning Core Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -50,7 +50,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(10) 
+ai_semaphore = asyncio.Semaphore(15) 
 http_session = None
 
 async def get_http_session():
@@ -65,7 +65,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# AI ANALYZER (محمية بالكامل ضد الأخطاء)
+# AI ANALYZER (Gemini 3.1 Flash-Lite)
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
@@ -123,11 +123,9 @@ async def analyze_intent_with_ai(text: str) -> bool:
                     data = await res.json()
                     choices = data.get('choices')
                     if choices and len(choices) > 0:
-                        message_obj = choices[0].get('message', {})
-                        content = message_obj.get('content')
+                        content = choices[0].get('message', {}).get('content')
                         if content:
-                            answer = content.strip().upper()
-                            return "YES" in answer
+                            return "YES" in content.strip().upper()
     except Exception:
         pass
 
@@ -237,10 +235,10 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# STABLE BALANCED POLLING ENGINE
+# LIGHTNING BATCHED POLLING ENGINE (سرعة فائقة ودفعات ذكية)
 # =========================================================
 
-async def stable_balanced_polling(userbot: Client, bot: Client):
+async def lightning_polling(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     print("🔄 جلب جرد القروبات المشترك فيها الحساب...", flush=True)
     try:
@@ -251,29 +249,35 @@ async def stable_balanced_polling(userbot: Client, bot: Client):
         print(f"Dialogs load error: {e}", flush=True)
 
     chat_list = list(KNOWN_CHAT_IDS)
-    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ محرك التشغيل المستقر الآن!", flush=True)
+    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ المحرك الصاروخي السريع الآن!", flush=True)
 
     while True:
         if chat_list:
-            for chat_id in chat_list:
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        asyncio.create_task(process_scanned_message(userbot, bot, msg))
-                except Exception as e:
-                    error_msg = str(e)
-                    if "FLOOD_WAIT" in error_msg:
-                        match = re.search(r'\d+', error_msg)
-                        wait_time = int(match.group()) if match else 20
-                        print(f"⚠️ تهدئة مؤقتة لمدة {wait_time} ثانية...", flush=True)
-                        await asyncio.sleep(wait_time)
-                    else:
-                        await asyncio.sleep(1.0)
-                    continue
+            # تقسيم الـ 45 قروب إلى 3 مجموعات (كل مجموعة 15 قروب تعمل بشكل متزامن سريع)
+            batch_size = 15
+            for i in range(0, len(chat_list), batch_size):
+                batch = chat_list[i:i + batch_size]
                 
-                # فاصل زمني متوازن ومستقر تماماً لمنع الحظر
-                await asyncio.sleep(1.0)
+                tasks = []
+                for chat_id in batch:
+                    async def fetch_chat(cid):
+                        try:
+                            async for msg in userbot.get_chat_history(chat_id=cid, limit=1):
+                                asyncio.create_task(process_scanned_message(userbot, bot, msg))
+                        except Exception as e:
+                            if "FLOOD_WAIT" in str(e):
+                                match = re.search(r'\d+', str(e))
+                                wait_time = int(match.group()) if match else 10
+                                print(f"⚠️ تهدئة سريعة لمدة {wait_time} ثانية...", flush=True)
+                                await asyncio.sleep(wait_time)
+                    tasks.append(fetch_chat(chat_id))
+
+                await asyncio.gather(*tasks, return_exceptions=True)
+                # فاصل زمني صغير جداً بين الدفعات لضمان السرعة المطلقة بدون حظر
+                await asyncio.sleep(0.3)
         
-        await asyncio.sleep(3.0)
+        # دورة كاملة تتجدد كل ثانيتين فقط لضمان السرعة الفورية
+        await asyncio.sleep(2.0)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -309,9 +313,9 @@ async def main():
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Stable Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq Lightning Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    asyncio.create_task(stable_balanced_polling(userbot, bot))
+    asyncio.create_task(lightning_polling(userbot, bot))
 
     await asyncio.Event().wait()
 
