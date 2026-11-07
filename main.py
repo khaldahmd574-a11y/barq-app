@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Clean Engine Active!")
+        self.wfile.write(b"Barq Original Buttons Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -32,7 +32,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION (مُعرّفة وثابتة لضمان عدم حدوث أي نقص)
+# CONFIGURATION
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -91,7 +91,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
 - أي استفسار بريء يبحث عن خدمة نقل أو توصيل مهما كانت لهجته.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
+- إعلانات السائقين الذين يعرضون خدماتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
 - التنبيهات وقوائم الثقة وإرشادات الإدارة.
 
 الرسالة المراد تحليلها:
@@ -129,7 +129,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# ASYNC WORKER (معالجة الطابور في الخلفية)
+# ASYNC WORKER (معالجة الطابور والأزرار بالشكل المطلوب)
 # =========================================================
 
 async def ai_worker(userbot: Client, bot: Client):
@@ -181,17 +181,20 @@ async def ai_worker(userbot: Client, bot: Client):
                 buttons = []
                 row = []
                 
+                # زر فتح المحادثة (على اليسار)
                 if message.from_user:
                     if message.from_user.username:
                         user_url = f"https://t.me/{message.from_user.username}"
                         user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                     else:
                         user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                        user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                        first_n = message.from_user.first_name or 'المستخدم'
+                        user_label = f"💬 فتح المحادثة ({first_n[:10]})"
                     row.append(InlineKeyboardButton(user_label, url=user_url))
 
+                # زر الرسالة الأصلية (على اليمين بجانب زر المحادثة)
                 if message.link:
-                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", message.link))
+                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
                 
                 if row:
                     buttons.append(row)
@@ -261,7 +264,6 @@ async def main():
         except Exception:
             pass
 
-    # المستمع الفوري الصامت (يلتقط الرسائل الحية فوراً بدون أي طلبات سحب)
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         if message and message.chat and message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
@@ -273,9 +275,8 @@ async def main():
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Clean Live Engine] يعمل بنجاح تام وبدون أي حظر عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq Original Layout Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    # تشغيل 3 عمال في الخلفية للمعالجة الفورية
     for _ in range(3):
         asyncio.create_task(ai_worker(userbot, bot))
 
