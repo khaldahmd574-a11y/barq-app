@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Active Engine!")
+        self.wfile.write(b"Barq Lightning Polling Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -50,7 +50,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(15) 
+ai_semaphore = asyncio.Semaphore(20) 
 http_session = None
 
 async def get_http_session():
@@ -133,15 +133,13 @@ async def analyze_intent_with_ai(text: str) -> bool:
 # MESSAGE PROCESSOR
 # =========================================================
 
-async def process_live_message(userbot: Client, bot: Client, message: Message):
+async def process_scanned_message(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id or not message.chat:
             return
 
         if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
-
-        KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -177,6 +175,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 20000:
             PROCESSED_KEYS.clear()
 
+        print(f"🔍 [فحص رسالة]: {clean_text[:35]}", flush=True)
         is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
@@ -185,7 +184,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون مقبول ومحقق]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -232,28 +231,43 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     except Exception:
                         pass
     except Exception as e:
-        print(f"Error: {e}", flush=True)
+        print(f"Error processing: {e}", flush=True)
 
 # =========================================================
-# ACTIVATOR & INITIAL WARMUP (لتنشيط القروبات إجبارياً لدى تليجرام)
+# ULTRA-FAST CONCURRENT POLLING ENGINE (فحص سريع جداً للـ 45 قروب)
 # =========================================================
 
-async def activate_and_warmup_groups(userbot: Client, bot: Client):
-    await asyncio.sleep(2)
-    print("🔄 جاري تنشيط وسحب معرفات القروبات لضمان عمل المستمع الفوري...", flush=True)
+async def check_single_chat(userbot: Client, bot: Client, chat_id: int):
     try:
-        async for dialog in userbot.get_dialogs(limit=100):
+        async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+            asyncio.create_task(process_scanned_message(userbot, bot, msg))
+    except Exception as e:
+        error_msg = str(e)
+        if "FLOOD_WAIT" in error_msg:
+            match = re.search(r'\d+', error_msg)
+            wait_time = int(match.group()) if match else 10
+            print(f"⚠️ حماية تليجرام (FloodWait): استراحة لمدة {wait_time} ثانية...", flush=True)
+            await asyncio.sleep(wait_time)
+
+async def ultra_fast_polling(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    print("🔄 جلب جرد الـ 45 قروب المشترك فيها الحساب...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=60):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=dialog.chat.id, limit=1):
-                        pass
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
     except Exception as e:
-        print(f"Warmup error: {e}", flush=True)
-    print("✅ تم تنشيط جميع القروبات بنجاح! المستمع الفوري يعمل الآن بكامل الطاقة.", flush=True)
+        print(f"Dialogs load error: {e}", flush=True)
+
+    print(f"✅ تم تسجيل {len(KNOWN_CHAT_IDS)} قروب. بدأ محرك السحب فائق السرعة الآن!", flush=True)
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            # تنفيذ الفحص على دفعات متوازية لجميع القروبات لتجاوز أي تأخير
+            tasks = [check_single_chat(userbot, bot, chat_id) for chat_id in list(KNOWN_CHAT_IDS)]
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
+        await asyncio.sleep(1.5) # دورة سريعة جداً تضمن عدم التأخير نهائياً
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -267,7 +281,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_id=API_ID,
+        api_ID=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -287,14 +301,12 @@ async def main():
         except Exception:
             pass
 
-    @userbot.on_message()
-    async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_live_message(client, bot, message))
-
     await userbot.start()
+    me = await userbot.get_me()
+    print(f"⚡ [Barq Ultra Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    # تشغيل التنشيط الأولي لجميع القروبات مرة واحدة عند الإقلاع (بدون أخطاء)
-    asyncio.create_task(activate_and_warmup_groups(userbot, bot))
+    # تشغيل محرك السحب فائق السرعة في الخلفية
+    asyncio.create_task(ultra_fast_polling(userbot, bot))
 
     await asyncio.Event().wait()
 
