@@ -263,11 +263,10 @@ async def ultra_fast_polling(userbot: Client, bot: Client):
 
     while True:
         if KNOWN_CHAT_IDS:
-            # تنفيذ الفحص على دفعات متوازية لجميع القروبات لتجاوز أي تأخير
             tasks = [check_single_chat(userbot, bot, chat_id) for chat_id in list(KNOWN_CHAT_IDS)]
             await asyncio.gather(*tasks, return_exceptions=True)
         
-        await asyncio.sleep(1.5) # دورة سريعة جداً تضمن عدم التأخير نهائياً
+        await asyncio.sleep(1.5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -281,7 +280,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_ID=API_ID,
+        api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -305,7 +304,6 @@ async def main():
     me = await userbot.get_me()
     print(f"⚡ [Barq Ultra Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    # تشغيل محرك السحب فائق السرعة في الخلفية
     asyncio.create_task(ultra_fast_polling(userbot, bot))
 
     await asyncio.Event().wait()
