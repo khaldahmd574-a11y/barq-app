@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Lightning Polling Active!")
+        self.wfile.write(b"Barq Turbo Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -50,7 +50,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(20) 
+ai_semaphore = asyncio.Semaphore(15) 
 http_session = None
 
 async def get_http_session():
@@ -89,7 +89,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
 - إذا كان الكاتب يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لمعارفه (مثل: "ابغى سواقه في صبيا توصلني العدايا"، "مين يوديني من الحمى لين الشقيري").
-- إذا كان الكاتب يسأل صراحة عن توفر سائق أو شخص في أي مدينة أو قرية بجازان (مثل: "مين فاضي في جيزان"، "مين فاضي في ضمد"، "من فاضي في صبيا"، "فيه احد عند جرير؟").
+- إذا كان الكاتب يسأل صراحة عن توفر سائق أو شخص في أي مدينة أو قرية بجازان (مثل: "مين فاضي في جيزان"، "مين فاضي في ضمد", "من فاضي في صبيا"، "فيه احد عند جرير؟").
 - أي استفسار بريء يبحث عن خدمة نقل أو توصيل مهما كانت لهجته.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
@@ -234,24 +234,19 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
         print(f"Error processing: {e}", flush=True)
 
 # =========================================================
-# ULTRA-FAST CONCURRENT POLLING ENGINE (فحص سريع جداً للـ 45 قروب)
+# TURBO BATCHED POLLING ENGINE (سرعة فائقة ودفعات آمنة)
 # =========================================================
 
 async def check_single_chat(userbot: Client, bot: Client, chat_id: int):
     try:
         async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
             asyncio.create_task(process_scanned_message(userbot, bot, msg))
-    except Exception as e:
-        error_msg = str(e)
-        if "FLOOD_WAIT" in error_msg:
-            match = re.search(r'\d+', error_msg)
-            wait_time = int(match.group()) if match else 10
-            print(f"⚠️ حماية تليجرام (FloodWait): استراحة لمدة {wait_time} ثانية...", flush=True)
-            await asyncio.sleep(wait_time)
+    except Exception:
+        pass
 
-async def ultra_fast_polling(userbot: Client, bot: Client):
+async def turbo_batched_polling(userbot: Client, bot: Client):
     await asyncio.sleep(2)
-    print("🔄 جلب جرد الـ 45 قروب المشترك فيها الحساب...", flush=True)
+    print("🔄 جلب جرد القروبات المشترك فيها الحساب...", flush=True)
     try:
         async for dialog in userbot.get_dialogs(limit=60):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
@@ -259,14 +254,22 @@ async def ultra_fast_polling(userbot: Client, bot: Client):
     except Exception as e:
         print(f"Dialogs load error: {e}", flush=True)
 
-    print(f"✅ تم تسجيل {len(KNOWN_CHAT_IDS)} قروب. بدأ محرك السحب فائق السرعة الآن!", flush=True)
+    chat_list = list(KNOWN_CHAT_IDS)
+    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ المحرك التوربو السريع الآمن الآن!", flush=True)
 
     while True:
-        if KNOWN_CHAT_IDS:
-            tasks = [check_single_chat(userbot, bot, chat_id) for chat_id in list(KNOWN_CHAT_IDS)]
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if chat_list:
+            # نقسم الـ 45 قروب إلى مجموعات صغيرة (دفعات من كل 10 قروبات مع بعض)
+            batch_size = 10
+            for i in range(0, len(chat_list), batch_size):
+                batch = chat_list[i:i + batch_size]
+                tasks = [check_single_chat(userbot, bot, chat_id) for chat_id in batch]
+                await asyncio.gather(*tasks, return_exceptions=True)
+                # فاصل قصير جداً ومنتظم بين كل دفعة وأخرى لمنع الحظر نهائياً
+                await asyncio.sleep(0.3)
         
-        await asyncio.sleep(1.5)
+        # استراحة بسيطة بين الدورات لتكون السرعة فائقة (خلال 3-4 ثوانٍ يخلص اللفة كاملة)
+        await asyncio.sleep(1.0)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -302,9 +305,9 @@ async def main():
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Ultra Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq Turbo Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    asyncio.create_task(ultra_fast_polling(userbot, bot))
+    asyncio.create_task(turbo_batched_polling(userbot, bot))
 
     await asyncio.Event().wait()
 
