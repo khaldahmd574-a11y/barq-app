@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Pure Silent Engine Active!")
+        self.wfile.write(b"Barq Queue Architecture Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -48,7 +48,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(15) 
+message_queue = asyncio.Queue()
 http_session = None
 
 async def get_http_session():
@@ -115,123 +115,139 @@ async def analyze_intent_with_ai(text: str) -> bool:
 
     try:
         session = await get_http_session()
-        async with ai_semaphore:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=4)) as res:
-                if res.status == 200:
-                    data = await res.json()
-                    choices = data.get('choices')
-                    if choices and len(choices) > 0:
-                        content = choices[0].get('message', {}).get('content')
-                        if content:
-                            return "YES" in content.strip().upper()
+        async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=4)) as res:
+            if res.status == 200:
+                data = await res.json()
+                choices = data.get('choices')
+                if choices and len(choices) > 0:
+                    content = choices[0].get('message', {}).get('content')
+                    if content:
+                        return "YES" in content.strip().upper()
     except Exception:
         pass
 
     return False
 
 # =========================================================
-# REAL-TIME LIVE EVENT PROCESSOR (المستمع الفوري الصامت)
+# ASYNC WORKER (معالجة الطابور عبر Workers مستقلة)
 # =========================================================
 
-async def process_live_message(userbot: Client, bot: Client, message: Message):
-    try:
-        if not message or not message.id or not message.chat:
-            return
+async def ai_worker(userbot: Client, bot: Client):
+    while True:
+        try:
+            message = await message_queue.get()
+            if not message:
+                message_queue.task_done()
+                continue
 
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            return
+            raw_text = message.text or message.caption or ""
+            clean_text = raw_text.strip()
 
-        if message.reply_to_message_id or message.reply_to_message:
-            return
+            msg_key = f"{message.chat.id}_{message.id}"
+            text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
 
-        if message.from_user and message.from_user.is_self:
-            return
+            if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+                message_queue.task_done()
+                continue
 
-        raw_text = message.text or message.caption or ""
-        clean_text = raw_text.strip()
-        
-        if len(clean_text) < 3:
-            return
+            current_time = time.time()
+            user_id = message.from_user.id if message.from_user else None
 
-        msg_key = f"{message.chat.id}_{message.id}"
-        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-        
-        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
-            return
+            if user_id and user_id in USER_REQUEST_HISTORY:
+                user_history = USER_REQUEST_HISTORY[user_id]
+                for past_request in user_history:
+                    if is_similar_text(clean_text, past_request['text']):
+                        if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
+                            message_queue.task_done()
+                            continue
 
-        current_time = time.time()
-        user_id = message.from_user.id if message.from_user else None
+            PROCESSED_KEYS.add(msg_key)
+            PROCESSED_KEYS.add(text_hash)
 
-        if user_id and user_id in USER_REQUEST_HISTORY:
-            user_history = USER_REQUEST_HISTORY[user_id]
-            for past_request in user_history:
-                if is_similar_text(clean_text, past_request['text']):
-                    if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
-                        return
+            if len(PROCESSED_KEYS) > 20000:
+                PROCESSED_KEYS.clear()
 
-        PROCESSED_KEYS.add(msg_key)
-        PROCESSED_KEYS.add(text_hash)
+            print(f"🔍 [Worker فحص رسالة]: {clean_text[:35]}", flush=True)
+            is_client_request = await analyze_intent_with_ai(clean_text)
 
-        if len(PROCESSED_KEYS) > 20000:
-            PROCESSED_KEYS.clear()
+            if is_client_request:
+                if user_id:
+                    if user_id not in USER_REQUEST_HISTORY:
+                        USER_REQUEST_HISTORY[user_id] = []
+                    USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-        print(f"🔍 [استماع فوري حي]: {clean_text[:35]}", flush=True)
-        is_client_request = await analyze_intent_with_ai(clean_text)
+                print(f"🚀 [طلب زبون مقبول عبر الطابور]: {clean_text[:35]}...", flush=True)
 
-        if is_client_request:
-            if user_id:
-                if user_id not in USER_REQUEST_HISTORY:
-                    USER_REQUEST_HISTORY[user_id] = []
-                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
-
-            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:35]}...", flush=True)
-
-            buttons = []
-            row = []
-            
-            if message.from_user:
-                if message.from_user.username:
-                    user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
-                else:
-                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
-                row.append(InlineKeyboardButton(user_label, url=user_url))
-
-            if message.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", message.link))
-            
-            if row:
-                buttons.append(row)
+                buttons = []
+                row = []
                 
-            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+                if message.from_user:
+                    if message.from_user.username:
+                        user_url = f"https://t.me/{message.from_user.username}"
+                        user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                    else:
+                        user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                        user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                    row.append(InlineKeyboardButton(user_label, url=user_url))
 
-            for user in TARGET_USERS:
-                sent = False
-                if bot:
-                    try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                        sent = True
-                    except Exception:
-                        pass
+                if message.link:
+                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", message.link))
+                
+                if row:
+                    buttons.append(row)
+                    
+                reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-                if not sent:
-                    try:
-                        await userbot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
-                    except Exception:
-                        pass
+                for user in TARGET_USERS:
+                    sent = False
+                    if bot:
+                        try:
+                            await bot.send_message(
+                                chat_id=user,
+                                text=clean_text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=True
+                            )
+                            sent = True
+                        except Exception:
+                            pass
+
+                    if not sent:
+                        try:
+                            await userbot.send_message(
+                                chat_id=user,
+                                text=clean_text,
+                                reply_markup=reply_markup,
+                                disable_web_page_preview=True
+                            )
+                        except Exception:
+                            pass
+
+            message_queue.task_done()
+            await asyncio.sleep(0.1)
+        except Exception as e:
+            print(f"Worker error: {e}", flush=True)
+            message_queue.task_done()
+
+# =========================================================
+# SAFE DIALOG WARMUP (تنشيط هادئ وآمن جداً لفتح قنوات المجموعات)
+# =========================================================
+
+async def safe_dialog_warmup(userbot: Client):
+    await asyncio.sleep(3)
+    print("🔄 جاري تنشيط قنوات الاتصال بالمجموعات بهدوء لضمان استقبال الرسائل الحية...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=60):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                try:
+                    # طلب خفيف جداً يفتح قناة التحديثات للمجموعة بدون سحب تاريخ الرسائل وبدون FloodWait
+                    await userbot.get_chat(dialog.chat.id)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.5) # فاصل زمني آمن وطويل نسبياً لمنع أي حظر
+        print("✅ تم تفعيل قنوات الاستماع لجميع المجموعات بنجاح تام!", flush=True)
     except Exception as e:
-        print(f"Error in live processor: {e}", flush=True)
+        print(f"Warmup notice: {e}", flush=True)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -265,14 +281,26 @@ async def main():
         except Exception:
             pass
 
-    # المستمع الفوري الصامت للأحداث الحية بدون أي طلبات سحب خارجية
+    # المستمع الفوري يضع الرسائل في الطابور (`asyncio.Queue`) فوراً دون أي انتظار
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_live_message(client, bot, message))
+        if message and message.chat and message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            if not message.from_user or not message.from_user.is_self:
+                if not message.reply_to_message_id and not message.reply_to_message:
+                    raw_text = message.text or message.caption or ""
+                    if len(raw_text.strip()) >= 3:
+                        await message_queue.put(message)
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Pure Silent Live Engine] يعمل بنجاح تام وبدون أي حظر عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq Queue Architecture] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
+
+    # تشغيل عمال الطابور (Workers) لمعالجة الرسائل في الخلفية
+    for _ in range(3):
+        asyncio.create_task(ai_worker(userbot, bot))
+
+    # تشغيل التسخين الهادئ والآمن لمرة واحدة لفتح القنوات
+    asyncio.create_task(safe_dialog_warmup(userbot))
 
     await asyncio.Event().wait()
 
