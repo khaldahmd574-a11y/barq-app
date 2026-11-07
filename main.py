@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Safe Shield Engine Active!")
+        self.wfile.write(b"Barq Clean Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -65,7 +65,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# AI ANALYZER (Gemini 3.1 Flash-Lite)
+# AI ANALYZER (محمية بالكامل ضد الأخطاء)
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
@@ -121,8 +121,13 @@ async def analyze_intent_with_ai(text: str) -> bool:
             async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=4)) as res:
                 if res.status == 200:
                     data = await res.json()
-                    answer = data['choices'][0]['message']['content'].strip().upper()
-                    return "YES" in answer
+                    choices = data.get('choices')
+                    if choices and len(choices) > 0:
+                        message_obj = choices[0].get('message', {})
+                        content = message_obj.get('content')
+                        if content:
+                            answer = content.strip().upper()
+                            return "YES" in answer
     except Exception:
         pass
 
@@ -232,10 +237,10 @@ async def process_scanned_message(userbot: Client, bot: Client, message: Message
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# SAFE SHIELDED POLLING ENGINE (حماية كاملة ضد FloodWait)
+# STABLE BALANCED POLLING ENGINE
 # =========================================================
 
-async def safe_shielded_polling(userbot: Client, bot: الدرهم = None):
+async def stable_balanced_polling(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     print("🔄 جلب جرد القروبات المشترك فيها الحساب...", flush=True)
     try:
@@ -246,11 +251,10 @@ async def safe_shielded_polling(userbot: Client, bot: الدرهم = None):
         print(f"Dialogs load error: {e}", flush=True)
 
     chat_list = list(KNOWN_CHAT_IDS)
-    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ درع حماية السحب الآن!", flush=True)
+    print(f"✅ تم تسجيل {len(chat_list)} قروب. بدأ محرك التشغيل المستقر الآن!", flush=True)
 
     while True:
         if chat_list:
-            # فحص القروبات دفعة بعد دفعة بشكل هادئ وآمن تماماً لتجنب أي ضغط على تليجرام
             for chat_id in chat_list:
                 try:
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
@@ -259,18 +263,17 @@ async def safe_shielded_polling(userbot: Client, bot: الدرهم = None):
                     error_msg = str(e)
                     if "FLOOD_WAIT" in error_msg:
                         match = re.search(r'\d+', error_msg)
-                        wait_time = int(match.group()) if match else 30
-                        print(f"⚠️ تليجرام طلب تهدئة مؤقتة لمدة {wait_time} ثانية...", flush=True)
+                        wait_time = int(match.group()) if match else 20
+                        print(f"⚠️ تهدئة مؤقتة لمدة {wait_time} ثانية...", flush=True)
                         await asyncio.sleep(wait_time)
                     else:
                         await asyncio.sleep(1.0)
                     continue
                 
-                # فاصل زمني هادئ وآمن بين كل قروب والثاني يمنع الحظر نهائياً
-                await asyncio.sleep(0.8)
+                # فاصل زمني متوازن ومستقر تماماً لمنع الحظر
+                await asyncio.sleep(1.0)
         
-        # استراحة قصيرة جداً بين الدورات الكاملة
-        await asyncio.sleep(5.0)
+        await asyncio.sleep(3.0)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -306,9 +309,9 @@ async def main():
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq Shield Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
+    print(f"⚡ [Barq Stable Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
 
-    asyncio.create_task(safe_shielded_polling(userbot, bot))
+    asyncio.create_task(stable_balanced_polling(userbot, bot))
 
     await asyncio.Event().wait()
 
