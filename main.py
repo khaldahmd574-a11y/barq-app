@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Safe Engine Active!")
+        self.wfile.write(b"Barq Turbo Hybrid Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -85,7 +85,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 - إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش", "متواجد الآن").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
 - التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
-- الإعلانات التجارية، القروض، السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
+- الإعلانات التجارية، القروض, السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
 
 الرسالة المراد تحليلها بعمق:
 "{clean}"
@@ -105,13 +105,12 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        res = requests.post(url, headers=headers, json=payload, timeout=6)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [Gemini Flash-Lite]: '{clean[:30]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+    except Exception:
+        pass
 
     return False
 
@@ -134,11 +133,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             return
 
         if message.from_user and message.from_user.is_self:
-            return
-
-        # تجاهل الرسائل القديمة التي قبل إقلاع البوت بفترة طويلة
-        msg_date = message.date.timestamp() if hasattr(message, 'date') and message.date else time.time()
-        if msg_date < (BOT_START_TIME - 30):
             return
 
         raw_text = message.text or message.caption or ""
@@ -178,7 +172,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -229,31 +223,32 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# SAFE ALIVE KEEPER (نبضة حياة خفيفة وبطيئة جداً لمنع موت البوت)
+# FAST TURBO KEEPER (نبضة حياة سريعة وموزعة)
 # =========================================================
 
-async def safe_alive_keeper(userbot: Client, bot: Client):
-    await asyncio.sleep(10)
+async def turbo_alive_keeper(userbot: Client, bot: Client):
+    await asyncio.sleep(5)
     try:
-        async for dialog in userbot.get_dialogs(limit=45):
+        async for dialog in userbot.get_dialogs(limit=50):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
     except Exception:
         pass
 
-    # حلقة بطيئة جداً وآمنة 100% لإبقاء القنوات متصلة بدون أي ضغط أو حظر
+    # حلقة سريعة وخفيفة لتنشيط الحساب بانتظام
     while True:
         if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
+            chat_list = list(KNOWN_CHAT_IDS)
+            # فحص سريع وخفيف بدون تأخيرات مزعجة
+            for chat_id in chat_list:
                 try:
-                    # فحص أحدث رسالة فقط وبفاصل زمني طويل جداً (3 ثواني بين كل قروب)
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        await process_live_message(userbot, bot, msg)
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
                         break
                 except Exception:
                     pass
-                await asyncio.sleep(3.0) 
-        await asyncio.sleep(15.0) # انتظار 15 ثانية كاملة قبل إعادة النبضة
+                await asyncio.sleep(0.5) # فاصل قصير جداً لسرعة الاستجابة
+        await asyncio.sleep(5.0) # تكرار الدورة بسرعة تضمن بقاء الحساب متنشطاً ودائماً في الحدث
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -289,9 +284,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام البوت الآمن (الاستماع الفوري + نبضة الحياة الهادئة) بنجاح!", flush=True)
+    print("⚡ [Barq Turbo Engine] يعمل الآن بأقصى سرعة واستقرار فوري!", flush=True)
 
-    asyncio.create_task(safe_alive_keeper(userbot, bot))
+    asyncio.create_task(turbo_alive_keeper(userbot, bot))
 
     await asyncio.Event().wait()
 
