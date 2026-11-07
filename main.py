@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Lightning Supreme Engine Active!")
+        self.wfile.write(b"Barq Pure Instant Supreme Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,13 +44,11 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(15) # السماح بتحليل عدة رسائل في نفس اللحظة بسرعة فائقة
+ai_semaphore = asyncio.Semaphore(15)
 http_session = None
 
 async def get_http_session():
@@ -59,17 +57,13 @@ async def get_http_session():
         http_session = aiohttp.ClientSession()
     return http_session
 
-# =========================================================
-# HELPER: SMART TEXT SIMILARITY
-# =========================================================
-
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# LIGHTNING FAST ASYNC AI ANALYZER (Gemini 3.1 Flash-Lite)
+# PURE ASYNC AI ANALYZER (Gemini 3.1 Flash-Lite)
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
@@ -126,15 +120,15 @@ async def analyze_intent_with_ai(text: str) -> bool:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Gemini صاروخي]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"⚡ [Gemini الفوري الصافي]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI صاروخي: {e}", flush=True)
+        print(f"⚠️ خطأ AI فوري: {e}", flush=True)
 
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# INSTANT MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -142,11 +136,8 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type == ChatType.PRIVATE:
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -190,7 +181,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون فوري مقبول صاروخياً]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -240,30 +231,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# ULTRA FAST HISTORY SCANNER
-# =========================================================
-
-async def direct_chat_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(1)
-    try:
-        async for dialog in userbot.get_dialogs(limit=50):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-                await asyncio.sleep(0.1) # فحص فائق السرعة بدون أي تأخير ملحوظ
-        await asyncio.sleep(0.8)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -295,14 +262,13 @@ async def main():
         except Exception:
             pass
 
+    # الاستماع الفوري اللحظي الصرف بدون أي سحب تاريخ قديم مسبب للحظر
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("⚡ [Barq Lightning] تم تشغيل النظام بالسرعة القصوى وبمحرك تفاعل فوري صاروخي!", flush=True)
-
-    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+    print("⚡ [Barq Pure Instant] تم تشغيل محرك الاستماع الفوري الصرف بنجاح وبدون حظر!", flush=True)
 
     await asyncio.Event().wait()
 
