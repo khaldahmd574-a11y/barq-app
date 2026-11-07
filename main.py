@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq True Live Listener Active!")
+        self.wfile.write(b"Barq Pure Silent Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -130,7 +130,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# REAL-TIME LIVE EVENT PROCESSOR (المستمع الفوري الحقيقي)
+# REAL-TIME LIVE EVENT PROCESSOR (المستمع الفوري الصامت)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -175,7 +175,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if len(PROCESSED_KEYS) > 20000:
             PROCESSED_KEYS.clear()
 
-        print(f"🔍 [مستمع حي - فحص رسالة]: {clean_text[:35]}", flush=True)
+        print(f"🔍 [استماع فوري حي]: {clean_text[:35]}", flush=True)
         is_client_request = await analyze_intent_with_ai(clean_text)
 
         if is_client_request:
@@ -234,25 +234,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error in live processor: {e}", flush=True)
 
 # =========================================================
-# ONE-TIME WARMUP (تسخين الحوارات لمرة واحدة عند الإقلاع فقط)
-# =========================================================
-
-async def warmup_dialogs_once(userbot: Client):
-    await asyncio.sleep(3)
-    print("🔄 جاري تنشيط قنوات الاتصال بالمجموعات (مرة واحدة فقط عند الإقلاع)...", flush=True)
-    try:
-        count = 0
-        async for dialog in userbot.get_dialogs(limit=60):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                # نقوم فقط بطلب معلومات الدردشة لفتح القناة لدى تليجرام بدون سحب رسائل
-                await userbot.get_chat(dialog.chat.id)
-                count += 1
-                await asyncio.sleep(0.05)
-        print(f"✅ تم تنشيط {count} مجموعة بنجاح تام! المستمع الفوري يعمل الآن بدون أي سحب دوري وبدون حظر.", flush=True)
-    except Exception as e:
-        print(f"Warmup notice: {e}", flush=True)
-
-# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -284,17 +265,14 @@ async def main():
         except Exception:
             pass
 
-    # ربط المستمع الفوري الحقيقي للأحداث
+    # المستمع الفوري الصامت للأحداث الحية بدون أي طلبات سحب خارجية
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
     me = await userbot.get_me()
-    print(f"⚡ [Barq True Live Engine] يعمل بنجاح تام عبر الحساب: {me.first_name}", flush=True)
-
-    # تشغيل التسخين لمرة واحدة فقط (بدون حلقات سحب دورية نهائياً)
-    asyncio.create_task(warmup_dialogs_once(userbot))
+    print(f"⚡ [Barq Pure Silent Live Engine] يعمل بنجاح تام وبدون أي حظر عبر الحساب: {me.first_name}", flush=True)
 
     await asyncio.Event().wait()
 
