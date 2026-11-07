@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Lightning Instant Engine Active!")
+        self.wfile.write(b"Barq Active Engine!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,11 +44,13 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(20) 
+ai_semaphore = asyncio.Semaphore(15) 
 http_session = None
 
 async def get_http_session():
@@ -86,7 +88,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
 مهمتك الجوهرية قراءة الرسالة وتحديد ما إذا كانت طلباً من زبون أو عميل:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
-- إذا كان الكاتب يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لمعارفه (مثل: "مين يوديني من الحمى لين الشقيري").
+- إذا كان الكاتب يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لمعارفه (مثل: "ابغى سواقه في صبيا توصلني العدايا"، "مين يوديني من الحمى لين الشقيري").
 - إذا كان الكاتب يسأل صراحة عن توفر سائق أو شخص في أي مدينة أو قرية بجازان (مثل: "مين فاضي في جيزان"، "مين فاضي في ضمد"، "من فاضي في صبيا"، "فيه احد عند جرير؟").
 - أي استفسار بريء يبحث عن خدمة نقل أو توصيل مهما كانت لهجته.
 
@@ -120,15 +122,15 @@ async def analyze_intent_with_ai(text: str) -> bool:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Gemini الفوري]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"⚡ [Gemini]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI فوري: {e}", flush=True)
+        print(f"⚠️ خطأ AI: {e}", flush=True)
 
     return False
 
 # =========================================================
-# PURE INSTANT MESSAGE PROCESSOR (سرعة صاروخية 0 تأخير)
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -136,9 +138,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        # استقبال مباشر من أي مجموعة أو مجموعة خارقة يشترك فيها الحساب
         if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
             return
+
+        KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -182,7 +185,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون فوري مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -232,6 +235,28 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
+# ACTIVATOR & INITIAL WARMUP (لتنشيط القروبات إجبارياً لدى تليجرام)
+# =========================================================
+
+async def activate_and_warmup_groups(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    print("🔄 جاري تنشيط وسحب معرفات القروبات لضمان عمل المستمع الفوري...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=100):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+                try:
+                    # سحب رسالة واحدة فقط لكل قروب عند البداية لتجذير الاتصال وتنشيط الـ Updates
+                    async for msg in userbot.get_chat_history(chat_id=dialog.chat.id, limit=1):
+                        pass
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+    except Exception as e:
+        print(f"Warmup error: {e}", flush=True)
+    print("✅ تم تنشيط جميع القروبات بنجاح! المستمع الفوري يعمل الآن بكامل الطاقة.", flush=True)
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -263,21 +288,14 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع الفوري البحت لجميع الرسائل الواردة في نفس اللحظة بدون أي فحص سجل أو تأخير
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    
-    # تفاعل خفيف جداً مرة واحدة عند البدء لإجبار تيليجرام على تفعيل بث الرسائل للحساب
-    try:
-        async for _ in userbot.get_dialogs(limit=5):
-            break
-    except Exception:
-        pass
 
-    print("⚡ [Barq Pure Instant] يعمل بالاستماع الفوري الحقيقي 100% وبدون أي تأخير أو انتظار!", flush=True)
+    # تشغيل التنشيط الأولي لجميع القروبات مرة واحدة عند الإقلاع
+    async asyncio.create_task(activate_and_warmup_groups(userbot, bot))
 
     await asyncio.Event().wait()
 
