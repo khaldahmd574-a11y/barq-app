@@ -246,7 +246,6 @@ async def activate_and_warmup_groups(userbot: Client, bot: Client):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
                 try:
-                    # سحب رسالة واحدة فقط لكل قروب عند البداية لتجذير الاتصال وتنشيط الـ Updates
                     async for msg in userbot.get_chat_history(chat_id=dialog.chat.id, limit=1):
                         pass
                 except Exception:
@@ -294,8 +293,8 @@ async def main():
 
     await userbot.start()
 
-    # تشغيل التنشيط الأولي لجميع القروبات مرة واحدة عند الإقلاع
-    async asyncio.create_task(activate_and_warmup_groups(userbot, bot))
+    # تشغيل التنشيط الأولي لجميع القروبات مرة واحدة عند الإقلاع (بدون أخطاء)
+    asyncio.create_task(activate_and_warmup_groups(userbot, bot))
 
     await asyncio.Event().wait()
 
