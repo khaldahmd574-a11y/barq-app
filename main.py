@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Engine Active!")
+        self.wfile.write(b"Barq Lightning Supreme Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -50,7 +50,7 @@ USER_REQUEST_HISTORY = {}
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-ai_semaphore = asyncio.Semaphore(15)
+ai_semaphore = asyncio.Semaphore(20) 
 http_session = None
 
 async def get_http_session():
@@ -59,13 +59,17 @@ async def get_http_session():
         http_session = aiohttp.ClientSession()
     return http_session
 
+# =========================================================
+# HELPER: SMART TEXT SIMILARITY
+# =========================================================
+
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# AI ANALYZER (Gemini 3.1 Flash-Lite)
+# LIGHTNING FAST ASYNC AI ANALYZER (Gemini 3.1 Flash-Lite)
 # =========================================================
 
 async def analyze_intent_with_ai(text: str) -> bool:
@@ -93,7 +97,7 @@ async def analyze_intent_with_ai(text: str) -> bool:
 - أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة والتحذيرات.
 
 الرسالة المراد تحليلها بعمق:
@@ -118,14 +122,14 @@ async def analyze_intent_with_ai(text: str) -> bool:
     try:
         session = await get_http_session()
         async with ai_semaphore:
-            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=4)) as res:
+            async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=3)) as res:
                 if res.status == 200:
                     data = await res.json()
                     answer = data['choices'][0]['message']['content'].strip().upper()
-                    print(f"⚡ [Gemini التحليل]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"⚡ [Gemini صاروخي]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ AI: {e}", flush=True)
+        print(f"⚠️ خطأ AI صاروخي: {e}", flush=True)
 
     return False
 
@@ -138,10 +142,11 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if not message or not message.id or not message.chat:
             return
 
-        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+        if message.chat.type == ChatType.PRIVATE:
             return
 
-        KNOWN_CHAT_IDS.add(message.chat.id)
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -185,7 +190,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"🚀 [طلب زبون فوري مقبول صاروخياً]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -235,10 +240,10 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         print(f"Error: {e}", flush=True)
 
 # =========================================================
-# SAFE HYBRID SCANNER (جلب آخر رسالة بدون حظر FloodWait طويل)
+# SMART SAFE HISTORY SCANNER (بدون حظر FloodWait طويل)
 # =========================================================
 
-async def safe_hybrid_scanner(userbot: Client, bot: Client):
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
     await asyncio.sleep(2)
     try:
         async for dialog in userbot.get_dialogs(limit=40):
@@ -254,10 +259,10 @@ async def safe_hybrid_scanner(userbot: Client, bot: Client):
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
-                    await asyncio.sleep(3) # توقف مؤقت ذكي لتجنب أي حظر من تيليجرام
+                    await asyncio.sleep(2) # فترة راحة قصيرة لتفادي أي حظر
                     continue
-                await asyncio.sleep(1.0)
-        await asyncio.sleep(3.0)
+                await asyncio.sleep(0.5)
+        await asyncio.sleep(1.5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -296,9 +301,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("⚡ [Barq Ultimate] تم تشغيل النظام الهجين الفائق بنجاح!", flush=True)
+    print("⚡ [Barq Lightning] تم تشغيل النظام بالسرعة القصوى وبمحرك تفاعل فوري صاروخي!", flush=True)
 
-    asyncio.create_task(safe_hybrid_scanner(userbot, bot))
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
