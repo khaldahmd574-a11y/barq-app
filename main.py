@@ -116,7 +116,8 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        # مهلة زمنية آمنة ومرفوعة إلى 15 ثانية لمنع انقطاع الاتصال (Timeout)
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         if res.status_code == 200:
             data = res.json()
             if 'choices' in data and len(data['choices']) > 0:
@@ -247,7 +248,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 async def hybrid_history_scanner(userbot: Client, bot: Client):
     await asyncio.sleep(5)
     
-    # جلب جميع المجموعات التي يشترك فيها الحساب تلقائياً
     try:
         async for dialog in userbot.get_dialogs(limit=100):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
@@ -259,12 +259,11 @@ async def hybrid_history_scanner(userbot: Client, bot: Client):
         if KNOWN_CHAT_IDS:
             for chat_id in list(KNOWN_CHAT_IDS):
                 try:
-                    # فحص أخر رسالة واحدة فقط لكل قروب بهدوء وبدون ضغط
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-                await asyncio.sleep(1.5) # فاصل زمني هادئ ومريح لعدم إزعاج تيليجرام
+                await asyncio.sleep(1.5)
         await asyncio.sleep(10.0)
 
 # =========================================================
@@ -296,15 +295,13 @@ async def main():
         except Exception:
             pass
 
-    # الاستماع الفوري للرسائل الواردة لحظياً
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المدمج بنجاح (استماع فوري + فحص وقائي آمن لجميع الـ 46 قروب)!", flush=True)
+    print("🚀 تم تشغيل النظام المدمج والمحدث بنجاح لجميع المجموعات!", flush=True)
 
-    # تشغيل الماسح الاحتياطي في الخلفية لضمان عدم موت البوت أبداً
     asyncio.create_task(hybrid_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
