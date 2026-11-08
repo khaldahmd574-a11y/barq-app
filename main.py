@@ -7,14 +7,14 @@ from hydrogram import Client
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7 (إجباري لمنع مشكلة Port timeout في Render)
+# KEEP ALIVE SERVER 24/7 (لمنع انقطاع الاتصال على Render)
 # =========================================================
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Bot Engine Active 24/7!")
+        self.wfile.write(b"Barq Supreme Engine Active 24/7!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -26,7 +26,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIG
+# CONFIGURATION
 # =========================================================
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
@@ -36,7 +36,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []
+GROUP_TITLE_KEYWORDS = []  # فارغ لمراقبة جميع القروبات المكتشفة
 
 msg_queue = asyncio.Queue(maxsize=500)
 send_queue = asyncio.Queue()
@@ -45,7 +45,7 @@ ai_sem = asyncio.Semaphore(3)
 AUTO_GROUP_IDS = set()
 
 # =========================================================
-# AI CHECK
+# AI CHECK (محصن بمهلة 20 ثانية وفلترة مسبقة سريعة)
 # =========================================================
 async def ai_check(session, text):
     if not text or len(text) < 5:
@@ -65,7 +65,7 @@ async def ai_check(session, text):
                     "messages": [{"role": "user", "content": f"هل هذه رسالة زبون يطلب مشوار/توصيل في جازان؟ أجب YES أو NO فقط. الرسالة: {text}"}],
                     "temperature": 0, "max_tokens": 2
                 },
-                timeout=12
+                timeout=20
             ) as res:
                 if res.status == 200:
                     data = await res.json()
@@ -119,7 +119,7 @@ async def sender(bot):
             markup = InlineKeyboardMarkup(buttons) if buttons else None
             tasks = [bot.send_message(chat_id=u, text=text, reply_markup=markup, disable_web_page_preview=True) for u in TARGET_USERS]
             await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"✅ تم الإرسال بنجاح: {text[:30]}", flush=True)
+            print(f"✅ تم الإرسال بنجاح للمستهدفين: {text[:30]}", flush=True)
         except Exception as e:
             print(f"Send error: {e}", flush=True)
         finally:
@@ -140,7 +140,7 @@ async def discover_groups(userbot):
                 if not any(k.lower() in title for k in GROUP_TITLE_KEYWORDS):
                     continue
             AUTO_GROUP_IDS.add(chat.id)
-        print(f"✅ تم اكتشاف {len(AUTO_GROUP_IDS)} قروب، والبوت جاهز تماماً", flush=True)
+        print(f"✅ تم اكتشاف {len(AUTO_GROUP_IDS)} قروب بنجاح!", flush=True)
     except Exception as e:
         print(f"Discover error: {e}", flush=True)
 
@@ -148,7 +148,6 @@ async def discover_groups(userbot):
 # MAIN
 # =========================================================
 async def main():
-    # تشغيل خادم الويب الخلفي لإبقاء المنفذ مفتوحاً وإرضاء Render
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     bot = Client(
@@ -185,7 +184,7 @@ async def main():
     async with aiohttp.ClientSession() as session:
         workers = [asyncio.create_task(worker(session)) for _ in range(3)]
         asyncio.create_task(sender(bot))
-        print("🚀 النظام شغال 24/7 وبكل قوة وبدون أي مشاكل منفذ!", flush=True)
+        print("🚀 النظام يعمل بأقصى سرعة وثبات تام 24/7!", flush=True)
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
