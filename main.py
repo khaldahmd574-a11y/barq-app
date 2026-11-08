@@ -3,7 +3,6 @@ import re
 import time
 import asyncio
 import hashlib
-import sqlite3
 import requests
 from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -11,10 +10,9 @@ import threading
 from hydrogram import Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
-from hydrogram.errors import FloodWait
 
 # =========================================================
-# 1. KEEP ALIVE SERVER 24/7
+# KEEP ALIVE SERVER 24/7
 # =========================================================
 
 class DummyServer(BaseHTTPRequestHandler):
@@ -22,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Direct Turbo Engine Active!")
+        self.wfile.write(b"Barq Supreme Hybrid Gemini Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -34,7 +32,7 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# 2. CONFIGURATION & DATABASE SETUP
+# CONFIGURATION
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
@@ -43,53 +41,52 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333", "anas14440"]
+# قائمة المستهدفين النهائية بالكامل
+TARGET_USERS = [
+    "abood1317", 
+    "Waaaaaaa33", 
+    "shaybq", 
+    "Ndhhyfvvjkcd", 
+    "fs_990", 
+    "Khaid3333", 
+    "anas14440"
+]
 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
-SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
-USER_REQUEST_HISTORY = {} 
+PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
-def init_db():
-    conn = sqlite3.connect("barq_direct_state.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS processed_messages (
-            msg_key TEXT PRIMARY KEY,
-            timestamp REAL
-        )
-    """)
-    conn.commit()
-    conn.close()
+USER_REQUEST_HISTORY = {} 
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
+SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-def is_processed_in_db(msg_key: str) -> bool:
-    conn = sqlite3.connect("barq_direct_state.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM processed_messages WHERE msg_key = ?", (msg_key,))
-    row = cursor.fetchone()
-    conn.close()
-    return row is not None
-
-def save_processed_to_db(msg_key: str):
-    conn = sqlite3.connect("barq_direct_state.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO processed_messages (msg_key, timestamp) VALUES (?, ?)", (msg_key, time.time()))
-    conn.commit()
-    conn.close()
+# =========================================================
+# HELPER: SMART TEXT SIMILARITY
+# =========================================================
 
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
+    
+    ratio = SequenceMatcher(None, clean1, clean2).ratio()
+    return ratio >= SIMILARITY_THRESHOLD
+
+# =========================================================
+# PURE AI SUPREME ENGINE (Google Gemini 3.1 Flash-Lite)
+# =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
+    
     if not clean or len(clean) < 3:
         return False
+
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
+
+    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
+
     if not OPENROUTER_API_KEY:
         return False
 
@@ -98,14 +95,15 @@ def analyze_intent_with_ai(text: str) -> bool:
 مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
-- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه (بما في ذلك طلبات الشراء أو الاستفسار عن متواجدين في أماكن مثل جرير وغيرها).
-- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار").
-- أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته.
+- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه (بما في ذلك طلبات الشراء أو الاستفسار عن متواجدين في أماكن مثل جرير وغيرها، أو مثل "مين يوديني من الحمى لين الشقيري").
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "فيه احد عند جرير؟").
+- أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم ورحلاتهم أو أرقام جوالاتهم.
-- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات الإدارة.
-- التحذيرات الأمنية، رسائل إبراء الذمة، الإعلانات التجارية والقروض.
+- إعلانات السائقين الذين يعرضون خدماتهم ورحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش", "متواجد الآن").
+- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
+- التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
+- الإعلانات التجارية، القروض، السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
 
 الرسالة المراد تحليلها بعمق:
 "{clean}"
@@ -125,19 +123,21 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=6)
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+
     return False
 
 # =========================================================
-# 3. DIRECT MESSAGE PROCESSOR (معالجة مباشرة وفورية بدون طوابير)
+# MESSAGE PROCESSOR
 # =========================================================
 
-async def process_and_send_message(userbot: Client, bot: Client, message: Message):
+async def process_live_message(userbot: Client, bot: Client, message: Message):
     try:
         if not message or not message.id or not message.chat:
             return
@@ -163,7 +163,7 @@ async def process_and_send_message(userbot: Client, bot: Client, message: Messag
         msg_key = f"{message.chat.id}_{message.id}"
         text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
         
-        if is_processed_in_db(msg_key) or is_processed_in_db(text_hash):
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
             return
 
         current_time = time.time()
@@ -171,17 +171,19 @@ async def process_and_send_message(userbot: Client, bot: Client, message: Messag
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-            skip = False
+
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
-                    if (current_time - past_request['time']) < MIN_TIME_BETWEEN_REPEATS:
-                        skip = True
-                        break
-            if skip:
-                return
+                    time_diff = current_time - past_request['time']
+                    
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                        return
 
-        save_processed_to_db(msg_key)
-        save_processed_to_db(text_hash)
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
+
+        if len(PROCESSED_KEYS) > 15000:
+            PROCESSED_KEYS.clear()
 
         loop = asyncio.get_running_loop()
         is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
@@ -192,7 +194,7 @@ async def process_and_send_message(userbot: Client, bot: Client, message: Messag
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"🚀 [طلب زبون مباشر ومقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون حقيقي مقبول بـ Gemini]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -203,8 +205,7 @@ async def process_and_send_message(userbot: Client, bot: Client, message: Messag
                     user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    first_n = message.from_user.first_name or 'المستخدم'
-                    user_label = f"💬 فتح المحادثة ({first_n[:10]})"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
@@ -219,26 +220,38 @@ async def process_and_send_message(userbot: Client, bot: Client, message: Messag
                 sent = False
                 if bot:
                     try:
-                        await bot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
                         sent = True
                     except Exception:
                         pass
+
                 if not sent:
                     try:
-                        await userbot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
+                        await userbot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
                     except Exception:
                         pass
-    except Exception as e:
-        print(f"⚠️ خطأ في معالجة الرسالة: {e}", flush=True)
+    except Exception:
+        pass
 
 # =========================================================
-# 4. ULTRA-FAST DIRECT POLLING KEEPER
+# TARGETED GROUP HISTORY SCANNER (Safe Polling)
 # =========================================================
 
-async def direct_polling_keeper(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
     try:
-        async for dialog in userbot.get_dialogs(limit=60):
+        async for dialog in userbot.get_dialogs(limit=50):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
     except Exception:
@@ -248,22 +261,18 @@ async def direct_polling_keeper(userbot: Client, bot: Client):
         if KNOWN_CHAT_IDS:
             for chat_id in list(KNOWN_CHAT_IDS):
                 try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=3):
-                        asyncio.create_task(process_and_send_message(userbot, bot, msg))
-                except FloodWait as e:
-                    print(f"⚠️ تم رصد FloodWait لمدة {e.value} ثانية...", flush=True)
-                    await asyncio.sleep(e.value)
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
-                    pass
-                await asyncio.sleep(0.5) # نصف ثانية فاصل فائق السرعة
-        await asyncio.sleep(5.0)
+                    continue
+                await asyncio.sleep(0.3)
+        await asyncio.sleep(1.5)
 
 # =========================================================
-# 5. MAIN ENTRYPOINT
+# MAIN ENTRYPOINT
 # =========================================================
 
 async def main():
-    init_db()
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
     userbot = Client(
@@ -290,12 +299,12 @@ async def main():
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
-        asyncio.create_task(process_and_send_message(client, bot, message))
+        asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 [Barq Direct Turbo Engine] يعمل مباشرة وبدون طوابير وبأقصى سرعة!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح مع محرك الاستماع الفوري والماسح المضمون!", flush=True)
 
-    asyncio.create_task(direct_polling_keeper(userbot, bot))
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
