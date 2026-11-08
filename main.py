@@ -5,28 +5,26 @@ from hydrogram import Client
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# CONFIG - قيم افتراضية لضمان عدم توقف البوت أبداً
+# CONFIG - قيم مباشرة وثابتة لضمان عدم حدوث أي خطأ في النشر
 # =========================================================
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
-# جلب بيانات التيليجرام مع وضع القيم مباشرة لإنهاء مشاكل الـ NoneType
-API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
+API_ID = 39120728
+API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []  # فاضي = راقب كل القروبات المكتشفة
+GROUP_TITLE_KEYWORDS = []
 
 msg_queue = asyncio.Queue(maxsize=500)
 send_queue = asyncio.Queue()
 seen_ids = set()
 ai_sem = asyncio.Semaphore(3)
-
 AUTO_GROUP_IDS = set()
 
 # =========================================================
-# AI - سريع مع فلتر ذكي ومحمي من الأخطاء
+# AI CHECK
 # =========================================================
 async def ai_check(session, text):
     if not text or len(text) < 5:
@@ -107,7 +105,7 @@ async def sender(bot):
             send_queue.task_done()
 
 # =========================================================
-# اكتشاف القروبات تلقائياً
+# DISCOVER GROUPS
 # =========================================================
 async def discover_groups(userbot):
     print("🔍 جاري اكتشاف القروبات تلقائياً...", flush=True)
@@ -152,7 +150,7 @@ async def main():
             return
         try:
             msg_queue.put_nowait(message)
-        except asyncio.QueueFull:
+        except asyncio.QueueFollow if hasattr(asyncio, 'QueueFull') else Exception:
             pass
 
     await bot.start()
