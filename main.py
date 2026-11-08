@@ -32,13 +32,14 @@ import html
 import json
 import logging
 import os
+import random
 import re
 import time
 from collections import OrderedDict
 
 import aiohttp
 from aiohttp import web
-from hydrogram import Client, filters, idle
+from hydrogram import Client, filters, idle, raw
 from hydrogram.errors import FloodWait, RPCError
 from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -368,7 +369,8 @@ async def heartbeat() -> None:
     log.info("نبضة الحياة تعمل كل %.1f ثانية", HEARTBEAT_INTERVAL)
     while True:
         try:
-            await user.get_me()
+            # Ping خفيف (get_me يستدعي GetFullUser وعليه حد صارم من تليجرام)
+            await user.invoke(raw.functions.Ping(ping_id=random.getrandbits(62)))
 
             for chat_id in WATCH_CHATS:
                 msgs = []
