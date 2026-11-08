@@ -110,11 +110,15 @@ def analyze_intent_with_ai(text: str) -> bool:
         }
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"Gemini Flash-Lite: '{clean[:30]}...' -> {answer}", flush=True)
-            return "YES" in answer
-    except Exception as e:
-        print(f"خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+            data = res.json()
+            if 'choices' in data and len(data['choices']) > 0:
+                msg_content = data['choices'][0].get('message', {}).get('content')
+                if msg_content:
+                    answer = msg_content.strip().upper()
+                    print(f"Gemini Flash-Lite: '{clean[:30]}...' -> {answer}", flush=True)
+                    return "YES" in answer
+    except Exception:
+        pass
 
     return False
 
