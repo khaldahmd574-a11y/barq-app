@@ -6,7 +6,7 @@ import hashlib
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from hydrogram import Client
+from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.enums import ChatType
 
@@ -35,10 +35,15 @@ def run_server():
 # =========================================================
 
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
-API_ID = int(os.environ.get("TELEGRAM_API_ID", 0))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+
+# قراءة API_ID بشكل آمن تماماً
+try:
+    API_ID = int(os.environ.get("TELEGRAM_API_ID", "0"))
+except ValueError:
+    API_ID = 0
 
 # قائمة المشتركين المستهدفين بالكامل
 TARGET_USERS = [
@@ -51,7 +56,6 @@ TARGET_USERS = [
     "anas14440"
 ]
 
-# ذاكرة بسيطة لمنع تكرار معالجة نفس الرسالة
 PROCESSED_MESSAGES = set()
 
 # =========================================================
@@ -106,8 +110,18 @@ async def main():
     threading.Thread(target=run_server, daemon=True).start()
     print("Dummy server started on Render port.", flush=True)
 
-    if not SESSION_STRING or not API_ID or not API_HASH or not BOT_TOKEN or not OPENROUTER_API_KEY:
-        print("WARNING: Some environment variables are missing!", flush=True)
+    # التحقق من المتغيرات البيئية وطباعة تنبيه تفصيلي إن نقص شيء
+    missing = []
+    if not SESSION_STRING: missing.append("SESSION_STRING")
+    if not API_ID: missing.append("TELEGRAM_API_ID")
+    if not API_HASH: missing.append("TELEGRAM_API_HASH")
+    if not BOT_TOKEN: missing.append("BOT_TOKEN")
+    if not OPENROUTER_API_KEY: missing.append("OPENROUTER_API_KEY")
+
+    if missing:
+        print(f"CRITICAL WARNING: Missing environment variables: {', '.join(missing)}", flush=True)
+    else:
+        print("All environment variables loaded successfully!", flush=True)
 
     userbot = Client(
         "my_user_session",
