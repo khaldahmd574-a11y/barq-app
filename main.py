@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Supreme Hybrid Gemini Engine Active!")
+        self.wfile.write(b"Barq Supreme Hybrid Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,6 +44,7 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
 
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
@@ -76,14 +77,12 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
-    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
     if not OPENROUTER_API_KEY:
         return False
 
-    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
     prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
 
 مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
@@ -132,7 +131,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR (Real-time Live Handler)
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -142,6 +141,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -239,6 +241,33 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
+# HYBRID SAFETY SCANNER (Smart Back-up for all 46 groups)
+# =========================================================
+
+async def hybrid_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(5)
+    
+    # جلب جميع المجموعات التي يشترك فيها الحساب تلقائياً
+    try:
+        async for dialog in userbot.get_dialogs(limit=100):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    # فحص أخر رسالة واحدة فقط لكل قروب بهدوء وبدون ضغط
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+                await asyncio.sleep(1.5) # فاصل زمني هادئ ومريح لعدم إزعاج تيليجرام
+        await asyncio.sleep(10.0)
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -267,13 +296,16 @@ async def main():
         except Exception:
             pass
 
-    # استقبال الرسائل اللحظية من جميع القروبات التي ينتمي إليها حسابك
+    # الاستماع الفوري للرسائل الواردة لحظياً
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح بالاعتماد على الاستماع الفوري لجميع المجموعات!", flush=True)
+    print("🚀 تم تشغيل النظام المدمج بنجاح (استماع فوري + فحص وقائي آمن لجميع الـ 46 قروب)!", flush=True)
+
+    # تشغيل الماسح الاحتياطي في الخلفية لضمان عدم موت البوت أبداً
+    asyncio.create_task(hybrid_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
