@@ -58,9 +58,6 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 def analyze_intent_with_ai(text: str) -> bool:
-    if not text or not isinstance(text, str):
-        return False
-        
     clean = text.strip()
     
     if not clean or len(clean) < 3:
@@ -75,11 +72,25 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # برومپت مرن جداً ومباشر لقبول الطلبات في جازان
-    prompt = f"""أنت مساعد ذكي لتحليل رسائل قروبات التوصيل والمشاوير في جازان.
-هل هذه الرسالة طلب مشوار أو توصيلة أو استفسار عن سائق أو مندوب؟
-الرسالة: "{clean}"
-أجب بكلمة واحدة فقط: YES أو NO"""
+    prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
+
+مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
+
+[اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
+- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه (بما في ذلك طلبات الشراء أو الاستفسار عن متواجدين في أماكن مثل جرير وغيرها، أو مثل "مين يوديني من الحمى لين الشقيري").
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "فيه احد عند جرير؟").
+- أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
+
+[ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش", "متواجد الآن").
+- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
+- التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
+- الإعلانات التجارية، القروض، السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
+
+الرسالة المراد تحليلها بعمق:
+"{clean}"
+
+الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -96,15 +107,11 @@ def analyze_intent_with_ai(text: str) -> bool:
         }
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
-            data = res.json()
-            if 'choices' in data and len(data['choices']) > 0:
-                msg_content = data['choices'][0].get('message', {}).get('content')
-                if msg_content:
-                    answer = msg_content.strip().upper()
-                    print(f"Gemini Flash-Lite: '{clean[:30]}...' -> {answer}", flush=True)
-                    return "YES" in answer
-    except Exception:
-        pass
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🧠 [Gemini Flash-Lite]: '{clean[:30]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
     return False
 
@@ -129,6 +136,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.from_user and message.from_user.is_self:
             return
 
+        # تجاهل الرسائل القديمة التي قبل إقلاع البوت بفترة طويلة
         msg_date = message.date.timestamp() if hasattr(message, 'date') and message.date else time.time()
         if msg_date < (BOT_START_TIME - 30):
             return
@@ -170,7 +178,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"طلب زبون مقبول: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -178,15 +186,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
             if message.from_user:
                 if message.from_user.username:
                     user_url = f"https://t.me/{message.from_user.username}"
-                    user_label = f"فتح المحادثة (@{message.from_user.username})"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
                     first_n = message.from_user.first_name or 'المستخدم'
-                    user_label = f"فتح المحادثة ({first_n[:10]})"
+                    user_label = f"💬 فتح المحادثة ({first_n[:10]})"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
-                row.append(InlineKeyboardButton("الرسالة الأصلية", url=message.link))
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
             
             if row:
                 buttons.append(row)
@@ -221,7 +229,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# SAFE ALIVE KEEPER
+# SAFE ALIVE KEEPER (نبضة حياة خفيفة وبطيئة جداً لمنع موت البوت)
 # =========================================================
 
 async def safe_alive_keeper(userbot: Client, bot: Client):
@@ -233,17 +241,19 @@ async def safe_alive_keeper(userbot: Client, bot: Client):
     except Exception:
         pass
 
+    # حلقة بطيئة جداً وآمنة 100% لإبقاء القنوات متصلة بدون أي ضغط أو حظر
     while True:
         if KNOWN_CHAT_IDS:
             for chat_id in list(KNOWN_CHAT_IDS):
                 try:
+                    # فحص أحدث رسالة فقط وبفاصل زمني طويل جداً (3 ثواني بين كل قروب)
                     async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
                         await process_live_message(userbot, bot, msg)
                         break
                 except Exception:
                     pass
-                await asyncio.sleep(2.0)
-        await asyncio.sleep(10.0)
+                await asyncio.sleep(3.0) 
+        await asyncio.sleep(15.0) # انتظار 15 ثانية كاملة قبل إعادة النبضة
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -279,7 +289,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("تم تشغيل نظام البوت الآمن (الاستماع الفوري + نبضة الحياة الهادئة) بنجاح!", flush=True)
+    print("🚀 تم تشغيل نظام البوت الآمن (الاستماع الفوري + نبضة الحياة الهادئة) بنجاح!", flush=True)
 
     asyncio.create_task(safe_alive_keeper(userbot, bot))
 
