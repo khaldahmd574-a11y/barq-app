@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Lightning Fast Engine Active!")
+        self.wfile.write(b"Barq Rocket Speed Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,6 +44,8 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
+
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
@@ -114,14 +116,14 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        res = requests.post(url, headers=headers, json=payload, timeout=12)
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
         if res.status_code == 200:
             data = res.json()
             if 'choices' in data and len(data['choices']) > 0:
                 message_content = data['choices'][0].get('message', {}).get('content')
                 if message_content:
                     answer = message_content.strip().upper()
-                    print(f"🧠 [Gemini]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"🧠 [Gemini Rocket]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -129,7 +131,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# REAL-TIME MESSAGE PROCESSOR
+# MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -139,6 +141,9 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -183,7 +188,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون حقيقي مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -223,6 +228,30 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
+# RAPID BACKGROUND PING (يعمل كل 20 ثانية للسرعة الصاروخية)
+# =========================================================
+
+async def ultra_safe_ping(userbot: Client, bot: Client):
+    await asyncio.sleep(5)
+    try:
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        await asyncio.sleep(20) # فحص سريع جداً كل 20 ثانية لضمان عدم تفويت أي شيء
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
+                    continue
+                await asyncio.sleep(0.3) # سرعة فائقة بين القروبات
+
+# =========================================================
 # MAIN ENTRYPOINT
 # =========================================================
 
@@ -256,7 +285,10 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام الاستماع الفوري الخالص (بدون أي مسح قديم أو بطء)!", flush=True)
+    print("🚀 تم تشغيل نظام السرعة الصاروخية (فوري + فحص كل 20 ثانية) بنجاح!", flush=True)
+
+    # تشغيل الماسح السريع في الخلفية
+    asyncio.create_task(ultra_safe_ping(userbot, bot))
 
     await asyncio.Event().wait()
 
