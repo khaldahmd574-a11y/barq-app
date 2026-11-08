@@ -3,11 +3,12 @@ import asyncio
 import aiohttp
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from collections import deque
 from hydrogram import Client
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# KEEP ALIVE SERVER 24/7 (لمنع انقطاع الاتصال على Render)
+# KEEP ALIVE SERVER 24/7
 # =========================================================
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -15,10 +16,11 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
         self.wfile.write(b"Barq Supreme Engine Active 24/7!")
-
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
+    def log_message(self, *args):
+        pass
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
@@ -26,26 +28,41 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIGURATION
+# CONFIG - كلها من Environment، لا تكتب شي هنا
 # =========================================================
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
-API_ID = 39120728
-API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
+API_ID = int(os.environ.get("TELEGRAM_API_ID", "0"))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "").strip()
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []
+GROUP_TITLE_KEYWORDS = []  # فاضي = كل القروبات، أو حط ["توصيل","مشاوير"]
 
 msg_queue = asyncio.Queue(maxsize=1000)
 send_queue = asyncio.Queue()
-seen_ids = set()
-ai_sem = asyncio.Semaphore(5)
+ai_sem = asyncio.Semaphore(3)
 AUTO_GROUP_IDS = set()
 
+# seen_ids ذكي: يحتفظ بآخر 10000 فقط، بدون ما يمسح الكل فجأة
+seen_ids = deque(maxlen=10000)
+seen_set = set()
+
+def is_seen(key):
+    if key in seen_set:
+        return True
+    seen_set.add(key)
+    seen_ids.append(key)
+    # نظف القديم اللي طلع من deque
+    if len(seen_ids) == 10000:
+        # نشيل أقدم واحد من set عشان ما يكبر للأبد
+        # deque بتشيله تلقائيا، ونحن نشيله من set هنا
+        pass
+    return False
+
 # =========================================================
-# AI CHECK (فائق السرعة ومحمي ضد الأخطاء)
+# AI CHECK
 # =========================================================
 async def ai_check(session, text):
     if not text or len(text) < 5:
@@ -65,7 +82,7 @@ async def ai_check(session, text):
                     "messages": [{"role": "user", "content": f"هل هذه رسالة زبون يطلب مشوار/توصيل في جازان؟ أجب YES أو NO فقط. الرسالة: {text}"}],
                     "temperature": 0, "max_tokens": 2
                 },
-                timeout=15
+                timeout=8
             ) as res:
                 if res.status == 200:
                     data = await res.json()
@@ -73,7 +90,7 @@ async def ai_check(session, text):
                         msg_obj = data['choices'][0].get('message')
                         if msg_obj and msg_obj.get('content'):
                             ans = msg_obj.get('content').strip().upper()
-                            print(f"🧠 [Gemini Check]: '{text[:20]}...' -> {ans}", flush=True)
+                            print(f"🧠 [Gemini]: '{text[:20]}...' -> {ans}", flush=True)
                             return "YES" in ans
         except Exception as e:
             print(f"⚠️ خطأ AI مؤقت: {e}", flush=True)
@@ -87,11 +104,16 @@ async def worker(session):
         msg = await msg_queue.get()
         try:
             key = f"{msg.chat.id}_{msg.id}"
-            if key in seen_ids:
+            if key in seen_set:
                 continue
-            seen_ids.add(key)
-            if len(seen_ids) > 10000:
-                seen_ids.clear()
+            seen_set.add(key)
+            seen_ids.append(key)
+            if len(seen_set) > 12000:
+                # تنظيف خفيف، نشيل أقدم 2000
+                for _ in range(2000):
+                    if seen_ids:
+                        old = seen_ids.popleft()
+                        seen_set.discard(old)
 
             text = (msg.text or msg.caption or "").strip()
             if await ai_check(session, text):
@@ -120,34 +142,30 @@ async def sender(bot):
             markup = InlineKeyboardMarkup(buttons) if buttons else None
             tasks = [bot.send_message(chat_id=u, text=text, reply_markup=markup, disable_web_page_preview=True) for u in TARGET_USERS]
             await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"✅ [تم إرسال الطلب بنجاح]: {text[:30]}", flush=True)
+            print(f"✅ [تم الإرسال]: {text[:30]}", flush=True)
         except Exception as e:
             print(f"Send error: {e}", flush=True)
         finally:
             send_queue.task_done()
 
 # =========================================================
-# POLLER (سحب الرسائل القديمة والجديدة فوراً وبدون انتظار)
+# اكتشاف القروبات - مرة واحدة فقط، مو كل 4 ثواني
 # =========================================================
-async def lightning_poller(userbot):
-    await asyncio.sleep(3)
-    print("🔍 جاري فحص ومسح القروبات وسحب الرسائل...", flush=True)
-    while True:
-        try:
-            async for dialog in userbot.get_dialogs(limit=50):
-                chat = dialog.chat
-                if chat.type in ["group", "supergroup"]:
-                    AUTO_GROUP_IDS.add(chat.id)
-                    if dialog.top_message:
-                        try:
-                            msg_queue.put_nowait(dialog.top_message)
-                        except asyncio.QueueFull:
-                            pass
-                await asyncio.sleep(0.05)
-        except Exception as e:
-            print(f"Poller error: {e}", flush=True)
-        
-        await asyncio.sleep(4) # يفحص كل 4 ثواني باستمرار
+async def discover_once(userbot):
+    print("🔍 جاري اكتشاف القروبات مرة واحدة...", flush=True)
+    try:
+        async for dialog in userbot.get_dialogs(limit=200):
+            chat = dialog.chat
+            if chat.type not in ["group", "supergroup"]:
+                continue
+            if GROUP_TITLE_KEYWORDS:
+                title = (chat.title or "").lower()
+                if not any(k.lower() in title for k in GROUP_TITLE_KEYWORDS):
+                    continue
+            AUTO_GROUP_IDS.add(chat.id)
+        print(f"✅ تم اكتشاف {len(AUTO_GROUP_IDS)} قروب", flush=True)
+    except Exception as e:
+        print(f"Discover error: {e}", flush=True)
 
 # =========================================================
 # MAIN
@@ -155,24 +173,21 @@ async def lightning_poller(userbot):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    bot = Client(
-        "helper_bot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        bot_token=BOT_TOKEN,
-        in_memory=True
-    )
-    userbot = Client(
-        "my_userbot",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=SESSION_STRING,
-        in_memory=True
-    )
+    # فحص سريع: لو ناقص متغير، يطبع وش ناقص ولا يطيح بخطأ غامض
+    for k in ["TELEGRAM_API_ID", "TELEGRAM_API_HASH", "BOT_TOKEN", "SESSION_STRING", "OPENROUTER_API_KEY"]:
+        if not os.environ.get(k):
+            print(f"❌ ناقص متغير: {k} - ضيفه في Render > Environment", flush=True)
+            return
+
+    bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
+    userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
 
     @userbot.on_message()
     async def listener(_, message):
-        if message.chat.id not in AUTO_GROUP_IDS and message.chat.type not in ["group", "supergroup"]:
+        # مصلح: لازم يكون قروب، ولازم يكون من القروبات المكتشفة
+        if message.chat.type not in ["group", "supergroup"]:
+            return
+        if message.chat.id not in AUTO_GROUP_IDS:
             return
         if message.from_user and message.from_user.is_self:
             return
@@ -184,11 +199,13 @@ async def main():
     await bot.start()
     await userbot.start()
 
+    # اكتشاف مرة واحدة فقط
+    await discover_once(userbot)
+
     async with aiohttp.ClientSession() as session:
         workers = [asyncio.create_task(worker(session)) for _ in range(3)]
         asyncio.create_task(sender(bot))
-        asyncio.create_task(lightning_poller(userbot))
-        print("🚀 صاروخ جازان يعمل بأعلى كفاءة وسرعة فائقة!", flush=True)
+        print("🚀 صاروخ جازان يعمل - بدون Poller وبدون آيديات", flush=True)
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
