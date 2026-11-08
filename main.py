@@ -66,6 +66,9 @@ def is_similar_text(text1: str, text2: str) -> bool:
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
+    if not text:
+        return False
+        
     clean = text.strip()
     
     if not clean or len(clean) < 3:
@@ -117,9 +120,13 @@ def analyze_intent_with_ai(text: str) -> bool:
         }
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
-            answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
-            return "YES" in answer
+            data = res.json()
+            if 'choices' in data and len(data['choices']) > 0:
+                message_content = data['choices'][0].get('message', {}).get('content')
+                if message_content:
+                    answer = message_content.strip().upper()
+                    print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
+                    return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
 
@@ -301,4 +308,4 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.main(main()) if hasattr(asyncio, 'main') else asyncio.run(main())
