@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Supreme Hybrid Engine Active!")
+        self.wfile.write(b"Barq Lightning Fast Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -44,8 +44,6 @@ OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
-KNOWN_CHAT_IDS = set()
-
 USER_REQUEST_HISTORY = {} 
 MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
@@ -62,7 +60,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE AI SUPREME ENGINE (Google Gemini 3.1 Flash-Lite)
+# PURE AI ENGINE (Google Gemini 3.1 Flash-Lite)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -116,15 +114,14 @@ def analyze_intent_with_ai(text: str) -> bool:
             "temperature": 0,
             "max_tokens": 2
         }
-        # مهلة زمنية آمنة ومرفوعة إلى 15 ثانية لمنع انقطاع الاتصال (Timeout)
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        res = requests.post(url, headers=headers, json=payload, timeout=12)
         if res.status_code == 200:
             data = res.json()
             if 'choices' in data and len(data['choices']) > 0:
                 message_content = data['choices'][0].get('message', {}).get('content')
                 if message_content:
                     answer = message_content.strip().upper()
-                    print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
+                    print(f"🧠 [Gemini]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -132,7 +129,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# REAL-TIME MESSAGE PROCESSOR
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -142,9 +139,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if message.chat.type == ChatType.PRIVATE:
             return
-
-        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-            KNOWN_CHAT_IDS.add(message.chat.id)
 
         if message.reply_to_message_id or message.reply_to_message:
             return
@@ -169,18 +163,15 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
-
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
-                    time_diff = current_time - past_request['time']
-                    
-                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                    if current_time - past_request['time'] < MIN_TIME_BETWEEN_REPEATS:
                         return
 
         PROCESSED_KEYS.add(msg_key)
         PROCESSED_KEYS.add(text_hash)
 
-        if len(PROCESSED_KEYS) > 15000:
+        if len(PROCESSED_KEYS) > 10000:
             PROCESSED_KEYS.clear()
 
         loop = asyncio.get_running_loop()
@@ -192,7 +183,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون حقيقي مقبول بـ Gemini]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -218,53 +209,18 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 sent = False
                 if bot:
                     try:
-                        await bot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
+                        await bot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
                         sent = True
                     except Exception:
                         pass
 
                 if not sent:
                     try:
-                        await userbot.send_message(
-                            chat_id=user,
-                            text=clean_text,
-                            reply_markup=reply_markup,
-                            disable_web_page_preview=True
-                        )
+                        await userbot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
                     except Exception:
                         pass
     except Exception:
         pass
-
-# =========================================================
-# HYBRID SAFETY SCANNER (Smart Back-up for all 46 groups)
-# =========================================================
-
-async def hybrid_history_scanner(userbot: Client, bot: Client):
-    await asyncio.sleep(5)
-    
-    try:
-        async for dialog in userbot.get_dialogs(limit=100):
-            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
-                KNOWN_CHAT_IDS.add(dialog.chat.id)
-    except Exception:
-        pass
-
-    while True:
-        if KNOWN_CHAT_IDS:
-            for chat_id in list(KNOWN_CHAT_IDS):
-                try:
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        asyncio.create_task(process_live_message(userbot, bot, msg))
-                except Exception:
-                    continue
-                await asyncio.sleep(1.5)
-        await asyncio.sleep(10.0)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -300,9 +256,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام المدمج والمحدث بنجاح لجميع المجموعات!", flush=True)
-
-    asyncio.create_task(hybrid_history_scanner(userbot, bot))
+    print("🚀 تم تشغيل نظام الاستماع الفوري الخالص (بدون أي مسح قديم أو بطء)!", flush=True)
 
     await asyncio.Event().wait()
 
