@@ -58,6 +58,9 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
 
 def analyze_intent_with_ai(text: str) -> bool:
+    if not text or not isinstance(text, str):
+        return False
+        
     clean = text.strip()
     
     if not clean or len(clean) < 3:
@@ -228,7 +231,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# SAFE ALIVE KEEPER (مع الفاصل الجديد 2 ثانية)
+# SAFE ALIVE KEEPER
 # =========================================================
 
 async def safe_alive_keeper(userbot: Client, bot: Client):
@@ -249,7 +252,7 @@ async def safe_alive_keeper(userbot: Client, bot: Client):
                         break
                 except Exception:
                     pass
-                await asyncio.sleep(2.0) # معدل إلى ثانيتين لزيادة السرعة بأمان
+                await asyncio.sleep(2.0)
         await asyncio.sleep(10.0)
 
 # =========================================================
