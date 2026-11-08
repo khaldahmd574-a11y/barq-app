@@ -43,7 +43,7 @@ TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 PROCESSED_KEYS = set()
 
 # =========================================================
-# ULTRA SMART & FAST AI ENGINE (Gemini Flash-Lite)
+# ULTRA SAFE & SMART AI ENGINE (Gemini Flash-Lite Protected)
 # =========================================================
 
 def analyze_message_smart(text: str) -> bool:
@@ -51,7 +51,6 @@ def analyze_message_smart(text: str) -> bool:
     if not clean or len(clean) < 3:
         return False
 
-    # تصفية سريعة للتحيات العابرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
@@ -91,9 +90,11 @@ def analyze_message_smart(text: str) -> bool:
         if res.status_code == 200:
             data = res.json()
             if 'choices' in data and len(data['choices']) > 0:
-                answer = data['choices'][0]['message']['content'].strip().upper()
-                print(f"🧠 [Gemini Super Fast]: '{clean[:25]}...' -> {answer}", flush=True)
-                return "YES" in answer
+                message_obj = data['choices'][0].get('message')
+                if message_obj and message_obj.get('content'):
+                    answer = message_obj.get('content').strip().upper()
+                    print(f"🧠 [Gemini Safe]: '{clean[:25]}...' -> {answer}", flush=True)
+                    return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ الذكاء الاصطناعي: {e}", flush=True)
 
@@ -180,7 +181,7 @@ async def lightning_dialog_poller(userbot: Client, bot: Client):
         except Exception:
             pass
             
-        await asyncio.sleep(5) # فحص خاطف كل 5 ثواني لضمان السرعة الصاروخية
+        await asyncio.sleep(5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -218,7 +219,7 @@ async def main():
             asyncio.create_task(process_live_message(bot, message))
 
     await userbot.start()
-    print("🚀 النظام يعمل الآن بأقصى سرعة صاروخية (Gemini Flash-Lite + فوري + فحص كل 5 ثواني)!", flush=True)
+    print("🚀 النظام يعمل الآن بأقصى سرعة ومحمية تماماً ضد الأخطاء!", flush=True)
 
     if bot:
         asyncio.create_task(lightning_dialog_poller(userbot, bot))
