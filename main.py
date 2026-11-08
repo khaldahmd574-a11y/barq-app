@@ -1,11 +1,32 @@
 import os
 import asyncio
 import aiohttp
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from hydrogram import Client
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # =========================================================
-# CONFIG - قيم مباشرة وثابتة لضمان عدم حدوث أي خطأ في النشر
+# KEEP ALIVE SERVER 24/7 (إجباري لمنع مشكلة Port timeout في Render)
+# =========================================================
+class DummyServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Barq Bot Engine Active 24/7!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    server.serve_forever()
+
+# =========================================================
+# CONFIG
 # =========================================================
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
@@ -44,7 +65,7 @@ async def ai_check(session, text):
                     "messages": [{"role": "user", "content": f"هل هذه رسالة زبون يطلب مشوار/توصيل في جازان؟ أجب YES أو NO فقط. الرسالة: {text}"}],
                     "temperature": 0, "max_tokens": 2
                 },
-                timeout=8
+                timeout=12
             ) as res:
                 if res.status == 200:
                     data = await res.json()
@@ -127,6 +148,9 @@ async def discover_groups(userbot):
 # MAIN
 # =========================================================
 async def main():
+    # تشغيل خادم الويب الخلفي لإبقاء المنفذ مفتوحاً وإرضاء Render
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
     bot = Client(
         "helper_bot",
         api_id=API_ID,
@@ -150,7 +174,7 @@ async def main():
             return
         try:
             msg_queue.put_nowait(message)
-        except asyncio.QueueFollow if hasattr(asyncio, 'QueueFull') else Exception:
+        except Exception:
             pass
 
     await bot.start()
@@ -161,7 +185,7 @@ async def main():
     async with aiohttp.ClientSession() as session:
         workers = [asyncio.create_task(worker(session)) for _ in range(3)]
         asyncio.create_task(sender(bot))
-        print("🚀 النظام شغال بكفاءة عالية وبدون أخطاء!", flush=True)
+        print("🚀 النظام شغال 24/7 وبكل قوة وبدون أي مشاكل منفذ!", flush=True)
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
