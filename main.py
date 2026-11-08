@@ -66,7 +66,6 @@ def analyze_intent(text: str) -> bool:
     if not OPENROUTER_API_KEY:
         return False
 
-    # برومبت مباشر وواضح وصارم
     prompt = f"""أنت مساعد ذكي لتحليل رسائل قروبات التوصيل والمشاوير في جازان (السعودية).
 اقرأ الرسالة التالية وحدد هل هي طلب زبون حقيقي يبحث عن توصيلة أو مشوار أو ينادي على سواق؟
 
@@ -92,10 +91,10 @@ def analyze_intent(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🤖 تحليل الرسالة: '{clean[:25]}...' -> {answer}", flush=True)
+            print(f"AI Analysis: '{clean[:25]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بـ OpenRouter: {e}", flush=True)
+        print(f"OpenRouter Error: {e}", flush=True)
 
     return False
 
@@ -104,15 +103,12 @@ def analyze_intent(text: str) -> bool:
 # =========================================================
 
 async def main():
-    # تشغيل سيرفر البقاء 24/7 في الخلفية
     threading.Thread(target=run_server, daemon=True).start()
-    print("🌐 تم إقلاع سيرفر الويب الوهمي بنجاح.", flush=True)
+    print("Dummy server started on Render port.", flush=True)
 
-    # التحقق من المتغيرات الأساسية
     if not SESSION_STRING or not API_ID or not API_HASH or not BOT_TOKEN or not OPENROUTER_API_KEY:
-        print("❌ تنبيه: بعض متغيرات البيئة الأساسية ناقصة في Render!", flush=True)
+        print("WARNING: Some environment variables are missing!", flush=True)
 
-    # تشغيل حساب المستخدم (المراقب للقروبات)
     userbot = Client(
         "my_user_session",
         api_id=API_ID,
@@ -121,7 +117,6 @@ async def main():
         in_memory=True
     )
 
-    # تشغيل بوت الإرسال (للتحكم بالأزرار)
     bot = Client(
         "my_helper_bot",
         api_id=API_ID,
@@ -136,7 +131,6 @@ async def main():
             if not message or not message.text or not message.chat:
                 return
 
-            # تجاهل الرسائل المردود عليها (الردود الجانبية)
             if message.reply_to_message_id:
                 return
 
@@ -152,37 +146,33 @@ async def main():
             if len(text) < 3:
                 return
 
-            # فحص النية عبر الذكاء الاصطناعي (في خلفية غير متزامنة لعدم تعليق الاستماع)
             loop = asyncio.get_running_loop()
             is_request = await loop.run_in_executor(None, analyze_intent, text)
 
             if is_request:
-                print(✅ [تم التقاط طلب زبون]: {text[:35]}..., flush=True)
+                print(f"Target Request Captured: {text[:35]}...", flush=True)
 
-                # بناء الأزرار التفاعلية
                 buttons = []
                 row = []
                 if message.from_user:
                     if message.from_user.username:
                         user_url = f"https://t.me/{message.from_user.username}"
-                        label = f"💬 فتح المحادثة (@{message.from_user.username})"
+                        label = f"محادثة (@{message.from_user.username})"
                     else:
                         user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                        label = f"💬 محادثة (مستخدم)"
+                        label = "محادثة مستخدم"
                     row.append(InlineKeyboardButton(label, url=user_url))
 
                 if message.link:
-                    row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+                    row.append(InlineKeyboardButton("الرسالة الأصلية", url=message.link))
 
                 if row:
                     buttons.append(row)
                 
                 markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-                # الإرسال لجميع المشتركين
                 for username in TARGET_USERS:
                     sent = False
-                    # 1. المحاولة عبر البوت لإظهار الأزرار
                     try:
                         await bot.send_message(
                             chat_id=username,
@@ -194,7 +184,6 @@ async def main():
                     except Exception:
                         pass
 
-                    # 2. إذا فشل البوت، المحاولة عبر حساب المستخدم مباشرة
                     if not sent:
                         try:
                             await userbot.send_message(
@@ -206,14 +195,12 @@ async def main():
                             pass
 
         except Exception as ex:
-            print(f"⚠️ خطأ أثناء المعالجة: {ex}", flush=True)
+            print(f"Message Processing Error: {ex}", flush=True)
 
-    # بدء تشغيل العملاء
     await userbot.start()
     await bot.start()
-    print("🚀 [Barq Simple Engine] يعمل الآن بكفاءة وسرعة تامة!", flush=True)
+    print("Barq Engine is up and running successfully!", flush=True)
 
-    # الحفاظ على تشغيل السكريبت للأبد
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
