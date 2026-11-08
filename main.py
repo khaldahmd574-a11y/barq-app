@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Ultimate Safe Engine Active!")
+        self.wfile.write(b"Barq Supreme Hybrid Gemini Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -41,21 +41,29 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333", "anas14440"]
+TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
 
 USER_REQUEST_HISTORY = {} 
-MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق منع التكرار
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
 SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
-BOT_START_TIME = time.time()
+# =========================================================
+# HELPER: SMART TEXT SIMILARITY
+# =========================================================
 
 def is_similar_text(text1: str, text2: str) -> bool:
     clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
     clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
-    return SequenceMatcher(None, clean1, clean2).ratio() >= SIMILARITY_THRESHOLD
+    
+    ratio = SequenceMatcher(None, clean1, clean2).ratio()
+    return ratio >= SIMILARITY_THRESHOLD
+
+# =========================================================
+# PURE AI SUPREME ENGINE (Google Gemini 3.1 Flash-Lite)
+# =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
     clean = text.strip()
@@ -66,12 +74,14 @@ def analyze_intent_with_ai(text: str) -> bool:
     if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
+    # استبعاد التحيات البحتة القصيرة
     if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
     if not OPENROUTER_API_KEY:
         return False
 
+    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
     prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
 
 مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
@@ -108,7 +118,7 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=8)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [Gemini Flash-Lite]: '{clean[:30]}...' -> {answer}", flush=True)
+            print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -136,11 +146,6 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         if message.from_user and message.from_user.is_self:
             return
 
-        # تجاهل الرسائل القديمة التي قبل إقلاع البوت بفترة طويلة
-        msg_date = message.date.timestamp() if hasattr(message, 'date') and message.date else time.time()
-        if msg_date < (BOT_START_TIME - 30):
-            return
-
         raw_text = message.text or message.caption or ""
         clean_text = raw_text.strip()
         
@@ -158,9 +163,12 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
 
         if user_id and user_id in USER_REQUEST_HISTORY:
             user_history = USER_REQUEST_HISTORY[user_id]
+
             for past_request in user_history:
                 if is_similar_text(clean_text, past_request['text']):
-                    if (current_time - past_request['time']) < MIN_TIME_BETWEEN_REPEATS:
+                    time_diff = current_time - past_request['time']
+                    
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
                         return
 
         PROCESSED_KEYS.add(msg_key)
@@ -178,7 +186,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون حقيقي مقبول بـ Gemini]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -189,8 +197,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
                     user_url = f"tg://openmessage?user_id={message.from_user.id}"
-                    first_n = message.from_user.first_name or 'المستخدم'
-                    user_label = f"💬 فتح المحادثة ({first_n[:10]})"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
                 row.append(InlineKeyboardButton(user_label, url=user_url))
 
             if message.link:
@@ -229,31 +236,29 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
         pass
 
 # =========================================================
-# SAFE ALIVE KEEPER (نبضة حياة خفيفة وبطيئة جداً لمنع موت البوت)
+# TARGETED GROUP HISTORY SCANNER (Safe Polling)
 # =========================================================
 
-async def safe_alive_keeper(userbot: Client, bot: Client):
-    await asyncio.sleep(10)
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
     try:
-        async for dialog in userbot.get_dialogs(limit=45):
+        async for dialog in userbot.get_dialogs(limit=50):
             if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
                 KNOWN_CHAT_IDS.add(dialog.chat.id)
     except Exception:
         pass
 
-    # حلقة بطيئة جداً وآمنة 100% لإبقاء القنوات متصلة بدون أي ضغط أو حظر
     while True:
         if KNOWN_CHAT_IDS:
             for chat_id in list(KNOWN_CHAT_IDS):
                 try:
-                    # فحص أحدث رسالة فقط وبفاصل زمني طويل جداً (3 ثواني بين كل قروب)
-                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=1):
-                        await process_live_message(userbot, bot, msg)
-                        break
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
-                    pass
-                await asyncio.sleep(3.0) 
-        await asyncio.sleep(15.0) # انتظار 15 ثانية كاملة قبل إعادة النبضة
+                    continue
+                await asyncio.sleep(0.3)
+        await asyncio.sleep(1.5)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -289,9 +294,9 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام البوت الآمن (الاستماع الفوري + نبضة الحياة الهادئة) بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح مع محرك الاستماع الفوري والماسح المضمون!", flush=True)
 
-    asyncio.create_task(safe_alive_keeper(userbot, bot))
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
     await asyncio.Event().wait()
 
