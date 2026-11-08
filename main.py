@@ -36,22 +36,22 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []  # فارغ لمراقبة جميع القروبات المكتشفة
+GROUP_TITLE_KEYWORDS = []
 
-msg_queue = asyncio.Queue(maxsize=500)
+msg_queue = asyncio.Queue(maxsize=1000)
 send_queue = asyncio.Queue()
 seen_ids = set()
-ai_sem = asyncio.Semaphore(3)
+ai_sem = asyncio.Semaphore(5)
 AUTO_GROUP_IDS = set()
 
 # =========================================================
-# AI CHECK (محصن بمهلة 20 ثانية وفلترة مسبقة سريعة)
+# AI CHECK (فائق السرعة ومحمي ضد الأخطاء)
 # =========================================================
 async def ai_check(session, text):
     if not text or len(text) < 5:
         return False
 
-    keywords = ["مشوار", "توصيل", "مندوب", "وديني", "سواق", "يوصلني", "فاضي", "ابغا", "ابي", "احتاج", "مين يودي", "فيه احد"]
+    keywords = ["مشوار", "توصيل", "مندوب", "وديني", "سواق", "يوصلني", "فاضي", "ابغا", "ابي", "احتاج", "مين يودي", "فيه احد", "توصيله", "نقل"]
     if not any(k in text for k in keywords):
         return False
 
@@ -65,7 +65,7 @@ async def ai_check(session, text):
                     "messages": [{"role": "user", "content": f"هل هذه رسالة زبون يطلب مشوار/توصيل في جازان؟ أجب YES أو NO فقط. الرسالة: {text}"}],
                     "temperature": 0, "max_tokens": 2
                 },
-                timeout=20
+                timeout=15
             ) as res:
                 if res.status == 200:
                     data = await res.json()
@@ -73,13 +73,14 @@ async def ai_check(session, text):
                         msg_obj = data['choices'][0].get('message')
                         if msg_obj and msg_obj.get('content'):
                             ans = msg_obj.get('content').strip().upper()
+                            print(f"🧠 [Gemini Check]: '{text[:20]}...' -> {ans}", flush=True)
                             return "YES" in ans
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ خطأ AI مؤقت: {e}", flush=True)
         return False
 
 # =========================================================
-# WORKERS
+# WORKERS & SENDER
 # =========================================================
 async def worker(session):
     while True:
@@ -89,7 +90,7 @@ async def worker(session):
             if key in seen_ids:
                 continue
             seen_ids.add(key)
-            if len(seen_ids) > 5000:
+            if len(seen_ids) > 10000:
                 seen_ids.clear()
 
             text = (msg.text or msg.caption or "").strip()
@@ -119,30 +120,34 @@ async def sender(bot):
             markup = InlineKeyboardMarkup(buttons) if buttons else None
             tasks = [bot.send_message(chat_id=u, text=text, reply_markup=markup, disable_web_page_preview=True) for u in TARGET_USERS]
             await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"✅ تم الإرسال بنجاح للمستهدفين: {text[:30]}", flush=True)
+            print(f"✅ [تم إرسال الطلب بنجاح]: {text[:30]}", flush=True)
         except Exception as e:
             print(f"Send error: {e}", flush=True)
         finally:
             send_queue.task_done()
 
 # =========================================================
-# DISCOVER GROUPS
+# POLLER (سحب الرسائل القديمة والجديدة فوراً وبدون انتظار)
 # =========================================================
-async def discover_groups(userbot):
-    print("🔍 جاري اكتشاف القروبات تلقائياً...", flush=True)
-    try:
-        async for dialog in userbot.get_dialogs(limit=200):
-            chat = dialog.chat
-            if chat.type not in ["group", "supergroup"]:
-                continue
-            if GROUP_TITLE_KEYWORDS:
-                title = (chat.title or "").lower()
-                if not any(k.lower() in title for k in GROUP_TITLE_KEYWORDS):
-                    continue
-            AUTO_GROUP_IDS.add(chat.id)
-        print(f"✅ تم اكتشاف {len(AUTO_GROUP_IDS)} قروب بنجاح!", flush=True)
-    except Exception as e:
-        print(f"Discover error: {e}", flush=True)
+async def lightning_poller(userbot):
+    await asyncio.sleep(3)
+    print("🔍 جاري فحص ومسح القروبات وسحب الرسائل...", flush=True)
+    while True:
+        try:
+            async for dialog in userbot.get_dialogs(limit=50):
+                chat = dialog.chat
+                if chat.type in ["group", "supergroup"]:
+                    AUTO_GROUP_IDS.add(chat.id)
+                    if dialog.top_message:
+                        try:
+                            msg_queue.put_nowait(dialog.top_message)
+                        except asyncio.QueueFull:
+                            pass
+                await asyncio.sleep(0.05)
+        except Exception as e:
+            print(f"Poller error: {e}", flush=True)
+        
+        await asyncio.sleep(4) # يفحص كل 4 ثواني باستمرار
 
 # =========================================================
 # MAIN
@@ -167,24 +172,23 @@ async def main():
 
     @userbot.on_message()
     async def listener(_, message):
-        if message.chat.id not in AUTO_GROUP_IDS:
+        if message.chat.id not in AUTO_GROUP_IDS and message.chat.type not in ["group", "supergroup"]:
             return
         if message.from_user and message.from_user.is_self:
             return
         try:
             msg_queue.put_nowait(message)
-        except Exception:
+        except asyncio.QueueFull:
             pass
 
     await bot.start()
     await userbot.start()
 
-    await discover_groups(userbot)
-
     async with aiohttp.ClientSession() as session:
         workers = [asyncio.create_task(worker(session)) for _ in range(3)]
         asyncio.create_task(sender(bot))
-        print("🚀 النظام يعمل بأقصى سرعة وثبات تام 24/7!", flush=True)
+        asyncio.create_task(lightning_poller(userbot))
+        print("🚀 صاروخ جازان يعمل بأعلى كفاءة وسرعة فائقة!", flush=True)
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
