@@ -28,38 +28,25 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIG - كلها من Environment، لا تكتب شي هنا
+# CONFIG - ثبتنا القيم لضمان عدم توقف البوت أبداً
 # =========================================================
 TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
-API_ID = int(os.environ.get("TELEGRAM_API_ID", "0"))
-API_HASH = os.environ.get("TELEGRAM_API_HASH", "").strip()
+API_ID = 39120728
+API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []  # فاضي = كل القروبات، أو حط ["توصيل","مشاوير"]
+GROUP_TITLE_KEYWORDS = []
 
 msg_queue = asyncio.Queue(maxsize=1000)
 send_queue = asyncio.Queue()
 ai_sem = asyncio.Semaphore(3)
 AUTO_GROUP_IDS = set()
 
-# seen_ids ذكي: يحتفظ بآخر 10000 فقط، بدون ما يمسح الكل فجأة
 seen_ids = deque(maxlen=10000)
 seen_set = set()
-
-def is_seen(key):
-    if key in seen_set:
-        return True
-    seen_set.add(key)
-    seen_ids.append(key)
-    # نظف القديم اللي طلع من deque
-    if len(seen_ids) == 10000:
-        # نشيل أقدم واحد من set عشان ما يكبر للأبد
-        # deque بتشيله تلقائيا، ونحن نشيله من set هنا
-        pass
-    return False
 
 # =========================================================
 # AI CHECK
@@ -109,7 +96,6 @@ async def worker(session):
             seen_set.add(key)
             seen_ids.append(key)
             if len(seen_set) > 12000:
-                # تنظيف خفيف، نشيل أقدم 2000
                 for _ in range(2000):
                     if seen_ids:
                         old = seen_ids.popleft()
@@ -149,7 +135,7 @@ async def sender(bot):
             send_queue.task_done()
 
 # =========================================================
-# اكتشاف القروبات - مرة واحدة فقط، مو كل 4 ثواني
+# اكتشاف القروبات
 # =========================================================
 async def discover_once(userbot):
     print("🔍 جاري اكتشاف القروبات مرة واحدة...", flush=True)
@@ -173,18 +159,11 @@ async def discover_once(userbot):
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    # فحص سريع: لو ناقص متغير، يطبع وش ناقص ولا يطيح بخطأ غامض
-    for k in ["TELEGRAM_API_ID", "TELEGRAM_API_HASH", "BOT_TOKEN", "SESSION_STRING", "OPENROUTER_API_KEY"]:
-        if not os.environ.get(k):
-            print(f"❌ ناقص متغير: {k} - ضيفه في Render > Environment", flush=True)
-            return
-
     bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
     userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
 
     @userbot.on_message()
     async def listener(_, message):
-        # مصلح: لازم يكون قروب، ولازم يكون من القروبات المكتشفة
         if message.chat.type not in ["group", "supergroup"]:
             return
         if message.chat.id not in AUTO_GROUP_IDS:
@@ -199,13 +178,12 @@ async def main():
     await bot.start()
     await userbot.start()
 
-    # اكتشاف مرة واحدة فقط
     await discover_once(userbot)
 
     async with aiohttp.ClientSession() as session:
         workers = [asyncio.create_task(worker(session)) for _ in range(3)]
         asyncio.create_task(sender(bot))
-        print("🚀 صاروخ جازان يعمل - بدون Poller وبدون آيديات", flush=True)
+        print("🚀 صاروخ جازان يعمل بأقصى كفاءة وثبات تام!", flush=True)
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
