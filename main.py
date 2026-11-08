@@ -20,7 +20,7 @@ class DummyServer(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Rocket Speed Engine Active!")
+        self.wfile.write(b"Barq Bot Only Engine Active!")
 
     def do_HEAD(self):
         self.send_response(200)
@@ -123,7 +123,7 @@ def analyze_intent_with_ai(text: str) -> bool:
                 message_content = data['choices'][0].get('message', {}).get('content')
                 if message_content:
                     answer = message_content.strip().upper()
-                    print(f"🧠 [Gemini Rocket]: '{clean[:30]}...' -> {answer}", flush=True)
+                    print(f"🧠 [Gemini Bot-Only]: '{clean[:30]}...' -> {answer}", flush=True)
                     return "YES" in answer
     except Exception as e:
         print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
@@ -131,7 +131,7 @@ def analyze_intent_with_ai(text: str) -> bool:
     return False
 
 # =========================================================
-# MESSAGE PROCESSOR
+# MESSAGE PROCESSOR (Bot Sends Exclusively)
 # =========================================================
 
 async def process_live_message(userbot: Client, bot: Client, message: Message):
@@ -188,7 +188,7 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                     USER_REQUEST_HISTORY[user_id] = []
                 USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
 
-            print(f"✅ [طلب زبون حقيقي مقبول]: {clean_text[:30]}...", flush=True)
+            print(f"✅ [طلب زبون مقبول - البوت سيُرسل]: {clean_text[:30]}...", flush=True)
 
             buttons = []
             row = []
@@ -210,25 +210,23 @@ async def process_live_message(userbot: Client, bot: Client, message: Message):
                 
             reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            for user in TARGET_USERS:
-                sent = False
-                if bot:
+            # 🛑 الإرسال يتم حصرياً عبر البوت المساعد (Bot) فقط لضمان عدم إرسال الحساب الوهمي أي شيء
+            if bot:
+                for user in TARGET_USERS:
                     try:
-                        await bot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
-                        sent = True
-                    except Exception:
-                        pass
-
-                if not sent:
-                    try:
-                        await userbot.send_message(chat_id=user, text=clean_text, reply_markup=reply_markup, disable_web_page_preview=True)
-                    except Exception:
-                        pass
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception as e:
+                        print(f"⚠️ فشل إرسال البوت للمستخدم {user}: {e}", flush=True)
     except Exception:
         pass
 
 # =========================================================
-# RAPID BACKGROUND PING (يعمل كل 20 ثانية للسرعة الصاروخية)
+# RAPID BACKGROUND PING (يعمل كل 20 ثانية)
 # =========================================================
 
 async def ultra_safe_ping(userbot: Client, bot: Client):
@@ -241,7 +239,7 @@ async def ultra_safe_ping(userbot: Client, bot: Client):
         pass
 
     while True:
-        await asyncio.sleep(20) # فحص سريع جداً كل 20 ثانية لضمان عدم تفويت أي شيء
+        await asyncio.sleep(20)
         if KNOWN_CHAT_IDS:
             for chat_id in list(KNOWN_CHAT_IDS):
                 try:
@@ -249,7 +247,7 @@ async def ultra_safe_ping(userbot: Client, bot: Client):
                         asyncio.create_task(process_live_message(userbot, bot, msg))
                 except Exception:
                     continue
-                await asyncio.sleep(0.3) # سرعة فائقة بين القروبات
+                await asyncio.sleep(0.3)
 
 # =========================================================
 # MAIN ENTRYPOINT
@@ -277,17 +275,17 @@ async def main():
                 in_memory=True
             )
             await bot.start()
-        except Exception:
-            pass
+            print("🤖 تم تفعيل البوت المساعد (Bot) بنجاح للإرسال حصرياً!", flush=True)
+        except Exception as e:
+            print(f"❌ خطأ في تشغيل البوت المساعد: {e}", flush=True)
 
     @userbot.on_message()
     async def global_live_listener(client: Client, message: Message):
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل نظام السرعة الصاروخية (فوري + فحص كل 20 ثانية) بنجاح!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح (الاستماع بالحساب + الإرسال بالبوت فقط)!", flush=True)
 
-    # تشغيل الماسح السريع في الخلفية
     asyncio.create_task(ultra_safe_ping(userbot, bot))
 
     await asyncio.Event().wait()
