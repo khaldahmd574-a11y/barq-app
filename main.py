@@ -1,26 +1,30 @@
 import os
+import re
+import time
 import asyncio
-import aiohttp
+import hashlib
+import requests
+from difflib import SequenceMatcher
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
-from collections import deque
 from hydrogram import Client
-from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.enums import ChatType
 
 # =========================================================
 # KEEP ALIVE SERVER 24/7
 # =========================================================
+
 class DummyServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
-        self.wfile.write(b"Barq Supreme Engine Active 24/7!")
+        self.wfile.write(b"Barq Supreme Hybrid Gemini Engine Active!")
+
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
-    def log_message(self, *args):
-        pass
 
 def run_dummy_server():
     port = int(os.environ.get("PORT", 10000))
@@ -28,163 +32,273 @@ def run_dummy_server():
     server.serve_forever()
 
 # =========================================================
-# CONFIG - ثبتنا القيم لضمان عدم توقف البوت أبداً
+# CONFIGURATION
 # =========================================================
-TARGET_USERS = ["shaybq", "Waaaaaaa33", "abood1317", "Ndhhyfvvjkcd", "fs_990"]
 
-API_ID = 39120728
-API_HASH = "1deec8393ce5aa05c54c0c7e280377d4"
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 SESSION_STRING = os.environ.get("SESSION_STRING", "").strip()
+API_ID = int(os.environ.get("TELEGRAM_API_ID", 39120728))
+API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4").strip()
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-GROUP_TITLE_KEYWORDS = []
+TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990"]
 
-msg_queue = asyncio.Queue(maxsize=1000)
-send_queue = asyncio.Queue()
-ai_sem = asyncio.Semaphore(3)
-AUTO_GROUP_IDS = set()
+PROCESSED_KEYS = set()
+KNOWN_CHAT_IDS = set()
 
-seen_ids = deque(maxlen=10000)
-seen_set = set()
+USER_REQUEST_HISTORY = {} 
+MIN_TIME_BETWEEN_REPEATS = 600   # 10 دقائق بالثواني
+SIMILARITY_THRESHOLD = 0.65       # نسبة التشابه النصي
 
 # =========================================================
-# AI CHECK
+# HELPER: SMART TEXT SIMILARITY
 # =========================================================
-async def ai_check(session, text):
-    if not text or len(text) < 5:
+
+def is_similar_text(text1: str, text2: str) -> bool:
+    clean1 = re.sub(r'[^\w\s]', '', text1.lower()).strip()
+    clean2 = re.sub(r'[^\w\s]', '', text2.lower()).strip()
+    
+    ratio = SequenceMatcher(None, clean1, clean2).ratio()
+    return ratio >= SIMILARITY_THRESHOLD
+
+# =========================================================
+# PURE AI SUPREME ENGINE (Google Gemini 3.1 Flash-Lite)
+# =========================================================
+
+def analyze_intent_with_ai(text: str) -> bool:
+    clean = text.strip()
+    
+    if not clean or len(clean) < 3:
         return False
 
-    keywords = ["مشوار", "توصيل", "مندوب", "وديني", "سواق", "يوصلني", "فاضي", "ابغا", "ابي", "احتاج", "مين يودي", "فيه احد", "توصيله", "نقل"]
-    if not any(k in text for k in keywords):
+    if not re.search(r'[\u0600-\u06FFa-zA-Z]', clean):
         return False
 
-    async with ai_sem:
-        try:
-            async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                json={
-                    "model": "google/gemini-3.1-flash-lite",
-                    "messages": [{"role": "user", "content": f"هل هذه رسالة زبون يطلب مشوار/توصيل في جازان؟ أجب YES أو NO فقط. الرسالة: {text}"}],
-                    "temperature": 0, "max_tokens": 2
-                },
-                timeout=8
-            ) as res:
-                if res.status == 200:
-                    data = await res.json()
-                    if 'choices' in data and len(data['choices']) > 0:
-                        msg_obj = data['choices'][0].get('message')
-                        if msg_obj and msg_obj.get('content'):
-                            ans = msg_obj.get('content').strip().upper()
-                            print(f"🧠 [Gemini]: '{text[:20]}...' -> {ans}", flush=True)
-                            return "YES" in ans
-        except Exception as e:
-            print(f"⚠️ خطأ AI مؤقت: {e}", flush=True)
+    # استبعاد التحيات البحتة القصيرة
+    if clean.lower() in ["سلام", "السلام عليكم", "مرحبا", "هلا", "صباح الخير", "مساء الخير", "الو"]:
         return False
 
-# =========================================================
-# WORKERS & SENDER
-# =========================================================
-async def worker(session):
-    while True:
-        msg = await msg_queue.get()
-        try:
-            key = f"{msg.chat.id}_{msg.id}"
-            if key in seen_set:
-                continue
-            seen_set.add(key)
-            seen_ids.append(key)
-            if len(seen_set) > 12000:
-                for _ in range(2000):
-                    if seen_ids:
-                        old = seen_ids.popleft()
-                        seen_set.discard(old)
+    if not OPENROUTER_API_KEY:
+        return False
 
-            text = (msg.text or msg.caption or "").strip()
-            if await ai_check(session, text):
-                await send_queue.put((msg, text))
-        except Exception as e:
-            print(f"Worker error: {e}", flush=True)
-        finally:
-            msg_queue.task_done()
+    # 🧠 توجيه ذكي وشامل للذكاء الاصطناعي ليفهم كل شيء بوعي مطلق
+    prompt = f"""أنت عقل ذكاء اصطناعي خارق وواعي تماماً، ومختص حصرياً بتحليل نية الرسائل في قروبات التوصيل والمشاوير والمناديب بمنطقة جازان بالمملكة العربية السعودية.
 
-async def sender(bot):
-    while True:
-        msg, text = await send_queue.get()
-        try:
+مهمتك الجوهرية هي قراءة الرسالة التالية وتحديد هدف الكاتب بدقة مطلقة:
+
+[اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
+- إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه (بما في ذلك طلبات الشراء أو الاستفسار عن متواجدين في أماكن مثل جرير وغيرها، أو مثل "مين يوديني من الحمى لين الشقيري").
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "فيه احد عند جرير؟").
+- أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
+
+[ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش", "متواجد الآن").
+- قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
+- التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
+- الإعلانات التجارية، القروض، السلف، الخدمات الطلابية، حل الواجبات، والسطحات.
+
+الرسالة المراد تحليلها بعمق:
+"{clean}"
+
+الجواب كلمة واحدة فقط لا غير (YES) أو (NO):"""
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        payload = {
+            "model": "google/gemini-3.1-flash-lite",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": 2
+        }
+        res = requests.post(url, headers=headers, json=payload, timeout=8)
+        if res.status_code == 200:
+            answer = res.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"🧠 [Gemini Flash-Lite الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
+            return "YES" in answer
+    except Exception as e:
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+
+    return False
+
+# =========================================================
+# MESSAGE PROCESSOR
+# =========================================================
+
+async def process_live_message(userbot: Client, bot: Client, message: Message):
+    try:
+        if not message or not message.id or not message.chat:
+            return
+
+        if message.chat.type == ChatType.PRIVATE:
+            return
+
+        if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            KNOWN_CHAT_IDS.add(message.chat.id)
+
+        if message.reply_to_message_id or message.reply_to_message:
+            return
+
+        if message.from_user and message.from_user.is_self:
+            return
+
+        raw_text = message.text or message.caption or ""
+        clean_text = raw_text.strip()
+        
+        if len(clean_text) < 3:
+            return
+
+        msg_key = f"{message.chat.id}_{message.id}"
+        text_hash = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+        
+        if msg_key in PROCESSED_KEYS or text_hash in PROCESSED_KEYS:
+            return
+
+        current_time = time.time()
+        user_id = message.from_user.id if message.from_user else None
+
+        if user_id and user_id in USER_REQUEST_HISTORY:
+            user_history = USER_REQUEST_HISTORY[user_id]
+
+            for past_request in user_history:
+                if is_similar_text(clean_text, past_request['text']):
+                    time_diff = current_time - past_request['time']
+                    
+                    if time_diff < MIN_TIME_BETWEEN_REPEATS:
+                        return
+
+        PROCESSED_KEYS.add(msg_key)
+        PROCESSED_KEYS.add(text_hash)
+
+        if len(PROCESSED_KEYS) > 15000:
+            PROCESSED_KEYS.clear()
+
+        loop = asyncio.get_running_loop()
+        is_client_request = await loop.run_in_executor(None, analyze_intent_with_ai, clean_text)
+
+        if is_client_request:
+            if user_id:
+                if user_id not in USER_REQUEST_HISTORY:
+                    USER_REQUEST_HISTORY[user_id] = []
+                USER_REQUEST_HISTORY[user_id].append({'text': clean_text, 'time': current_time})
+
+            print(f"✅ [طلب زبون حقيقي مقبول بـ Gemini]: {clean_text[:30]}...", flush=True)
+
             buttons = []
             row = []
-            if msg.from_user:
-                if msg.from_user.username:
-                    row.append(InlineKeyboardButton(f"💬 فتح المحادثة (@{msg.from_user.username})", url=f"https://t.me/{msg.from_user.username}"))
+            
+            if message.from_user:
+                if message.from_user.username:
+                    user_url = f"https://t.me/{message.from_user.username}"
+                    user_label = f"💬 فتح المحادثة (@{message.from_user.username})"
                 else:
-                    row.append(InlineKeyboardButton(f"💬 فتح المحادثة", url=f"tg://openmessage?user_id={msg.from_user.id}"))
-            if msg.link:
-                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=msg.link))
+                    user_url = f"tg://openmessage?user_id={message.from_user.id}"
+                    user_label = f"💬 فتح المحادثة ({message.from_user.first_name or 'المستخدم'})"
+                row.append(InlineKeyboardButton(user_label, url=user_url))
+
+            if message.link:
+                row.append(InlineKeyboardButton("📩 الرسالة الأصلية", url=message.link))
+            
             if row:
                 buttons.append(row)
+                
+            reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
 
-            markup = InlineKeyboardMarkup(buttons) if buttons else None
-            tasks = [bot.send_message(chat_id=u, text=text, reply_markup=markup, disable_web_page_preview=True) for u in TARGET_USERS]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            print(f"✅ [تم الإرسال]: {text[:30]}", flush=True)
-        except Exception as e:
-            print(f"Send error: {e}", flush=True)
-        finally:
-            send_queue.task_done()
+            for user in TARGET_USERS:
+                sent = False
+                if bot:
+                    try:
+                        await bot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                        sent = True
+                    except Exception:
+                        pass
+
+                if not sent:
+                    try:
+                        await userbot.send_message(
+                            chat_id=user,
+                            text=clean_text,
+                            reply_markup=reply_markup,
+                            disable_web_page_preview=True
+                        )
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
 # =========================================================
-# اكتشاف القروبات
+# TARGETED GROUP HISTORY SCANNER (Safe Polling)
 # =========================================================
-async def discover_once(userbot):
-    print("🔍 جاري اكتشاف القروبات مرة واحدة...", flush=True)
+
+async def direct_chat_history_scanner(userbot: Client, bot: Client):
+    await asyncio.sleep(2)
+    
     try:
-        async for dialog in userbot.get_dialogs(limit=200):
-            chat = dialog.chat
-            if chat.type not in ["group", "supergroup"]:
-                continue
-            if GROUP_TITLE_KEYWORDS:
-                title = (chat.title or "").lower()
-                if not any(k.lower() in title for k in GROUP_TITLE_KEYWORDS):
+        async for dialog in userbot.get_dialogs(limit=50):
+            if dialog.chat and dialog.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+                KNOWN_CHAT_IDS.add(dialog.chat.id)
+    except Exception:
+        pass
+
+    while True:
+        if KNOWN_CHAT_IDS:
+            for chat_id in list(KNOWN_CHAT_IDS):
+                try:
+                    async for msg in userbot.get_chat_history(chat_id=chat_id, limit=2):
+                        asyncio.create_task(process_live_message(userbot, bot, msg))
+                except Exception:
                     continue
-            AUTO_GROUP_IDS.add(chat.id)
-        print(f"✅ تم اكتشاف {len(AUTO_GROUP_IDS)} قروب", flush=True)
-    except Exception as e:
-        print(f"Discover error: {e}", flush=True)
+                await asyncio.sleep(0.3)
+        await asyncio.sleep(1.5)
 
 # =========================================================
-# MAIN
+# MAIN ENTRYPOINT
 # =========================================================
+
 async def main():
     threading.Thread(target=run_dummy_server, daemon=True).start()
 
-    bot = Client("helper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
-    userbot = Client("my_userbot", api_id=API_ID, api_hash=API_HASH, session_string=SESSION_STRING, in_memory=True)
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
 
-    @userbot.on_message()
-    async def listener(_, message):
-        if message.chat.type not in ["group", "supergroup"]:
-            return
-        if message.chat.id not in AUTO_GROUP_IDS:
-            return
-        if message.from_user and message.from_user.is_self:
-            return
+    bot = None
+    if BOT_TOKEN:
         try:
-            msg_queue.put_nowait(message)
-        except asyncio.QueueFull:
+            bot = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot.start()
+        except Exception:
             pass
 
-    await bot.start()
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        asyncio.create_task(process_live_message(client, bot, message))
+
     await userbot.start()
+    print("🚀 تم تشغيل النظام بنجاح مع محرك الاستماع الفوري والماسح المضمون!", flush=True)
 
-    await discover_once(userbot)
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
-    async with aiohttp.ClientSession() as session:
-        workers = [asyncio.create_task(worker(session)) for _ in range(3)]
-        asyncio.create_task(sender(bot))
-        print("🚀 صاروخ جازان يعمل بأقصى كفاءة وثبات تام!", flush=True)
-        await asyncio.Event().wait()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
