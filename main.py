@@ -88,11 +88,11 @@ def analyze_intent_with_ai(text: str) -> bool:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
 - إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه.
-- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد", "احد موجود في إسكان الحصمة ابغا مشوار", "معقوله مافي سواق دوام").
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "معقوله مافي سواق دوام").
 - أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
 - التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
 - الإعلانات التجارية، القروض، السلف (تمارا، تابي، إمكان)، الخدمات الطلابية، حل الواجبات، والسطحات.
@@ -262,4 +262,43 @@ async def direct_chat_history_scanner(userbot: Client, bot: Client):
 
 # =========================================================
 # MAIN ENTRYPOINT
-# =================================================
+# =========================================================
+
+async def main():
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+
+    userbot = Client(
+        "my_userbot",
+        api_id=API_ID,
+        api_hash=API_HASH,
+        session_string=SESSION_STRING,
+        in_memory=True
+    )
+
+    bot = None
+    if BOT_TOKEN:
+        try:
+            bot = Client(
+                "helper_bot",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+                in_memory=True
+            )
+            await bot.start()
+        except Exception:
+            pass
+
+    @userbot.on_message()
+    async def global_live_listener(client: Client, message: Message):
+        asyncio.create_task(process_live_message(client, bot, message))
+
+    await userbot.start()
+    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي الصافي بالكامل وبدون قيود برمجية!", flush=True)
+
+    asyncio.create_task(direct_chat_history_scanner(userbot, bot))
+
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
