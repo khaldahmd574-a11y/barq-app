@@ -41,7 +41,7 @@ API_HASH = os.environ.get("TELEGRAM_API_HASH", "1deec8393ce5aa05c54c0c7e280377d4
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 
-TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333", "let_f6"]
+TARGET_USERS = ["abood1317", "Waaaaaaa33", "shaybq", "Ndhhyfvvjkcd", "fs_990", "Khaid3333", "let_f6", "anas14440"]
 
 PROCESSED_KEYS = set()
 KNOWN_CHAT_IDS = set()
@@ -269,7 +269,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_id=API_ID,       # تم تصحيحها هنا بحروف صغيرة لتتوافق مع المكتبة
+        api_id=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
