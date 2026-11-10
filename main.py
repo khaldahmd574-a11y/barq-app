@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE AI SUPREME ENGINE (الذكاء الاصطناعي النقي بدون أي قواعد معقدة)
+# PURE AI SUPREME ENGINE (تم التحديث لـ Gemini Flash عبر OpenRouter)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -88,11 +88,11 @@ def analyze_intent_with_ai(text: str) -> bool:
 
 [اقبل الرسالة وأجب بـ (YES) فقط في هذه الحالة:]
 - إذا كان الكاتب زبوناً أو عميلاً حقيقياً يبحث عن توصيلة، مشوار، نقل، أو مندوب لنفسه أو لأحد معارفه.
-- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد"، "احد موجود في إسكان الحصمة ابغا مشوار"، "معقوله مافي سواق دوام").
+- إذا كان الكاتب يسأل أو يستفسر عن توفر شخص، سائق، أو مندوب في أي مدينة أو قرية في جازان (مثل: "من فاضي في ضمد", "احد موجود في إسكان الحصمة ابغا مشوار", "معقوله مافي سواق دوام").
 - أي طلب أو استفسار بريء يبحث عن خدمة نقل أياً كانت طريقته أو لهجته أو حتى لو وجد فيه خطأ إملائي بسيط.
 
 [ارفض الرسالة وأجب بـ (NO) في أي حالة أخرى، مثل:]
-- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة"، "فاضي في أبوعريش").
+- إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
 - التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
 - الإعلانات التجارية، القروض، السلف (تمارا، تابي، إمكان)، الخدمات الطلابية، حل الواجبات، والسطحات.
@@ -110,7 +110,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "openai/gpt-4o-mini",
+            "model": "google/gemini-2.5-flash",  # تم التحديث لاستخدام نموذج جميناي فلاش السريع عبر OpenRouter
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
@@ -118,10 +118,10 @@ def analyze_intent_with_ai(text: str) -> bool:
         res = requests.post(url, headers=headers, json=payload, timeout=10)
         if res.status_code == 200:
             answer = res.json()['choices'][0]['message']['content'].strip().upper()
-            print(f"🧠 [الذكاء الاصطناعي الصافي]: '{clean[:35]}...' -> {answer}", flush=True)
+            print(f"🧠 [Gemini Flash Engine]: '{clean[:35]}...' -> {answer}", flush=True)
             return "YES" in answer
     except Exception as e:
-        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي: {e}", flush=True)
+        print(f"⚠️ خطأ في الاتصال بالذكاء الاصطناعي (Gemini): {e}", flush=True)
 
     return False
 
@@ -269,7 +269,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_id=API_ID,
+        api_ID=API_ID,
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -294,7 +294,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بالذكاء الاصطناعي الصافي بالكامل وبدون قيود برمجية!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح مع نموذج Gemini 3.1 / 2.5 Flash للسرعة الفائقة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
