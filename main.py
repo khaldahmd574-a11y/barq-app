@@ -62,7 +62,7 @@ def is_similar_text(text1: str, text2: str) -> bool:
     return ratio >= SIMILARITY_THRESHOLD
 
 # =========================================================
-# PURE AI SUPREME ENGINE (تم التحديث لـ Gemini Flash عبر OpenRouter)
+# PURE AI SUPREME ENGINE (Gemini Flash عبر OpenRouter)
 # =========================================================
 
 def analyze_intent_with_ai(text: str) -> bool:
@@ -95,7 +95,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 - إعلانات السائقين الذين يعرضون خدماتهم أو رحلاتهم أو أرقام جوالاتهم (مثل: "طالع من جيزان لصامطة", "فاضي في أبوعريش").
 - قوائم الثقة، أسماء الكباتن المعتمدين، أو تنبيهات وإرشادات الإدارة.
 - التحذيرات الأمنية، رسائل إبراء الذمة، أو التنبيهات ضد النصب وتحويل العربون.
-- الإعلانات التجارية، القروض، السلف (تمارا، تابي، إمكان)، الخدمات الطلابية، حل الواجبات، والسطحات.
+- الإعلانات التجارية، القروض، السلف (تمارا، تابي، إمكان), الخدمات الطلابية، حل الواجبات، والسطحات.
 
 الرسالة المراد تحليلها بعمق:
 "{clean}"
@@ -110,7 +110,7 @@ def analyze_intent_with_ai(text: str) -> bool:
 
     try:
         payload = {
-            "model": "google/gemini-2.5-flash",  # تم التحديث لاستخدام نموذج جميناي فلاش السريع عبر OpenRouter
+            "model": "google/gemini-2.5-flash",  # نموذج جميناي فلاش السريع عبر OpenRouter
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": 2
@@ -269,7 +269,7 @@ async def main():
 
     userbot = Client(
         "my_userbot",
-        api_ID=API_ID,
+        api_id=API_ID,       # تم تصحيحها هنا بحروف صغيرة لتتوافق مع المكتبة
         api_hash=API_HASH,
         session_string=SESSION_STRING,
         in_memory=True
@@ -294,7 +294,7 @@ async def main():
         asyncio.create_task(process_live_message(client, bot, message))
 
     await userbot.start()
-    print("🚀 تم تشغيل النظام بنجاح مع نموذج Gemini 3.1 / 2.5 Flash للسرعة الفائقة!", flush=True)
+    print("🚀 تم تشغيل النظام بنجاح مع نموذج Gemini Flash للسرعة الفائقة!", flush=True)
 
     asyncio.create_task(direct_chat_history_scanner(userbot, bot))
 
